@@ -1,0 +1,18 @@
+# secrets
+.env
+*.session
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# data — do not commit datasets or vendor masters
+data/raw/*
+data/normalized/*
+data/metadata/*
+!data/**/.gitkeep
+logs/
+.pytest_cache/

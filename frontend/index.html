@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NSE Daily Screener — Phase 1</title>
+<style>
+:root{
+  --bg:#f7f7f5; --panel:#fff; --ink:#1c1c1a; --muted:#6b6b66; --line:#e2e2dd;
+  --accent:#b8552b; --accent2:#2f6f5e; --warn:#a8791f; --grid:#ececE6;
+  --pass:#2f6f5e; --fail:#c2c2bb;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#16161a; --panel:#1e1e23; --ink:#eceae4; --muted:#9a978f; --line:#2e2e35;
+  --accent:#e08a5c; --accent2:#5fbfa4; --warn:#d8b45e; --grid:#282830;
+  --pass:#5fbfa4; --fail:#4a4a52;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;
+  align-items:baseline;gap:16px;flex-wrap:wrap;background:var(--panel)}
+h1{font-size:16px;margin:0;font-weight:650;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:12px}
+.wrap{display:grid;grid-template-columns:300px 1fr;gap:0;align-items:start}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}}
+aside{padding:14px 16px;border-right:1px solid var(--line);position:sticky;top:0;
+  max-height:100vh;overflow-y:auto;background:var(--panel)}
+main{padding:16px 20px;min-width:0}
+.grp{margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.grp:last-child{border-bottom:0}
+.grp h3{font-size:11px;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--muted);margin:0 0 10px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:7px 0}
+.row label{font-size:12.5px;flex:1;min-width:0}
+.row output{font-variant-numeric:tabular-nums;font-size:12px;color:var(--accent);
+  min-width:46px;text-align:right;font-weight:600}
+input[type=range]{width:100%;accent-color:var(--accent);height:18px}
+select,input[type=number]{background:var(--bg);color:var(--ink);border:1px solid var(--line);
+  border-radius:5px;padding:3px 6px;font:inherit;font-size:12px;max-width:120px}
+input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
+.presets{display:flex;gap:5px;flex-wrap:wrap;margin:6px 0 2px}
+.presets button{flex:1;min-width:52px;background:var(--bg);border:1px solid var(--line);
+  color:var(--ink);border-radius:5px;padding:4px 5px;font:inherit;font-size:11px;cursor:pointer}
+.presets button:hover{border-color:var(--accent);color:var(--accent)}
+.presets button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.card .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.card .v{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums;margin-top:2px}
+.card .v.big{color:var(--accent)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:12px 14px;margin-bottom:16px}
+.panel h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);margin:0 0 10px;font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:right;padding:5px 7px;border-bottom:1px solid var(--line);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th:nth-child(2),td:nth-child(2){text-align:left}
+th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;
+  letter-spacing:.04em;cursor:pointer;user-select:none}
+th:hover{color:var(--accent)}
+tbody tr:hover{background:var(--bg);cursor:pointer}
+.scroll{overflow-x:auto}
+.funnel div.bar{display:flex;align-items:center;gap:8px;margin:3px 0}
+.funnel .nm{width:96px;font-size:11.5px;color:var(--muted);flex-shrink:0}
+.funnel .tr{flex:1;background:var(--grid);border-radius:3px;height:17px;position:relative;
+  overflow:hidden}
+.funnel .fl{height:100%;background:var(--accent2);border-radius:3px;transition:width .18s}
+.funnel .ct{width:64px;text-align:right;font-size:11.5px;font-variant-numeric:tabular-nums}
+.funnel .pc{width:44px;text-align:right;font-size:10.5px;color:var(--muted)}
+svg{display:block;width:100%;height:auto;overflow:visible}
+.muted{color:var(--muted)}
+.warnbox{background:color-mix(in srgb,var(--warn) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);
+  border-radius:6px;padding:8px 11px;font-size:12px;margin-bottom:14px}
+.pill{display:inline-block;background:var(--bg);border:1px solid var(--line);
+  border-radius:99px;padding:1px 8px;font-size:11px;margin:2px 3px 2px 0}
+#status{font-size:11.5px;color:var(--muted)}
+.spin{opacity:.45;transition:opacity .1s}
+.detail{font-size:12px;color:var(--muted);margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>NSE Daily Screener</h1>
+  <span class="sub" id="meta">loading…</span>
+  <span class="sub" style="margin-left:auto" id="status"></span>
+</header>
+
+<div class="wrap">
+<aside>
+  <div class="grp">
+    <h3>Size bucket</h3>
+    <div class="presets" id="sizePresets">
+      <button data-min="250" data-max="100000">&gt;250</button>
+      <button data-min="250" data-max="500">251–500</button>
+      <button data-min="500" data-max="750">501–750</button>
+      <button data-min="750" data-max="100000">751+</button>
+      <button data-min="0" data-max="100000">all</button>
+    </div>
+    <div class="row"><label>exclude top N</label><output id="o_min_size_rank"></output></div>
+    <input type="range" id="min_size_rank" min="0" max="1000" step="50">
+    <div class="row"><label>max tier</label>
+      <select id="max_size_rank">
+        <option value="100000">no cap</option><option value="500">≤500</option>
+        <option value="750">≤750</option><option value="200">≤200</option>
+      </select></div>
+  </div>
+
+  <div class="grp">
+    <h3>Liquidity</h3>
+    <div class="row"><label>median 20d traded value ≥ (₹ cr)</label>
+      <output id="o_min_median_tv_cr"></output></div>
+    <input type="range" id="min_median_tv_cr" min="0" max="25" step="0.25">
+    <div class="row"><label>min price (₹)</label><output id="o_min_price"></output></div>
+    <input type="range" id="min_price" min="0" max="500" step="10">
+  </div>
+
+  <div class="grp">
+    <h3>Sector uptrend</h3>
+    <div class="row"><label>mode</label>
+      <select id="sector_mode">
+        <option value="index">EW index EMA</option>
+        <option value="breadth">breadth</option>
+        <option value="either">either</option>
+        <option value="both">both</option>
+        <option value="off">off</option>
+      </select></div>
+    <div class="row"><label>min EMA slope (%/10d)</label><output id="o_sector_min_slope"></output></div>
+    <input type="range" id="sector_min_slope" min="-5" max="8" step="0.25">
+    <div class="row"><label>min breadth (%)</label><output id="o_sector_min_breadth"></output></div>
+    <input type="range" id="sector_min_breadth" min="0" max="100" step="5">
+    <div class="row"><label>require sector label</label>
+      <input type="checkbox" id="sector_require_labelled"></div>
+  </div>
+
+  <div class="grp">
+    <h3>Stock trend</h3>
+    <div class="row"><label>EMA stack (20&gt;50&gt;200)</label>
+      <input type="checkbox" id="require_ema_stack"></div>
+    <div class="row"><label>close above EMA50</label>
+      <input type="checkbox" id="require_above_ema_mid"></div>
+    <div class="row"><label>min 60d return (%)</label><output id="o_min_ret_60d"></output></div>
+    <input type="range" id="min_ret_60d" min="-50" max="60" step="5">
+  </div>
+
+  <div class="grp">
+    <h3>Contraction</h3>
+    <div class="row"><label>ATR(5)/ATR(20) ≤</label><output id="o_max_atr_ratio"></output></div>
+    <input type="range" id="max_atr_ratio" min="0.3" max="1.6" step="0.05">
+    <div class="row"><label>base depth ≤ (%)</label><output id="o_max_base_depth"></output></div>
+    <input type="range" id="max_base_depth" min="2" max="40" step="1">
+    <div class="row"><label>BB width pctile ≤</label><output id="o_max_bb_width_pctile"></output></div>
+    <input type="range" id="max_bb_width_pctile" min="1" max="100" step="1">
+    <div class="row"><label>range% MA ≤</label><output id="o_max_range_pct_ma"></output></div>
+    <input type="range" id="max_range_pct_ma" min="0" max="12" step="0.25">
+    <div class="row"><label>min contraction steps</label>
+      <select id="min_contraction_steps">
+        <option value="">off</option><option value="1">≥1</option><option value="2">≥2</option>
+      </select></div>
+    <div class="row"><label>min small bodies (of 5)</label>
+      <select id="min_small_bodies_5">
+        <option value="">off</option><option value="1">≥1</option><option value="2">≥2</option>
+        <option value="3">≥3</option></select></div>
+    <div class="row"><label>vol squeeze (5d/20d) ≤</label><output id="o_max_vol_squeeze"></output></div>
+    <input type="range" id="max_vol_squeeze" min="0.2" max="2.0" step="0.05">
+    <div class="row"><label>require narrowest-range day</label>
+      <input type="checkbox" id="require_nr_k"></div>
+  </div>
+</aside>
+
+<main>
+  <div class="warnbox">
+    <strong>Phase 1 — screening only.</strong> No second-level data is fetched here.
+    The point of this page is to find thresholds where candidates/day is small
+    enough (~5–30) that opening-tick fetching becomes cheap.
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="k">candidates / day</div><div class="v big" id="c_mean">–</div>
+      <div class="sub muted" id="c_sub"></div></div>
+    <div class="card"><div class="k">median</div><div class="v" id="c_med">–</div></div>
+    <div class="card"><div class="k">p90</div><div class="v" id="c_p90">–</div></div>
+    <div class="card"><div class="k">max</div><div class="v" id="c_max">–</div></div>
+    <div class="card"><div class="k">days with none</div><div class="v" id="c_zero">–</div></div>
+    <div class="card"><div class="k">1s calls / 3y</div><div class="v" id="c_calls">–</div>
+      <div class="sub muted">1 call per name·day</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Funnel — mean names surviving per day</h2>
+    <div class="funnel" id="funnel"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Candidates per day <span class="muted" id="tsHint">— click to inspect a date</span></h2>
+    <div id="ts"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Candidates on <span id="selDate">–</span> <span class="muted" id="selCount"></span></h2>
+    <div class="scroll"><table id="tbl">
+      <thead><tr id="thead"></tr></thead><tbody id="tbody"></tbody></table></div>
+    <div class="detail" id="detail"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Sector mix of all candidates in window</h2>
+    <div id="sectors"></div>
+  </div>
+</main>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const RANGES = ["min_size_rank","min_median_tv_cr","min_price","sector_min_slope",
+  "sector_min_breadth","min_ret_60d","max_atr_ratio","max_base_depth",
+  "max_bb_width_pctile","max_range_pct_ma","max_vol_squeeze"];
+const CHECKS = ["sector_require_labelled","require_ema_stack","require_above_ema_mid","require_nr_k"];
+const SELECTS = ["sector_mode","min_contraction_steps","min_small_bodies_5","max_size_rank"];
+const NULLABLE = ["max_atr_ratio","max_base_depth","max_bb_width_pctile",
+  "max_range_pct_ma","max_vol_squeeze"];
+let META=null, selDate=null, sortKey="median_tv_20_cr", sortDir=-1, lastRows=[], lastCols=[];
+
+function params(){
+  const p = new URLSearchParams();
+  RANGES.forEach(k=>{
+    let v = $(k).value;
+    // Sliders at their max mean "no constraint" for the nullable ceilings.
+    if(NULLABLE.includes(k) && parseFloat(v) >= parseFloat($(k).max)) v = "";
+    p.set(k, v);
+  });
+  CHECKS.forEach(k=>p.set(k, $(k).checked ? "1":"0"));
+  SELECTS.forEach(k=>p.set(k, $(k).value));
+  if(selDate) p.set("date", selDate);
+  return p;
+}
+function syncOutputs(){
+  RANGES.forEach(k=>{
+    const o=$("o_"+k); if(!o) return;
+    const v=parseFloat($(k).value);
+    o.textContent = (NULLABLE.includes(k) && v>=parseFloat($(k).max)) ? "off"
+      : (Math.abs(v)<10 ? v.toFixed(2).replace(/\.00$/,"") : v.toFixed(0));
+  });
+}
+const fmt = (v,d=2)=> v==null||isNaN(v) ? "–" : (Math.abs(v)>=1000
+  ? v.toLocaleString(undefined,{maximumFractionDigits:0}) : v.toFixed(d));
+
+let timer=null, inflight=null;
+function refresh(){
+  clearTimeout(timer);
+  timer=setTimeout(async()=>{
+    $("status").textContent="screening…";
+    document.querySelector("main").classList.add("spin");
+    if(inflight) inflight.abort();
+    inflight = new AbortController();
+    try{
+      const r = await fetch("/api/screen?"+params().toString(),{signal:inflight.signal});
+      const d = await r.json();
+      if(d.error){ $("status").textContent="error: "+d.error; return; }
+      render(d);
+      $("status").textContent="";
+    }catch(e){ if(e.name!=="AbortError") $("status").textContent="error: "+e.message; }
+    finally{ document.querySelector("main").classList.remove("spin"); }
+  },220);
+}
+
+function render(d){
+  const s=d.summary.candidates_per_day;
+  $("c_mean").textContent=fmt(s.mean,1);
+  $("c_sub").textContent = s.mean>0&&s.mean<=30 ? "workable" : (s.mean>30?"too many":"too few");
+  $("c_med").textContent=fmt(s.median,0);
+  $("c_p90").textContent=fmt(s.p90,0);
+  $("c_max").textContent=fmt(s.max,0);
+  $("c_zero").textContent=fmt(s.zero_days_pct,0)+"%";
+  $("c_calls").textContent=(s.mean*750).toLocaleString(undefined,{maximumFractionDigits:0});
+
+  const mp=d.summary.mean_per_stage, stages=Object.keys(mp), top=mp[stages[0]]||1;
+  $("funnel").innerHTML = stages.map(k=>{
+    const v=mp[k], w=Math.max(0.4,(v/top)*100);
+    return `<div class="bar"><div class="nm">${k.replace(/_/g," ")}</div>
+      <div class="tr"><div class="fl" style="width:${w}%"></div></div>
+      <div class="ct">${fmt(v,1)}</div>
+      <div class="pc">${(v/top*100).toFixed(1)}%</div></div>`;
+  }).join("");
+
+  drawTS(d.series);
+  selDate=d.selected_date;
+  $("selDate").textContent=d.selected_date||"–";
+  $("selCount").textContent=`— ${d.candidates.length} shown, ${d.total_candidates.toLocaleString()} across window`;
+  lastRows=d.candidates; lastCols=d.columns; drawTable();
+
+  const bs=d.by_sector, mx=Math.max(1,...Object.values(bs));
+  $("sectors").innerHTML = Object.entries(bs).map(([k,v])=>
+    `<div class="bar" style="display:flex;gap:8px;align-items:center;margin:3px 0">
+      <div style="width:190px;font-size:11.5px" class="muted">${k}</div>
+      <div class="tr" style="flex:1;background:var(--grid);height:15px;border-radius:3px">
+        <div style="width:${v/mx*100}%;height:100%;background:var(--accent);border-radius:3px"></div></div>
+      <div style="width:56px;text-align:right;font-size:11.5px">${v.toLocaleString()}</div></div>`).join("")
+    || '<span class="muted">none</span>';
+}
+
+function drawTS(s){
+  const n=s.dates.length; if(!n){ $("ts").innerHTML=""; return; }
+  const W=1000,H=170,PL=38,PB=20,PT=8;
+  const v=s.contraction, mx=Math.max(1,...v);
+  const x=i=> PL+(i/(n-1||1))*(W-PL-6);
+  const y=k=> PT+(1-k/mx)*(H-PT-PB);
+  const pts=v.map((k,i)=>`${x(i).toFixed(1)},${y(k).toFixed(1)}`).join(" ");
+  const ticks=[0,mx/2,mx].map(t=>
+    `<line x1="${PL}" x2="${W-6}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)"/>
+     <text x="${PL-6}" y="${y(t)+3.5}" text-anchor="end" font-size="10"
+      fill="var(--muted)">${Math.round(t)}</text>`).join("");
+  const lbl=[0,Math.floor(n/2),n-1].map(i=>
+    `<text x="${x(i)}" y="${H-5}" text-anchor="middle" font-size="10"
+      fill="var(--muted)">${s.dates[i]}</text>`).join("");
+  $("ts").innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
+     style="height:170px" id="tsSvg">${ticks}
+    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+    ${lbl}<rect x="${PL}" y="0" width="${W-PL-6}" height="${H-PB}" fill="transparent"
+      style="cursor:crosshair" id="tsHit"/></svg>`;
+  $("tsHit").addEventListener("click",ev=>{
+    const r=ev.target.getBoundingClientRect();
+    const i=Math.round(((ev.clientX-r.left)/r.width)*(n-1));
+    selDate=s.dates[Math.max(0,Math.min(n-1,i))]; refresh();
+  });
+}
+
+function drawTable(){
+  if(!lastRows.length){ $("thead").innerHTML=""; $("tbody").innerHTML=
+    '<tr><td class="muted">no candidates on this date</td></tr>'; return; }
+  $("thead").innerHTML=lastCols.map(c=>
+    `<th data-k="${c}">${c.replace(/_/g," ")}${sortKey===c?(sortDir<0?" ▾":" ▴"):""}</th>`).join("");
+  [...$("thead").children].forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k; sortDir = sortKey===k ? -sortDir : -1; sortKey=k; drawTable();
+  });
+  const rows=[...lastRows].sort((a,b)=>{
+    const x=a[sortKey],y=b[sortKey];
+    if(x==null)return 1; if(y==null)return -1;
+    return (typeof x==="string") ? sortDir*x.localeCompare(y) : sortDir*(x-y);
+  });
+  $("tbody").innerHTML=rows.map(r=>`<tr data-s="${r.symbol}">`+lastCols.map(c=>{
+    const v=r[c];
+    return `<td>${typeof v==="number"?fmt(v, Math.abs(v)>=100?0:2):(v??"–")}</td>`;
+  }).join("")+"</tr>").join("");
+  [...$("tbody").children].forEach(tr=>tr.onclick=()=>showSymbol(tr.dataset.s));
+}
+
+async function showSymbol(sym){
+  $("detail").textContent="loading "+sym+" …";
+  const d=await(await fetch("/api/symbol?symbol="+encodeURIComponent(sym)+"&n=120")).json();
+  if(!d.bars.length){ $("detail").textContent="no history"; return; }
+  const W=1000,H=150,PT=6,PB=6;
+  const lo=Math.min(...d.bars.map(b=>b.low)), hi=Math.max(...d.bars.map(b=>b.high));
+  const n=d.bars.length, x=i=>(i/(n-1))*W, y=p=>PT+(1-(p-lo)/((hi-lo)||1))*(H-PT-PB);
+  const wick=d.bars.map((b,i)=>`<line x1="${x(i)}" x2="${x(i)}" y1="${y(b.high)}" y2="${y(b.low)}"
+    stroke="${b.close>=b.open?'var(--pass)':'var(--accent)'}" stroke-width="1.1"/>`).join("");
+  const emaL=k=>d.bars.map((b,i)=>b[k]==null?null:`${x(i).toFixed(1)},${y(b[k]).toFixed(1)}`)
+    .filter(Boolean).join(" ");
+  $("detail").innerHTML=`<strong>${sym}</strong> <span class="pill">${d.sector}</span>
+    <span class="muted">last ${n} sessions — wicks, EMA20 (teal), EMA50 (amber)</span>
+    <svg viewBox="0 0 ${W} ${H}" style="height:150px;margin-top:6px">${wick}
+      <polyline points="${emaL('ema_fast')}" fill="none" stroke="var(--accent2)" stroke-width="1.2"/>
+      <polyline points="${emaL('ema_mid')}" fill="none" stroke="var(--warn)" stroke-width="1.2"/>
+    </svg>`;
+}
+
+(async function init(){
+  META=await(await fetch("/api/meta")).json();
+  const d=META.defaults;
+  RANGES.forEach(k=>{ if(d[k]!=null) $(k).value=d[k];
+    else $(k).value=$(k).max; $(k).addEventListener("input",()=>{syncOutputs();refresh();}); });
+  CHECKS.forEach(k=>{ $(k).checked=!!d[k]; $(k).addEventListener("change",refresh); });
+  SELECTS.forEach(k=>{ if(d[k]!=null) $(k).value=String(d[k]);
+    $(k).addEventListener("change",refresh); });
+  $("sizePresets").addEventListener("click",e=>{
+    const b=e.target.closest("button"); if(!b) return;
+    $("min_size_rank").value=b.dataset.min; $("max_size_rank").value=b.dataset.max;
+    [...$("sizePresets").children].forEach(x=>x.classList.toggle("on",x===b));
+    syncOutputs(); selDate=null; refresh();
+  });
+  $("meta").textContent=`${META.n_symbols.toLocaleString()} symbols · `+
+    `${META.dates.length.toLocaleString()} sessions · ${META.dates[0]} → ${META.dates.at(-1)}`;
+  syncOutputs(); refresh();
+})();
+</script>
+</body>
+</html>
