@@ -1059,3 +1059,203 @@ strategy under investigation is a long-only swing trade. The most useful output
 for the conversation with the uncle is the inversion itself — the opening states
 that look most like institutional accumulation are, in this pool, the ones that
 do worst, and that is a claim he can push back on from experience.
+
+---
+
+# Addendum — Phase 2.8: reverse discovery (2026-08-20)
+
+**Everything in this section is EXPLORATORY / DATA-GENERATED.** It was produced
+on the exploration window (2023-08-21 → 2026-08-18) and confirms nothing. The
+2020-2023 backfill is holdout and `explore.fence()` raises rather than filters.
+
+## What was asked, and what was done differently
+
+Previous phases ran forwards — propose a rule, measure its forward return,
+reject it. That loop has now rejected the 09:20 entry (H001), both stated
+filters and every tightening of them (H002), and the traded-payoff defence of
+all three (H017). The instruction for this phase was to invert it: define
+path-aware outcome kinds, find matched failures for each strong winner using
+only decision-time information, and search backwards for what separates them.
+
+New code: `src/context.py` (market regime, breakout location, relative strength
+— the three families no existing panel could see), `src/discovery.py` (outcome
+taxonomy, matched controls, discriminant search, clustering, regime splits,
+ranking, freezing), `python -m src.cli context` and `python -m src.cli discover`,
+plus `tests/test_context.py` and `tests/test_discovery.py` (20 tests; suite now
+168).
+
+## The pool had to be rebuilt first, and it is much larger now
+
+The re-pull under the corrected screen finished for the exploration era.
+`opening_features.parquet` was stale, which silently cut candidate-panel
+coverage to 69.4% until it was rebuilt.
+
+| | before | after |
+| --- | --- | --- |
+| candidate panel | 63,698 rows | **140,265** (92.8% coverage) |
+| behavioural panel, exploration window | 63,698 mornings | **85,065** |
+| sessions | 650 | 676 |
+
+**The exploration window is 100% fetched.** All 2,955 still-missing pairs are in
+the 2020-2023 holdout, which stands at 86.7% of its new candidates — the pull
+process on the server hung at 16:03 BST with 4,705 pairs outstanding and needs a
+fresh Breeze token to finish. That gap matters for the holdout test, not for
+this phase.
+
+### One more lookahead, found and fixed
+
+`behaviour.py` normalised opening volume, churn and chaos by `median_vol_20` and
+`atr_pct` read off the **unlagged** metrics panel. Both are 20-session rolling
+windows that include date D's own full-day volume and range. A lookahead inside
+a *denominator* is the easiest kind to miss, because the feature it contaminates
+does not look like a price feature at all. Now reads `screen_metrics_asof`.
+
+## The outcome taxonomy corrected itself before it was used
+
+Nine path-aware states, priced under the strategy's own exit rule rather than
+assumed to be meaningful (H018). Two things came out of that:
+
+**The stop as stated is not a stop.** At t=180s the running-low stop has a
+median distance of **0.41%** against a median ATR of **3.37%** — one eighth of a
+normal day's range. Risk is floored at 0.5 x ATR, lifting median R to 1.70%.
+
+**A state called `clean_winner` earned +0.05% excess.** Defined as a large MFE
+reached quickly, with no requirement that it hold, it filled the target on 10.2%
+of trades and made nothing. It was split into `spike_and_fade` and a
+`clean_winner` that must still be positive at the horizon. A path taxonomy is as
+capable of being wrong as a return label; the fix is to price every state before
+using it.
+
+The three winner states are worth +13.31%, +2.86% and +1.29% excess; all six
+failure states sit between -0.31% and -1.65%. **Winners are slow**: `monster`
+takes a median 8 sessions to peak, `slow_winner` 7. Nothing in this pool rewards
+an immediate move.
+
+**The largest single block has no name in the brief.** `shaken_out` — stopped
+out, and *then* the stock moved 3%+ — is **27.7% of all mornings**, median MFE
++7.53%. More than one morning in four is a stop problem rather than a selection
+problem.
+
+## The methodological finding is the biggest one
+
+Same-session matching starves in this pool: a median of 82 candidates per
+session across 20 sectors leaves 3 rows per cell. Widening the control band to
++/-2 sessions raised matched winners from 2,446 to 4,105 with better balance —
+and **tripled every headline contrast**:
+
+| matching band | sets | `open_base_pos_20` t |
+| --- | --- | --- |
+| same session | 2,446 | -2.89 |
+| +/-1 session | 3,811 | **-15.13** |
+| +/-2 sessions | 4,105 | **-16.04** |
+
+A real effect does not quadruple when one day of slack is added to a matching
+rule. Measured: under a +/-2 band the winner's own session sits **0.45% lower in
+the equal-weighted market index** than its controls' sessions, on 71.2% of sets,
+because winners cluster on local market troughs. Under same-session matching
+that offset is exactly zero.
+
+Had this phase reported the +/-2 numbers it would have announced a large,
+significant, sign-stable breakout-location effect that is mostly a restatement
+of "the winner's morning was lower in the market". `date_window` now defaults to
+0 and `discovery.market_offset` prints the diagnostic on every run.
+
+**This is the third time a convenience taken to get more usable rows imported
+information the comparison was meant to exclude** — after the screener lookahead
+(H015) and the naive t-statistics (H016).
+
+## What actually survives
+
+With the market held exactly fixed, 68 features, 2,446 matched sets, and a bar
+set at the 95th percentile of the permuted maximum |t| (3.36, not 1.96):
+
+| feature | family | std. diff | t | clears bar |
+| --- | --- | --- | --- | --- |
+| `px_vs_ema_fast` | stock trend | -0.107 | -4.27 | yes |
+| `px_vs_ema_mid` | stock trend | -0.107 | -4.10 | yes |
+| `deliv_pct` | price/volume | +0.081 | 3.16 | no |
+| `high_vs_open_pct` | gap/open | -0.068 | -3.11 | no |
+| `open_base_pos_20` | breakout location | -0.074 | -2.89 | no |
+
+Two features, saying the same thing: **winners sat slightly further below their
+own short-term moving averages.** Stable across calendar thirds, sectors, market
+regimes, all nine sensitivity variants, and at t=60s and t=300s. Neither
+replicates in the tight tier, which holds prior run-up, base width, gap and
+opening volume fixed as well — though that tier has only 608 sets and its
+failure is weak evidence.
+
+**In decision units the effect is small.** Win rate 17.15% in the lowest
+quintile against 14.65% in the highest, on a 16.13% base: a lift of 1.06 to
+0.91. The gap between a t of -4.3 and a lift of 1.06 is the whole lesson — a
+paired design over thousands of sets detects shifts far below anything
+tradeable, and a significance test alone would have been read as a result.
+
+**The direction is against the breakout premise.** Every surviving and
+near-surviving contrast points the same way: winners were further below their
+moving averages, lower in their base, further below their 20- and 50-day highs,
+with weaker 60-day returns and relative strength. This pool does not reward
+proximity to a breakout level. It is not merely "more room to travel" — the
+tilt holds inside every quartile of extension, at the same slope (H021), and
+`atr_pct` is matched and balanced to 0.03.
+
+## Breakouts do not need a trending market — the sign is backwards
+
+| market state (as of D-1) | sessions | win rate | vs pool |
+| --- | --- | --- | --- |
+| trending up | 168 | 14.27% | 0.88 |
+| trending down | 36 | 12.77% | 0.79 |
+| chop / sideways | 447 | **17.67%** | 1.10 |
+
+Monotone on the continuous trend measure too: 17.97% in the least trending
+tercile against 15.05% in the most. **And the largest effect anywhere in this
+phase is market volatility, not any stock-level feature** — 11.71% in the bottom
+tercile against 20.23% in the top, a 1.7x spread against 1.06x for the best
+stock feature.
+
+That last one carries a mechanical caveat that must travel with it: winners are
+defined by excursion bars and everything moves more in a volatile market. `R` is
+floored on each stock's own ATR, but market-wide volatility is not controlled.
+It is a fact about *when* the outcome states occur, not an established edge.
+
+The base-position tilt has the same slope in both regimes, so there is no "this
+setup works only when the market trends" structure — there is a market state
+that lifts all the win rates together.
+
+## Clustering found no second archetype
+
+k-means (k=4) on the winners, then every morning assigned to its nearest winner
+centroid: best lift 1.22x at a 2% radius (n=351), 1.14x at 5%, 1.07x at 10%.
+Lift decaying as the neighbourhood grows is the signature of fitting a small
+sample. Measured in sample, against centroids built from the winners themselves,
+the multivariate combination does not beat the best single feature by enough to
+matter.
+
+## Limits, in the order they bite
+
+1. **Only 2,446 of 10,743 winners matched (23%).** The matched winners are far
+   more liquid (median turnover 22.7 cr against 6.1 cr) and less monster-heavy
+   (26.8% against 37.3%). The contrast describes winners that *have* a
+   lookalike failure on their own session, which is the right subsample for the
+   question and a narrow one.
+2. **One market.** 2023-2026 is a single rising regime with 447 chop sessions
+   and only 36 trending-down ones. The `trending_down` row is 556 mornings.
+3. **The pool is still ~98% material a discretionary trader would reject**
+   (`PLAN.md` §7). No unconditional edge across 66,597 screened mornings is the
+   expected result, not evidence against the strategy.
+4. **The breakout level is crude** — the highest high over 20 or 50 sessions,
+   not a drawn chart level. Both lookbacks agree, which is some comfort.
+5. **Nothing here is out of sample.** Four structures and two near-misses are
+   frozen in `data/metadata/discovery_frozen.json` with the exact configs needed
+   to replay them.
+
+## What this phase is worth
+
+It did not find a profitable subset. What it produced is: a validated outcome
+taxonomy that prices its own labels; a matched-control design with a correct
+null; one measured confound that would have manufactured a headline finding; a
+clear negative on the trending-market hypothesis; and a shortlist small enough
+to be honest about.
+
+The most actionable observation is not a setup at all — it is that 27.7% of
+mornings are stopped out before a move of 3%+ that then happens. That is a stop
+question, and this phase deliberately did not chase it.

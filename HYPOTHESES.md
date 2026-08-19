@@ -1024,3 +1024,310 @@ evidence the ordering is not a label artefact. `persistent_demand` stays worst
 (-0.571%, t=-5.0 under the payoff label against -0.534%, t=-4.4 fixed-horizon);
 `heavy_vol_no_progress` unchanged at -0.265%. `orderly_breakout` flips from
 +0.071% to -0.236%, and `unremarkable` from +0.124% to -0.044%.
+
+---
+
+## H018 — Path-aware outcome states separate trades that a return label conflates
+
+Status: **SUPPORTED**, and it changed one of its own definitions.
+
+Date proposed: 2026-08-20 (user, opening the reverse-discovery phase)
+
+**Hypothesis:**
+"Winner" and "loser" are too coarse. A morning that reached +18% and gave it
+back, one that was stopped and *then* ran, and one that never moved are three
+different objects with three different implications, and a fixed-horizon return
+scores all of them alike. Sorting outcomes by **path** — MFE, MAE, whether the
+stop came before or after the favourable move, and how many sessions the move
+took — should produce states that differ in what they are worth.
+
+**Kind of work:** hypothesis generation plus exploratory testing, on the
+exploration window only (2023-08-21 → 2026-08-18, 66,597 classifiable mornings
+at t=180s, 661 sessions).
+
+**Test:** `src/discovery.py`, `python -m src.cli discover`. Nine states on a
+precedence ladder. Every bar is `max(k x R, absolute floor)` so a hair-trigger
+stop cannot manufacture a large R-multiple out of a small move.
+
+**One correction had to be made before the risk numbers meant anything.** The
+stop implied by "slightly below the running low" at t=180s has a **median
+distance of 0.41%** against a **median ATR of 3.37%** — one eighth of a normal
+day's range. That is not a risk level, it is the spread with a name, and every
+outcome defined against it would really be measuring whether the stock wiggled
+in the next twenty minutes. Risk is floored at `0.5 x atr_pct`, which lifts
+median R to 1.70% and lands near the 2.41% the Phase 2.4b entry-window work
+measured for setups that had actually advanced. Widening a stop cannot break
+`stop < running_low <= entry`; nothing here narrows one.
+
+**Result — the states are real and they are priced very differently.** Each was
+run through `payoff.simulate` under the stated exit rule (stop, half out at
++15%, trail the rest):
+
+| state | n | share | payoff excess | target filled | winner? |
+| --- | --- | --- | --- | --- | --- |
+| `monster` | 3,750 | 5.6% | **+13.31%** | 100% | yes |
+| `slow_winner` | 5,583 | 8.4% | **+2.86%** | 36.7% | yes |
+| `clean_winner` | 1,410 | 2.1% | **+1.29%** | 21.2% | yes |
+| `failed_breakout` | 13,857 | 20.8% | -1.36% | 0% | no |
+| `shaken_out` | 18,464 | 27.7% | -1.65% | 0% | no |
+| `immediate_failure` | 18,899 | 28.4% | -1.63% | 0% | no |
+| `stopped_out` | 3,712 | 5.6% | -1.60% | 0% | no |
+| `spike_and_fade` | 370 | 0.6% | -1.34% | 5.4% | no |
+| `nothingburger` | 552 | 0.8% | -0.31% | 13.9% | no |
+
+**The taxonomy corrected itself, which is the part worth keeping.** The first
+version defined `clean_winner` as a large MFE reached quickly, with no
+requirement that the move hold. Priced under the exit rule that state earned
+**+0.05% excess** on 2,978 trades with a 10.2% target-fill rate — a failure
+wearing a winner's shape. It was split into `spike_and_fade` (moved, gave it
+all back) and a `clean_winner` that must still be positive at the horizon. The
+lesson generalises: **name an outcome state, then price it, before using it as
+a label.** A path taxonomy is as capable of being wrong as a return label.
+
+**A large state nobody had named: `shaken_out`, 27.7% of all mornings.** Stopped
+out, and *then* the stock made a move of 3%+ — median MFE +7.53%, median +2.80%
+at D+10. More than one morning in four. That is a statement about the stop
+rather than about the setup, and it is the largest single block in the pool.
+Recorded here; not pursued in this phase.
+
+**Where the winners are not:** `monster` takes a median **8 sessions** to reach
+its peak and `slow_winner` 7. The fast-MFE states are the ones that do not pay.
+Nothing in this pool rewards an immediate move.
+
+---
+
+## H019 — Winners and superficially identical failures differ in observable setup
+
+Status: **REJECTED at any useful effect size.** The distinctions are real and
+tiny.
+
+Date proposed: 2026-08-20 (user, reverse-discovery brief)
+
+**Hypothesis:**
+Take the strong winners from H018 and match each against failures that looked
+like it at the decision point — same session, same sector, same size class,
+same liquidity, same volatility, and in the tight tier the same prior run-up,
+base width, gap and opening volume. Whatever separates them is the thing the
+strategy is actually selecting on.
+
+**Kind of work:** exploratory. Generated and tested on the same window.
+
+**Test:** `discovery.match` / `discovery.contrasts`. Nearest-neighbour matching
+on within-session percentile ranks, exact on sector and size tier, calipered on
+the mean and on every single dimension, controls drawn without replacement and
+balanced above and below the winner. 68 features across six families. Inference
+clustered by session. The bar is not 1.96 but the **95th percentile of the
+maximum |t| under a within-set label permutation** — the null that keeps every
+stratum intact and destroys only the link between winning and the features.
+
+**Result — with the market held exactly fixed, almost nothing survives.**
+
+Core tier, 2,446 matched sets, permutation bar |t| = 3.36:
+
+| feature | family | std. diff | t |
+| --- | --- | --- | --- |
+| `px_vs_ema_fast` | stock trend | -0.107 | **-4.27** |
+| `px_vs_ema_mid` | stock trend | -0.107 | **-4.10** |
+| `deliv_pct` | price/volume | +0.081 | 3.16 |
+| `high_vs_open_pct` | gap/open | -0.068 | -3.11 |
+| `ret_60d` | stock trend | -0.067 | -3.00 |
+| `open_base_pos_20` | breakout location | -0.074 | -2.89 |
+
+Two features clear the bar, both saying the same thing: **the winners were
+sitting slightly further below their own short-term moving averages.** The
+effect is a tenth of a within-day standard deviation. In decision units that is
+a win rate of 17.15% in the lowest quintile against 14.65% in the highest, on a
+16.13% base — a lift of 1.06 to 0.91.
+
+Tight tier (608 sets, bar 3.43): only `bb_width_pctile` clears, at t=3.52, and
+it does not clear in the core tier. Nothing replicates across both.
+
+**Stable in every direction that was checked, and still small.** Both survivors
+keep their sign across calendar thirds, sectors, market regimes, and all nine
+sensitivity variants (risk floor 0.25/0.5/0.75 x ATR, looser and tighter winner
+bars, `fast_sessions` 2 or 3, one control instead of three, caliper halved),
+and at t=60s and t=300s as well as t=180s.
+
+**The direction is the opposite of the breakout premise.** Every surviving or
+near-surviving contrast points the same way: winners were *further below* their
+moving averages, *lower* in their base, *further below* their 20- and 50-day
+highs, with *weaker* 60-day returns and relative strength. Whatever this pool
+rewards, it is not proximity to a breakout level. See H021 for the direct test
+that this is not merely "more room to travel".
+
+**What this rejects:** not the existence of a distinction — two features clear a
+properly corrected bar and are stable — but the idea that it is large enough to
+build on. A 1.06x lift on a 16% base rate does not survive costs, and it does
+not resemble a discretionary trader picking one name out of fifty.
+
+---
+
+## H020 — Matching controls across nearby sessions inflates every contrast
+
+Status: **SUPPORTED**, and it invalidates the first reading of H019.
+
+Date proposed: 2026-08-20 (found while tuning the matcher, not hypothesised)
+
+**Origin:** the same-session cell in this pool is thin — a median of **82
+candidates per session** across 20 sectors, so exact sector-plus-size matching
+inside one day leaves a median of 3 rows and matches only 2,446 of 10,743
+winners. Widening the band to +/-2 sessions lifted that to 4,105 with better
+covariate balance, which looked like a clean improvement.
+
+**It also tripled every headline contrast**, and that was the artefact rather
+than the improvement:
+
+| matching band | matched sets | `open_base_pos_20` std. diff | t |
+| --- | --- | --- | --- |
+| same session | 2,446 | -0.074 | -2.89 |
+| +/-1 session | 3,811 | -0.302 | **-15.13** |
+| +/-2 sessions | 4,105 | -0.332 | **-16.04** |
+| +/-5 sessions | 4,430 | -0.317 | -13.03 |
+
+**A real effect does not quadruple when one day of slack is added to a matching
+rule.** The discontinuity between 0 and 1 is the tell.
+
+**Mechanism, measured rather than argued.** Winners cluster on local market
+troughs: the win rate is 20.2% in the top third of trailing market volatility
+against 11.7% in the bottom third (H022). So a control taken from a neighbouring
+session sits systematically further up the market's own swing. Directly: under a
++/-2 band the winner's own session sits **0.45% lower in the equal-weighted
+market index** than its controls' sessions, on **71.2%** of matched sets. Under
+same-session matching that offset is exactly 0.0000% by construction.
+
+Every "the winner opened lower in its base, further below its moving average"
+contrast was therefore partly restating "the winner's morning was 0.45% lower in
+the market".
+
+**Consequence:** `MatchConfig.date_window` defaults to 0. `discovery.market_offset`
+computes and prints the offset on every run, so the day somebody widens the band
+for a perfectly good reason, the inflated contrasts that follow are labelled
+rather than believed.
+
+**Generalisation worth carrying:** this is the third time in this project that a
+seemingly innocuous convenience moved a result by more than the result itself —
+after the screener lookahead (H015) and the naive t-statistics (H016). The
+pattern in all three is the same: a step taken to get more usable rows quietly
+imported information the comparison was supposed to exclude.
+
+---
+
+## H021 — The winner tilt is only "more room to travel"
+
+Status: **REJECTED.** The tilt survives holding extension fixed.
+
+Date proposed: 2026-08-20 (self-raised against H019)
+
+**Hypothesis:** winners in H019 sit further below their moving averages, and a
+stock further below its average has more distance to cover before it runs into
+anything — so it clears an MFE bar more easily. If that is the whole mechanism,
+the effect should vanish inside a narrow band of the extension variable.
+
+**Test:** win rate by (quartile of `px_vs_ema_mid`, quartile of
+`open_base_pos_20`), both ranked within session. Base rate 16.13%.
+
+| `px_vs_ema_mid` band | base pos Q1 | Q2 | Q3 | Q4 |
+| --- | --- | --- | --- | --- |
+| 1 (least extended) | 17.59 | 16.32 | 17.20 | 14.60 |
+| 2 | 16.69 | 16.80 | 15.80 | 15.51 |
+| 3 | 17.10 | 16.28 | 16.22 | 14.98 |
+| 4 (most extended) | 16.62 | 16.56 | 15.73 | 14.29 |
+
+The decline across base position holds inside **every** extension band, at
+roughly the same slope (about -2.5pp from Q1 to Q4). The two are not the same
+variable. Volatility is separately controlled: `atr_pct` is a matching covariate
+and balances to a standardised difference of 0.03.
+
+**What this does not rescue:** the effect is still ~2.5 percentage points on a
+16% base. Establishing that it is not an artefact does not make it large.
+
+---
+
+## H022 — Breakout-like setups work only in trending markets
+
+Status: **REJECTED — the sign is backwards.** They work better in chop.
+
+Date proposed: 2026-08-20 (user, reverse-discovery brief, point 5)
+
+**Test:** win rate by market state, all regime variables computed from data
+through D-1 (`src/context.py`, tested for lookahead in `tests/test_context.py`).
+66,597 mornings, 661 sessions, clustered by session.
+
+| market state (as of D-1) | n | sessions | win rate | vs pool |
+| --- | --- | --- | --- | --- |
+| trending up | 29,360 | 168 | 14.27% | 0.88 |
+| trending down | 556 | 36 | 12.77% | 0.79 |
+| chop / sideways | 36,681 | 447 | **17.67%** | 1.10 |
+
+On the continuous trend measure — net move over total distance travelled, so a
+monotone advance scores near 1 and a round trip near 0 — the ordering is
+monotone and the wrong way round:
+
+| `mkt_trend_eff` tercile | win rate | vs pool |
+| --- | --- | --- |
+| low (choppy) | **17.97%** | 1.11 |
+| mid | 15.37% | 0.95 |
+| high (trending) | 15.05% | 0.93 |
+
+**The largest single effect found anywhere in this phase is market volatility,
+not any stock-level feature:**
+
+| trailing market volatility (D-1) | n | win rate | vs pool |
+| --- | --- | --- | --- |
+| low | 22,314 | **11.71%** | 0.73 |
+| mid | 22,119 | 16.49% | 1.02 |
+| high | 22,164 | **20.23%** | 1.25 |
+
+A 1.7x spread, against 1.06x for the best stock-level feature. Identical at
+t=60s and t=300s.
+
+**The obvious mechanical caveat, stated plainly.** Winners are defined by
+excursion bars, and in a high-volatility market everything moves more, so more
+mornings clear any fixed bar. `R` is floored on each *stock's* own ATR but
+market-wide volatility is not controlled. This is therefore not established as
+an edge; it is established as a fact about when the outcome states occur, and
+any rule conditioned on it must be measured against a benchmark that moves with
+the regime.
+
+**Interaction:** the base-position tilt from H019 has the same slope in both
+regimes — trending up 15.18% → 13.06% across terciles, chop 18.76% → 16.59%. The
+regime shifts the level, not the relationship. So there is no "this setup only
+works in a trending market" structure here; there is a market state that raises
+all the win rates at once.
+
+---
+
+## H023 — Winners come in several recognisable kinds rather than one
+
+Status: **REJECTED.** Clustering adds nothing over a single feature.
+
+Date proposed: 2026-08-20 (user, reverse-discovery brief, point 4)
+
+**Hypothesis:** a single averaged contrast may describe none of the actual
+winner types. If winning breakouts come in two or three kinds — a tight base
+clearing an old high on a small gap, a high-relative-strength name gapping from
+a shallow pullback — clustering the winners should find them, and mornings
+resembling a cluster should win more often.
+
+**Test:** k-means (k=4) on the strong winners' within-session percentile ranks
+over 16 decision-time features. Then the honest form of the claim: assign
+**every** morning to its nearest winner centroid, keep those inside the tightest
+r% of distances, and measure the win rate there against the 16.13% base.
+
+| radius | best cluster lift | others |
+| --- | --- | --- |
+| 2% | 1.22 (n=351) | 1.09, 0.95, 0.90 |
+| 5% | 1.14 (n=838) | 1.09, 0.97, 0.91 |
+| 10% | 1.07 (n=1,675) | 1.06, 0.98, 0.92 |
+
+**Lift decays as the neighbourhood grows** — 1.22 → 1.14 → 1.07 — which is the
+signature of fitting a small sample rather than finding a region. And even the
+tightest neighbourhood, measured *in sample against centroids built from the
+winners themselves*, reaches only 1.22x. The multivariate combination does not
+beat the best single feature (1.06x) by enough to matter.
+
+**Reading:** if there were a distinct winning setup archetype in this pool with
+a materially higher hit rate, this procedure was constructed to find it and it
+did not. That is informative about the pool, not about whether such a setup
+exists somewhere — and see the standing caveat in `PLAN.md` §7 that this pool is
+~98% material a discretionary trader would reject.

@@ -13,6 +13,7 @@ code until the current phase's findings are settled.** See `PLAN.md` for state,
 | 1-second opening ticks | Breeze `1second` | 2018-04-02 onward |
 | symbol renames | NSE `equities/symbolchange.csv` | full history, 1999 onward |
 | sector / size tiers | NSE `ind_nifty*list.csv` | current snapshot |
+| market regime, breakout levels, RS | `src/context.py` (derived, as-of) | 2020-01-01 onward |
 | ETF exclusion | NSE `eq_etfseclist.csv` | current snapshot |
 
 **Prefer bhavcopy for daily.** It is free, unauthenticated, carries turnover and
@@ -111,6 +112,31 @@ Decision left open. If backfilled, tag those years as survivor-biased.
   sessions and the cross-section moves together within a session. Use
   `explore.cluster_stats`, which reports the clustered and naive statistic side
   by side. `labelling.horizon_summary` still emits the naive one.
+- **Matched controls must come from the same session (H020).** Drawing them from
+  +/-2 sessions to fill thin cells tripled every contrast in Phase 2.8. Winners
+  cluster on local market troughs, so a control two days away sits 0.45% higher
+  in the market index on 71.2% of sets, and "the winner opened lower in its base"
+  partly restates that. `discovery.market_offset` prints the diagnostic every
+  run; it must read 0.0000%. The tell was a discontinuity — |t| went from 4.3 at
+  a 0-session band to 16.8 at 1 session, and real effects do not do that.
+- **Normalisers are lookaheads too.** `behaviour.py` divided opening volume by
+  `median_vol_20` off the *unlagged* panel — a 20-session median containing date
+  D's own full-day volume. Every ratio needs its denominator checked, not just
+  its numerator. Fixed 2026-08-20; read `screen_metrics_asof`, never
+  `screen_metrics`, for anything that scales a date-D quantity.
+- **Price an outcome label before using it (H018).** A path-aware state called
+  `clean_winner` — large MFE, reached fast — simulated at **+0.05% excess** under
+  the stated exit rule. Naming a state does not make it a winner; run it through
+  `payoff.simulate` and look at what it earned. A path taxonomy is as capable of
+  being wrong as a return label.
+- **A significant contrast is not a large one.** Phase 2.8's top feature has
+  |t| = 4.3 over 2,446 matched sets and a win-rate lift of **1.06x**. A paired
+  design detects shifts far below anything tradeable. Always report the effect
+  in decision units — win rate by band — beside the t-statistic.
+- **The stated stop is not a stop as measured.** At t=180s the running-low stop
+  has a median distance of 0.41% against a median ATR of 3.37%. `discovery`
+  floors risk at 0.5 x ATR. Widening a stop cannot break
+  `stop < running_low <= entry`; narrowing one can.
 
 ## Anything computed at a time `t` inside the window must be tested for lookahead
 
@@ -159,12 +185,17 @@ phase write-up.
 - Verify empirically rather than trusting docs; that has repeatedly paid off.
 - Long pulls run on the server (`user@server`) under tmux via
   `scripts/run_pull.sh`; resumable from the manifest.
-- `.venv/bin/python -m pytest tests/ -q` — keep green (124 tests). Tests marked
+- `.venv/bin/python -m pytest tests/ -q` — keep green (168 tests). Tests marked
   `network` hit live NSE and are deselected by default; run with `-m network`.
 - **Exploration is fenced.** `explore.EXPLORE_START` is 2023-08-21; the
   2020-2023 backfill is holdout and `explore.fence()` *raises* rather than
   filtering, because a silently-dropped holdout row is an invisible breach.
   `python -m src.cli behaviour` builds the exploration window only.
+- **A search reports a maximum, so the bar is the permuted maximum.** Over 68
+  features the 95th percentile of max |t| under the null is ~3.4, not 1.96.
+  `discovery.permutation_null` shuffles the winner label *inside each matched
+  set*, which keeps every stratum intact and destroys only what is being
+  claimed.
 - A permutation null over a scan must shuffle the outcome **within date**.
   Shuffling date-level means while leaving within-date deviations attached
   preserves the cross-sectional signal being tested and cannot reject anything.

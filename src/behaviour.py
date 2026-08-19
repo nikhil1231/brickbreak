@@ -456,7 +456,12 @@ def build(cfg: BehaviourConfig | None = None,
         config.NORMALIZED_DIR / "daily_bars_adj.parquet",
         columns=["symbol", "date", "open_raw", "adj_factor"])
     metrics_cols = ["symbol", "date", "median_vol_20", "atr_pct", "median_tv_20_cr"]
-    metrics = pd.read_parquet(config.NORMALIZED_DIR / "screen_metrics.parquet",
+    # The **as-of** panel, not the raw one. `median_vol_20` and `atr_pct` are
+    # rolling windows that *include* date D, so normalising an opening-window
+    # feature by the raw column divides by a number containing date D's own
+    # full-day volume and range — a lookahead hidden inside a denominator,
+    # which is the easiest kind to miss. See H015 / `asof.py`.
+    metrics = pd.read_parquet(config.NORMALIZED_DIR / "screen_metrics_asof.parquet",
                               columns=metrics_cols)
 
     ticks = load_ticks(date_min=date_min, date_max=date_max)

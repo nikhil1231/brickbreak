@@ -29,8 +29,20 @@ ignoring within-session correlation (H016).
 **Phase 2.6 (done, 2026-08-19)** — the H015 lookahead is fixed. `src/asof.py`,
 `screen_metrics_asof.parquet`, and the screen now defaults to the as-of-open
 panel everywhere.
-**Data re-pull (running)** — 42,703 new candidate mornings under the corrected
-screen. See "Re-pull" below.
+**Phase 2.7 (done, 2026-08-19)** — the traded payoff simulated (H017); it is
+worse than the fixed-horizon label, not better. The intraday pull is not
+justified by H006.
+**Phase 2.8 (done, 2026-08-20)** — reverse discovery. The pool was rebuilt on
+the corrected screen (85,065 exploration-window mornings, up from 63,698), a
+path-aware outcome taxonomy was built and priced (H018), and strong winners were
+matched against lookalike failures. **The distinctions that survive a properly
+corrected bar are real and about a tenth of a standard deviation** (H019); the
+trending-market hypothesis is rejected with the sign backwards (H022); and one
+matching convenience was found to inflate every contrast fourfold (H020). See
+the Phase 2.8 addendum in `FINDINGS.md`.
+**Data re-pull (exploration era complete, holdout at 86.7%)** — the server
+process hung at 16:03 BST 2026-08-19 with 4,705 pairs outstanding, all in the
+2020-2023 holdout. Finishing it needs a fresh Breeze token. See "Re-pull" below.
 
 No strategy logic, no backtest, no execution exists yet. That is deliberate.
 
@@ -350,6 +362,64 @@ That was the right question and it was cheap to answer — the simulator on dail
 bounds cost nothing and brackets the answer. It just came back negative. Worth
 keeping because the *reasoning* generalises: any future exit structure has to be
 measured this way rather than assumed to be equivalent to a horizon label.
+
+### 5b. Reverse discovery — DONE (2026-08-20)
+`src/context.py`, `src/discovery.py`, `python -m src.cli context`, then
+`python -m src.cli discover --freeze`. H018-H023.
+
+Everything above in item 5 was superseded by running the search backwards from
+outcomes instead of forwards from rules. What it settled:
+
+- **The outcome taxonomy is validated against the money**, not asserted. Nine
+  path-aware states, each run through `payoff.simulate`. The three winner states
+  earn +13.31%, +2.86% and +1.29% excess; the six failure states -0.31% to
+  -1.65%. One state had to be renamed after pricing showed it earned +0.05%.
+- **The stop as stated is not a stop.** Median distance 0.41% against a median
+  ATR of 3.37%. Risk is floored at 0.5 x ATR throughout this phase.
+- **What survives:** two features, both saying winners sat slightly further
+  below their short-term moving averages, at 0.107 standardised — a win-rate
+  lift of 1.06x on a 16.13% base. Stable everywhere it was cut. Too small to
+  build on.
+- **The direction is against the breakout premise.** Winners were lower in
+  their base and further below their 20/50-day highs, not higher. Not explained
+  by "more room to travel" (H021).
+- **Trending markets do not help; chop does** (H022). And market volatility is
+  a bigger effect (1.7x) than any stock-level feature (1.06x) — with a stated
+  mechanical caveat.
+- **No second winner archetype** (H023). Clustering peaks at 1.22x in sample.
+
+**The one number to carry forward is not a setup.** `shaken_out` — stopped out,
+and then the stock moves 3%+ — is **27.7% of all mornings**, median MFE +7.53%.
+That is a stop-placement question and it is now the largest identified block in
+the pool.
+
+**Read `H020` before trusting any matched contrast in this project.** Matching
+controls across +/-2 sessions instead of the same session tripled every headline
+result, because winners cluster on local market troughs and a control two days
+away sits 0.45% higher in the market index on 71.2% of sets.
+
+Frozen for the holdout: `data/metadata/discovery_frozen.json` — four structures
+and two near-misses, with the exact `OutcomeConfig`, `MatchConfig`,
+`ClusterConfig` and `t` needed to replay them unchanged.
+
+### 6c. Finish the holdout pull — BLOCKED on a Breeze token
+The exploration window is complete. The 2020-2023 holdout is at **86.7%** of its
+new candidates: 4,705 pairs were outstanding when the server process hung at
+16:03 BST 2026-08-19 (still alive, no progress, all threads in `futex_do_wait`).
+The manifest is resumable, so nothing is lost, but restarting needs a fresh
+session token in the server's `.env`.
+
+```bash
+ssh user@server 'tmux capture-pane -p -t pull | tail -5'
+# refresh .env, then:
+ssh user@server 'cd ~/brickbreak && bash scripts/run_pull.sh'
+bash scripts/sync_from_server.sh
+```
+
+Until it is finished, an out-of-sample test on 2020-2023 runs on a pool missing
+13.3% of its newly-screened candidates, concentrated in the alphabetical tail of
+the work list. That is a systematic gap in symbol space and must be stated if
+the holdout is used before the pull completes.
 
 ### 7. Then: richer daily context, and how selective is he actually?
 The pool has tens of thousands of candidate mornings. If the uncle sees ~50
