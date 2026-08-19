@@ -304,7 +304,7 @@ and call it the strategy.
 
 ## H006 — A stop-and-target rule can extract a positive expectancy despite H001
 
-Status: **INCONCLUSIVE** (not answerable with current data)
+Status: **RESOLVED — REJECTED** (2026-08-19 via H017; was INCONCLUSIVE)
 
 Date proposed: 2026-08-19
 Date last tested: 2026-08-19
@@ -328,22 +328,43 @@ through 09:20 (0.10% buffer); **6.49% (4,030 mornings) touch both**. Rates are
 computed only over completed horizons — counting truncated windows as "not
 touched" deflated an earlier version of these numbers.
 
-**Interpretation:**
+**Interpretation (superseded — see the corrected version below):**
 Cannot be resolved. On the mornings that touched both, the outcome depends
 entirely on **which came first**, and a daily bar does not record intraday
 ordering. The bounds are wide enough that both a profitable and an unprofitable
 answer sit inside them.
+
+**Corrected 2026-08-19.** The bounds are *not* wide. Simulating the rule rather
+than bounding it with MFE/MAE shows the expectancy is -0.13% excess and the
+ordering ambiguity is worth 0.002% of it. The exit structure is not where the
+expectancy lives; it makes the result modestly worse than the fixed-horizon
+label. See H017.
 
 **Caveats:**
 The stop touch rates are computed at the H001 entry and inherit its problems;
 H005 shows a real entry would face a wider stop, which would lower them. Daily
 MFE/MAE also cannot see intraday paths within a single session.
 
-**Next step:**
-This is now the **only** remaining justification for the full-session intraday
-pull: resolving the ordering on the 6.49% of mornings where both levels were
-touched. Everything else about the entry rules has been answered without it.
-Decide whether that single question justifies the pull before committing.
+**Next step — ANSWERED 2026-08-19 by H017, and the answer is no.**
+
+**The premise of this entry was wrong.** It counted the 6.49% of mornings that
+touched both the target and the stop *within ten sessions* as the ambiguous
+set. But ordering across **different** sessions is known — the dates say which
+came first. Only a stop and a target touched in the **same session** is
+genuinely undetermined, and with a stop ~2% below entry and a target at +15%
+that needs a ~17% single-session range. It is rare.
+
+Simulating the full rule and resolving every same-session ambiguity first for
+and then against the trade (`src/payoff.py`, `python -m src.cli payoff`):
+
+- trades the data genuinely cannot resolve: **10 of 63,698 (0.02%)**;
+- expectancy hanging on the answer: **0.002%**, and never above 0.009% at any
+  stop width from 0.5% to 8%.
+
+**The full-session intraday pull is not justified by this question.** It would
+buy two thousandths of a percent of expectancy. Whatever else that pull is for,
+H006 is no longer the reason, and the standing decision it was blocking is
+settled.
 
 ---
 
@@ -884,3 +905,122 @@ observed 7.30, and on the forward-only outcome null p95 = 3.91 against observed
 4.99 — real structure, marginal in the forward case.
 `test_permutation_null_destroys_a_planted_cross_sectional_effect` is the
 regression test.
+
+---
+
+## H017 — The fixed-horizon label and the traded payoff disagree about the same trades
+
+Status: **SUPPORTED** — they disagree, and the traded payoff is the *worse* of
+the two. Resolves H006.
+
+Date proposed: 2026-08-19 (user, reviewing Phase 2.5)
+
+**Hypothesis:**
+Every negative result so far (H001, H002, H009, H013) measures *"if I buy here,
+what is the excess return at D+5"*. The strategy's payoff is
+
+    enter → stop losers quickly → a minority run +15-20% → sell half → trail
+
+These are different functions of the same price path, and they can disagree in
+sign on the same set of trades. Concretely: if 70% of setups end -3% by D+5 but
+the stop exits them at -1%, and 10% reach +18%, fill the target, and are only
++2% by the D+5 close, the fixed-horizon label calls the strategy bad while the
+traded rule is profitable. **If that disagreement is large, none of the existing
+negative results is a verdict on the strategy as traded.**
+
+**Origin:** the user's third objection to the Phase 2.5 write-up. Not
+data-generated — it is a statement about the measurement, and it is testable
+without any new data.
+
+**Test:** `src/payoff.py`. Simulate the stated rule on daily bars from the
+tick-derived entry and stop, and compare the resulting expectancy against the
+D+5 excess return on the identical trades.
+
+**Why this can only produce a bracket, not an answer.** A daily bar does not say
+whether the high or the low came first. On the sessions where both the stop and
+the target were touched, the outcome is genuinely undetermined by the data, so
+the simulator is run twice — once resolving every ambiguity in the trade's
+favour and once against — and the truth is somewhere between. H006 measured this
+at 6.49% of mornings touching both within ten sessions. **If the bracket is
+narrow the question is answered without the intraday pull; if it is wide, the
+width is precisely what the pull would buy.**
+
+**One ambiguity that is NOT ambiguous, and is resolved here for the first time.**
+The entry day looks unusable — its daily high and low include the 09:15-09:20
+window, before the position exists, which is the H004 pairing error. But the
+1-second panel gives `running_low_t` and `running_high_t`, and that closes it
+exactly:
+
+- `low_D <= low_t` always, since the window is part of the day. If `low_D <
+  low_t` the day's low came *after* entry and the post-entry low is `low_D`,
+  certain. If `low_D == low_t` the low happened inside the window, so price
+  never traded below `low_t` after entry — and since `stop < low_t` by
+  construction, **the stop certainly was not hit on the entry day**.
+- Symmetrically for the high and the target.
+
+So the entry-day afternoon is fully usable for touch detection, rather than
+being either discarded (understating stops badly) or included raw (the H004
+error). This is a strict improvement over `labelling.py`'s `*_incl_d0` twins.
+
+**Caveats fixed in advance:**
+- Runs on the contaminated pool (H015), because tick-derived entries exist only
+  for the mornings the old screen picked. The *methodological* result — whether
+  the two labels disagree — does not depend on which pool it is measured on.
+  The magnitudes do, and must be re-run when the re-pull lands.
+- Gap-through must be modelled or the stop is fictitious: a session opening
+  below the stop fills at the open, not at the stop.
+
+**Result (2026-08-19) — the disagreement is real, and it runs the wrong way.**
+
+Same 63,698 trades, both labels, date-clustered:
+
+| label | mean excess | median | hit | t |
+| --- | --- | --- | --- | --- |
+| fixed horizon (+5d) | +0.021% | -0.67% | 43.3% | 0.52 |
+| traded payoff, pessimistic | **-0.130%** | -2.01% | 25.0% | -2.80 |
+| traded payoff, optimistic | **-0.128%** | -2.01% | 25.0% | -2.75 |
+
+Exits: 78.7% stopped, 4.5% gapped through the stop, 14.2% filled the target,
+median hold 4 sessions.
+
+**The traded rule does worse than the fixed-horizon label, not better.** The
+hypothesised rescue — losers cut at -1% instead of -3%, a minority running to
++18% — does not happen here. The stop removes trades that would have recovered
+faster than it removes trades that would have kept falling.
+
+Swept across stop widths, there is no setting where it turns positive:
+
+| stop below running low | raw payoff | raw +5d | payoff **excess** | t |
+| --- | --- | --- | --- | --- |
+| 0.5% | -0.045% | +0.205% | -0.133% | -4.86 |
+| 1.0% | +0.023% | +0.205% | -0.115% | -3.21 |
+| 2.0% | +0.065% | +0.205% | -0.130% | -2.80 |
+| 3.0% | +0.117% | +0.205% | -0.154% | -2.81 |
+| 5.0% | +0.140% | +0.205% | -0.259% | -3.82 |
+| 8.0% | +0.243% | +0.205% | -0.475% | -5.42 |
+
+**Note the trap in that table.** The raw payoff improves steadily as the stop
+widens and eventually beats the raw five-day return. The excess gets *worse* the
+whole way. Widening the stop lengthens the holding period, and in a rising
+market a longer hold collects more market return — the apparent improvement is
+bought beta, not edge. Anything judged on raw returns here would reach the
+opposite conclusion.
+
+Restricting to the mornings where a real setup exists — price advanced 0.5%+
+above the open by 09:20, H005's condition — makes it worse, not better: -0.284%
+at a 1% buffer, -0.263% at 2%, -0.208% at 4% (n=15,389).
+
+**What this settles:** the "we are measuring the wrong thing" defence for
+H001/H002 does not hold. The negative results are not an artefact of the
+fixed-horizon label. They survive being re-measured under the strategy's own
+payoff function, and get slightly worse.
+
+**What it does not settle:** it runs on the contaminated pool (H015) and must be
+re-run when the corrected re-pull lands. And it tests the stated exits at the
+stated entry; it says nothing about a better entry.
+
+**Effect on the archetype ordering (H013):** largely preserved, which is
+evidence the ordering is not a label artefact. `persistent_demand` stays worst
+(-0.571%, t=-5.0 under the payoff label against -0.534%, t=-4.4 fixed-horizon);
+`heavy_vol_no_progress` unchanged at -0.265%. `orderly_breakout` flips from
++0.071% to -0.236%, and `unremarkable` from +0.124% to -0.044%.

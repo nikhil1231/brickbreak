@@ -296,28 +296,60 @@ rather than adjusted. Specifically:
 - the 2020-2023 era stays holdout. `explore.EXPLORE_START` fences it and
   `fence()` raises rather than filtering.
 
-### 6. The outcome variable is wrong, and this is the biggest open problem
-Almost everything so far asks *"if I buy here, what is the excess return at
-D+5?"*. The strategy's payoff is not that. It is:
+### 6. The outcome variable — TESTED (2026-08-19), and it does not rescue anything
+`src/payoff.py`, `python -m src.cli payoff`. H017.
 
-    enter → stop losers quickly → a minority run +15-20% → sell half → trail
+The objection was right that the labels differ. They differ by more than
+expected, and in the opposite direction to the hope:
 
-These are radically different functions of the same price path. Suppose 70% of
-setups end -3% by D+5 but the stop exits at -1%, and 10% reach +18%, hit the
-target, and are only +2% by the D+5 close. **The forward-return label calls that
-strategy bad while the actual trading rule is profitable.** Every negative result
-in H001, H002, H009 and H013 is subject to this and none of them is a verdict on
-the strategy as traded.
+| label, same 63,698 trades | mean excess | hit | t |
+| --- | --- | --- | --- |
+| fixed horizon (+5d) | +0.021% | 43.3% | 0.52 |
+| traded payoff (stop/target/half-out/trail) | **-0.130%** | 25.0% | -2.80 |
 
-This is H006, and it is unresolved for a concrete reason: 10.84% of mornings
-reach +15% within ten sessions and 88.25% touch the stop, **6.49% touch both**,
-and a daily bar cannot say which came first. Building the stop/target payoff
-simulator is therefore the next substantive piece of work, and it is what
-finally justifies the full-session intraday pull — a much larger one than
-anything run so far.
+78.7% stop out, 4.5% gap through the stop, 14.2% fill the target, median hold 4
+sessions. Swept from a 0.5% to an 8% stop buffer the payoff excess is negative
+throughout (-0.115% to -0.475%), and restricting to real setups (price advanced
+0.5%+ above the open) makes it worse still (-0.21% to -0.28%).
 
-Order: simulator on daily bounds first (it brackets the answer and costs
-nothing), then decide the intraday pull on what the brackets show.
+**One trap in that sweep worth carrying forward.** The *raw* payoff improves
+monotonically as the stop widens and eventually beats the raw five-day return.
+The *excess* worsens the whole way. Wider stops mean longer holds, and a longer
+hold collects more market return in a rising market — the apparent improvement
+is bought beta. Judge this on excess only.
+
+So the "we are measuring the wrong thing" defence for H001/H002 does not hold.
+Still to redo on the corrected pool when the re-pull lands.
+
+### 6b. The intraday pull is NOT justified by H006 — decided
+H006 said the only remaining reason for the full-session intraday pull was
+resolving which came first on the 6.49% of mornings touching both the target and
+the stop within ten sessions.
+
+**That premise was wrong.** Ordering across *different* sessions is known from
+the dates. Only a stop and a target touched in the **same session** is
+undetermined, and with a ~2% stop and a +15% target that needs a ~17% one-day
+range. Running the rule with every same-session ambiguity resolved first for and
+then against the trade:
+
+- unresolvable trades: **10 of 63,698 (0.02%)**
+- expectancy hanging on the answer: **0.002%**, never above 0.009% at any stop
+  width tested
+
+The pull would buy two thousandths of a percent. If it is run, it must be for a
+different reason — and none is currently on the table.
+
+### 6d. The reasoning that got here, kept because it was right to ask
+The objection was: almost everything asks *"if I buy here, what is the excess
+return at D+5?"* while the payoff is `enter → stop losers quickly → a minority
+run +15-20% → sell half → trail`. If 70% of setups end -3% by D+5 but the stop
+exits at -1%, and 10% reach +18% then give it back, the forward-return label
+calls a profitable rule bad.
+
+That was the right question and it was cheap to answer — the simulator on daily
+bounds cost nothing and brackets the answer. It just came back negative. Worth
+keeping because the *reasoning* generalises: any future exit structure has to be
+measured this way rather than assumed to be equivalent to a horizon label.
 
 ### 7. Then: richer daily context, and how selective is he actually?
 The pool has tens of thousands of candidate mornings. If the uncle sees ~50

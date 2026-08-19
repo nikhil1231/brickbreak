@@ -482,6 +482,49 @@ def cmd_work_list(args) -> int:
     return 0
 
 
+def cmd_payoff(args) -> int:
+    """Simulate the stated stop/target/trail rule and bracket the ordering (H017).
+
+    Reports the traded payoff beside the fixed-horizon label on the identical
+    trades, so any difference is the measurement and not the sample.
+    """
+    import json as _json
+    import pandas as pd
+    from . import behaviour, explore, payoff
+    from .explore import cluster_stats
+
+    d = explore.load_explore_frame(verbose=False)
+    s = d[d["t_offset_s"] == args.t].copy()
+    # The stop and the running low must be read at the same `t` as the entry,
+    # and lifted onto the adjusted basis before anything is divided. See H004.
+    s["running_low_t"] = s["running_low_t"] * s["adj_factor"]
+    s["running_high_t"] = s["running_high_t"] * s["adj_factor"]
+    s["stop_px_adj"] = s["running_low_t"] * (1 - args.stop_buffer / 100)
+    bad = int((s["stop_px_adj"] >= s["running_low_t"]).sum()
+              + (s["running_low_t"] > s["entry_px_adj"] + 1e-6).sum())
+    if bad:
+        raise AssertionError(f"stop < running_low <= entry violated on {bad} rows")
+
+    bars = pd.read_parquet(config.NORMALIZED_DIR / "daily_bars_adj.parquet",
+                           columns=["symbol", "date", "open", "high", "low", "close"])
+    cfg = payoff.PayoffConfig(target_pct=args.target, max_sessions=args.max_sessions)
+    rep, pes, opt = payoff.bracket(s, bars, cfg)
+
+    print(f"\n== traded payoff vs fixed horizon, t={args.t}s, "
+          f"stop {args.stop_buffer}% below the running low ==")
+    print(payoff.compare_to_fixed_horizon(pes, opt, horizon=5).to_string(index=False))
+    print(f"\nexit mix: {rep['pessimistic']['exit_mix_pct']}")
+    print(f"target filled on {rep['pessimistic']['target_filled_pct']}% of trades; "
+          f"median hold {rep['pessimistic']['median_sessions_held']:.0f} sessions")
+    print(f"\nordering bracket: {rep['bracket_width_pct']:.4f}% of expectancy, over "
+          f"{rep['trades_whose_outcome_the_data_cannot_resolve']} trades "
+          f"({rep['share_unresolved_pct']}%) the data cannot resolve.")
+    print("Only SAME-session stop-and-target touches are ambiguous; across sessions")
+    print("the order is known from the dates. That is what H006 conflated.")
+    _dump(rep, config.METADATA_DIR / "payoff.json")
+    return 0
+
+
 def cmd_opening_report(args) -> int:
     """Quality report + per-symbol-day features for the fetched opening data."""
     import pandas as pd
@@ -639,6 +682,15 @@ def main(argv=None) -> int:
     wl.add_argument("--unlagged", action="store_true",
                     help="screen on the entry day's own close (the H015 lookahead)")
     wl.set_defaults(fn=cmd_work_list)
+
+    pf = sub.add_parser("payoff",
+                        help="simulate the stop/target/trail rule and bracket it (H017)")
+    pf.add_argument("--t", type=int, default=300)
+    pf.add_argument("--stop-buffer", type=float, default=2.0,
+                    help="%% below the running low for the stop (default 2.0)")
+    pf.add_argument("--target", type=float, default=15.0)
+    pf.add_argument("--max-sessions", type=int, default=60)
+    pf.set_defaults(fn=cmd_payoff)
 
     orp = sub.add_parser("opening-report", help="quality report for fetched opening data")
     orp.set_defaults(fn=cmd_opening_report)
