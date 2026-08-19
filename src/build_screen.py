@@ -11,11 +11,15 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import config, corporate_actions, nse_archive
+from . import asof, config, corporate_actions, nse_archive
 from .indicators import compute_all
 from .screener import UNCLASSIFIED, add_sector_breadth, build_sector_series
 
 METRICS_PATH = config.NORMALIZED_DIR / "screen_metrics.parquet"
+# The as-of-open panel: the same indicators, each carrying the value from the
+# symbol's PREVIOUS session, so a screen for date D cannot read date D's close.
+# See H015 and `src/asof.py`. This is the panel a morning rule must use.
+METRICS_ASOF_PATH = config.NORMALIZED_DIR / "screen_metrics_asof.parquet"
 SECTOR_PATH = config.NORMALIZED_DIR / "sector_series.parquet"
 
 # Columns the frontend and screener actually need; keeps the panel small.
@@ -97,12 +101,42 @@ def build(force: bool = False, min_history: int = 60) -> Path:
 
     config.NORMALIZED_DIR.mkdir(parents=True, exist_ok=True)
     metrics.to_parquet(METRICS_PATH, index=False)
+
+    # The same panel, lagged one session. Written alongside rather than instead
+    # of the raw one: the raw panel is still the right thing for describing what
+    # a day looked like, and the screener is the thing that must not see it.
+    print("building the as-of-open panel (H015) ...", flush=True)
+    metrics_asof = asof.lag_columns(metrics)
+    metrics_asof.to_parquet(METRICS_ASOF_PATH, index=False)
+    rep = asof.audit(metrics, metrics_asof, sample_symbol="RELIANCE")
+    changed = rep["columns"].get("close", {})
+    print(f"  lagged {len(metrics_asof):,} rows; `close` differs on "
+          f"{changed.get('differing', 0):,} of {changed.get('compared', 0):,} "
+          f"comparable rows", flush=True)
+    if rep.get("spot_check") and not rep["spot_check"]["match"]:
+        raise RuntimeError(f"as-of lag did not shift correctly: {rep['spot_check']}")
     print(f"wrote {METRICS_PATH} ({METRICS_PATH.stat().st_size/1e6:.1f} MB, "
           f"{len(metrics):,} rows) in {time.perf_counter()-t0:.1f}s", flush=True)
     return METRICS_PATH
 
 
-def load() -> pd.DataFrame:
+def load(asof_open: bool = True) -> pd.DataFrame:
+    """The metrics panel. `asof_open=True` is the one a morning rule may screen on.
+
+    Defaults to the lagged panel because the unlagged one is what caused H015:
+    it carries date D's own close on the row for date D, and the screener gates
+    on it while the entry happens at 09:20 that same morning. Anything
+    *describing* a day (the UI, characterisation) legitimately wants the
+    unlagged panel and should ask for it explicitly.
+    """
+    if asof_open:
+        if not METRICS_ASOF_PATH.exists():
+            raise RuntimeError(
+                "screen_metrics_asof.parquet missing. Run: "
+                "python -m src.cli build-metrics --force\n"
+                "This is the panel that does not read the entry day's own close "
+                "(H015); screening on the unlagged panel is the lookahead.")
+        return pd.read_parquet(METRICS_ASOF_PATH)
     if not METRICS_PATH.exists():
         raise RuntimeError("screen_metrics.parquet missing. Run: python -m src.cli build-metrics")
     return pd.read_parquet(METRICS_PATH)

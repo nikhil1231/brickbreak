@@ -18,9 +18,63 @@ censored at zero and cannot gate anything as computed.
 have negative excess returns, and tightening either one makes it worse.** See
 the Phase 2.4 addendum in `FINDINGS.md`. This is the first result that
 contradicts the brief rather than refining it.
-**Data pull (in progress)** — opening 1-second ticks for screened candidates.
+**Phase 2.5 (done, and largely invalidated by what it found)** — behavioural
+features, archetypes and an exploratory search over the opening window (H008–
+H016). It reported that the opening states most resembling sustained
+accumulation have the *worst* forward returns. **Do not carry that claim
+forward.** The same phase found the screener selects each morning using that
+morning's own close (H015), and the contraction filters can *manufacture* that
+inversion — see below. Phase 2.4's t-statistics are also inflated ~2.9x by
+ignoring within-session correlation (H016).
+**Phase 2.6 (done, 2026-08-19)** — the H015 lookahead is fixed. `src/asof.py`,
+`screen_metrics_asof.parquet`, and the screen now defaults to the as-of-open
+panel everywhere.
+**Data re-pull (running)** — 42,703 new candidate mornings under the corrected
+screen. See "Re-pull" below.
 
 No strategy logic, no backtest, no execution exists yet. That is deliberate.
+
+## The one thing to read before trusting any Phase 2 number
+
+**The contraction screen can invert the sign of an opening-behaviour result.**
+
+The screen requires date D itself to have been a quiet, contracted day
+(`atr_ratio`, `bb_width_pctile`, `base_depth` all read date D's own high and
+low). So for a morning with genuine persistent buying:
+
+- if it keeps running all day → date D's range is wide → contraction fails →
+  **the morning is excluded from the pool**;
+- if the opening demand fades back into a narrow range → contraction passes →
+  **the morning is kept**.
+
+The pool keeps the persistent-demand mornings that died and discards the ones
+that worked. That alone can produce "sustained opening demand predicts poor
+returns" out of a strategy in which sustained demand is good. And the evidence
+fits: of `persistent_demand`'s -0.53% headline, -0.39% is on the entry day
+itself (the segment the screen conditions on) and only **-0.15% is genuinely
+forward, at t≈-1.4 — not convincing**. Roughly two thirds of the effect sits
+exactly where the contamination is.
+
+An earlier note in `FINDINGS.md` argued a real intraday fade was "at least as
+plausible" on the strength of the `above_ema_mid` slack test. That test
+exonerated one filter and said nothing about the contraction family, which is
+the one with the inverting mechanism. The mechanism above is now the leading
+explanation and the intraday-fade reading is the secondary one.
+
+**What survives as plausible:** `heavy_vol_no_progress` — huge turnover, price
+going nowhere — is the one archetype whose effect is majority-forward (-0.17%,
+t=-2.31). It is also the one with an intuitive reading. And the finding worth
+*preserving* rather than explaining away is that **concentrated/bursty volume
+did better than persistent volume**: if the uncle's "strong volume" means an
+explosive initial burst followed by price holding firm, that is a different and
+testable claim from "lots of volume throughout".
+
+**"Persistent demand" is a misleading name and should be retired.** Volume is
+not buying volume; every trade has both sides. What is measured is *unusually
+much trading kept occurring, and price did X*. That is equally consistent with a
+crowded news event, two-sided disagreement, breakout chasers, institutions
+unloading into eager buyers, or an opening move already exhausting. The
+archetype name asserts a mechanism the data cannot see.
 
 ## Data on hand
 
@@ -180,25 +234,113 @@ a tight setup with normal risk.
 **`t` is still a free variable and picking one is not yet on the table.** The
 grid is a primitive for discovering an entry rule, not a rule.
 
-### 5. Only then: strategy rules
-Stop below opening-candle low, +15-20% target, half off, breakeven stop, 10-EMA
-trail. Needs intraday data beyond the first 5 minutes to simulate honestly —
-currently NOT downloaded, and that is a much larger pull.
+### 4c. The lookahead — FIXED (2026-08-19)
+`src/asof.py`, `python -m src.cli build-metrics --force`.
 
-Phase 2.4 narrowed why that pull would be run. It is no longer "to simulate the
-strategy" but to answer one question: **on the mornings where both the +15%
-target and the stated stop were touched within ten sessions (7.1% of the pool),
-which came first?** Everything else about the entry rules has already been
-answered without it, and answered against them. Worth deciding whether that
-single question justifies the pull before committing to it.
+Every column derived from date D's own session is lagged one trading session per
+symbol. The two exceptions are explicit and tested: date D's **opening print**
+(the 09:15:00 pre-open auction, on the tape before the 09:20 entry) and the
+previous close, because lagging those would break `gap_pct`. Anything not
+explicitly listed as knowable is lagged, so a newly-added indicator cannot
+silently reintroduce the lookahead.
 
-### 6. Worth testing before the big pull
-The first five minutes reverse the gap, and the -2% to -1% gap bucket is the
-best-performing cell in the table (+0.38% excess at +5d, 52.2% hit rate against
-46.5% pool-wide). That is the opposite of the stated entry — a fade rather than
-a follow-through — and it costs nothing to label properly with data already on
-disk. It is a hypothesis this data generated, not one it confirmed, so it needs
-the 2020-2023 backfill as an out-of-sample check before it means anything.
+`build_screen.load()` now defaults to the as-of panel; `opening_join`, `serve`
+and `cli screen` all use it. `--unlagged` is available for comparison only.
+
+**Verified, not assumed.** `asof.audit` compares the two panels directly:
+RELIANCE's lagged `close` matches the previous session's close on 1,646 of 1,646
+rows, and the build raises if the spot check fails. A no-op shift is caught.
+
+**How much it matters:** 151,363 candidate mornings under the contaminated
+screen against 151,238 under the corrected one — nearly the same count, but
+**only 61% overlap** (Jaccard 0.612). 36,365 mornings are new and 36,490 are
+gone. A quarter of the pool is different, so nothing downstream can be assumed
+to carry over.
+
+### 4d. Re-pull under the corrected screen — RUNNING (started 13:08 BST 2026-08-19)
+`python -m src.cli work-list`, then `scripts/run_pull.sh` on the server.
+
+151,236 corrected candidates in the tick window, of which **107,152 were already
+settled in the manifest and are not re-fetched**. 42,703 pairs to pull (22,161 in
+the 2020-2023 era, 20,542 in 2023-2026), ~3.1h at 3.6 calls/s. Verified: zero
+overlap between the work list and the settled manifest.
+
+The dedup has one trap worth not rediscovering: the manifest records the ticker
+each morning was **fetched under**, while the candidate panel is keyed on the
+post-rename canonical ticker. Compared directly, every renamed company's whole
+history looks unfetched. `fetch_opening.build_work_list` folds both sides through
+`renames.canonical_map()`; `test_asof.py` guards it.
+
+```bash
+ssh user@server 'cat ~/brickbreak/data/metadata/pull_status.json; tail -3 ~/brickbreak/logs/pull.log'
+bash scripts/sync_from_server.sh     # when complete
+```
+
+Then rebuild, in this order:
+```bash
+.venv/bin/python -m src.cli candidate-panel
+.venv/bin/python -m src.cli label
+.venv/bin/python -m src.cli behaviour
+```
+
+### 5. Re-run Phase 2.5 on the clean pool — NEXT, once the pull lands
+Everything in H008–H014 is measured on the contaminated pool and must be redone
+rather than adjusted. Specifically:
+
+- re-test H009 (persistence), H011 (`heavy_vol_no_progress`) and H013 (the
+  archetype ordering) on the corrected pool;
+- **rename the archetypes to describe what is measured, not what it might
+  mean.** `persistent_demand` → something like `sustained_high_activity`;
+- keep the entry-day / forward decomposition as standing practice, because it is
+  cheap and it is what exposed the problem;
+- the 2020-2023 era stays holdout. `explore.EXPLORE_START` fences it and
+  `fence()` raises rather than filtering.
+
+### 6. The outcome variable is wrong, and this is the biggest open problem
+Almost everything so far asks *"if I buy here, what is the excess return at
+D+5?"*. The strategy's payoff is not that. It is:
+
+    enter → stop losers quickly → a minority run +15-20% → sell half → trail
+
+These are radically different functions of the same price path. Suppose 70% of
+setups end -3% by D+5 but the stop exits at -1%, and 10% reach +18%, hit the
+target, and are only +2% by the D+5 close. **The forward-return label calls that
+strategy bad while the actual trading rule is profitable.** Every negative result
+in H001, H002, H009 and H013 is subject to this and none of them is a verdict on
+the strategy as traded.
+
+This is H006, and it is unresolved for a concrete reason: 10.84% of mornings
+reach +15% within ten sessions and 88.25% touch the stop, **6.49% touch both**,
+and a daily bar cannot say which came first. Building the stop/target payoff
+simulator is therefore the next substantive piece of work, and it is what
+finally justifies the full-session intraday pull — a much larger one than
+anything run so far.
+
+Order: simulator on daily bounds first (it brackets the answer and costs
+nothing), then decide the intraday pull on what the brackets show.
+
+### 7. Then: richer daily context, and how selective is he actually?
+The pool has tens of thousands of candidate mornings. If the uncle sees ~50
+plausible names in a morning and trades **one**, the pool is ~98% material he
+would reject, and asking whether broad features recover his judgement is asking
+the wrong question. No unconditional edge in a pool that broad is the *expected*
+result, not evidence against him.
+
+His decision boundary plausibly spans: correct sector + the right kind of daily
+base + location relative to a breakout + recent trend + opening behaviour —
+jointly, not opening volume alone. So:
+
+- build the richer daily-context interactions (base shape, distance to
+  breakout level, sector state) rather than more opening-window features;
+- **get a sample of his actual decisions** — even 30-50 dated symbol picks would
+  let the pool be scored against real selections instead of guessed ones. This
+  is now the highest-value thing to ask him for.
+
+### 8. Still worth testing, unchanged
+The -2% to -1% gap bucket was the best cell in the H002 table (+0.38% excess at
++5d, 52.2% hit rate against 46.5% pool-wide) — a fade rather than a
+follow-through. Data-generated (H007), never tested out of sample. Freeze the
+bucket definition **before** looking and test on the 2020-2023 holdout.
 
 ## Research ledger
 

@@ -31,7 +31,9 @@ _lock = threading.Lock()
 def _load() -> pd.DataFrame:
     with _lock:
         if "metrics" not in _state:
-            df = build_screen.load()
+            # Screens interactively, so it must not read the entry day's own
+            # close either (H015).
+            df = build_screen.load(asof_open=True)
             df["date"] = pd.to_datetime(df["date"])
             _state["metrics"] = df
         return _state["metrics"]

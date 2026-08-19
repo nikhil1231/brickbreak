@@ -264,7 +264,7 @@ def cmd_serve(args) -> int:
 def cmd_screen(args) -> int:
     """Headless screen: print the funnel summary for the default/CLI config."""
     from .screener import ScreenConfig, run_screen, summarize
-    df = build_screen.load()
+    df = build_screen.load(asof_open=not args.unlagged)
     overrides = {}
     for kv in (args.set or []):
         k, _, v = kv.partition("=")
@@ -403,6 +403,85 @@ def cmd_entry_window(args) -> int:
     return 0
 
 
+def cmd_behaviour(args) -> int:
+    """Second-level behavioural features for the opening window (H008).
+
+    Exploration window only by default. The 2020-2023 backfill is holdout and
+    building it here would put it one careless `groupby` away from being looked
+    at, which is the whole thing the split exists to prevent.
+    """
+    from . import behaviour, explore
+    cfg = behaviour.BehaviourConfig()
+    lo = None if args.all_dates else explore.EXPLORE_START
+    panel = behaviour.build(cfg, date_min=lo)
+    n_sparse = int(panel["sparse_t"].sum())
+    print(f"\n  {n_sparse:,} rows ({n_sparse/len(panel)*100:.1f}%) have fewer than "
+          f"{cfg.min_bars_for_shape} prints by `t`; their shape features are NaN,")
+    print("  not zero — a thin morning has no behaviour to describe, and pretending")
+    print("  otherwise is what censored `om_low_vs_open_pct` in Phase 2.3.")
+    return 0
+
+
+def cmd_explore(args) -> int:
+    """Exploratory search over the opening-behaviour family (H008-H014).
+
+    Everything printed here is EXPLORATORY / DATA-GENERATED. It is produced by
+    the same data that would confirm it, so it confirms nothing.
+    """
+    import pandas as pd
+    from . import archetypes, explore
+    d = explore.load_explore_frame()
+    d["archetype"] = archetypes.assign(d)
+    y = args.horizon
+    s = d[d["t_offset_s"] == args.t]
+
+    print(f"\n== archetypes at t={args.t}s, outcome {y} ==")
+    prof = archetypes.profile(s, y)
+    cols = ["archetype", "share_pct", "n", "mean", "median", "hit_pct", "t", "naive_t"]
+    print(prof[cols].to_string(index=False))
+    print("\n`t` is clustered by session; `naive_t` treats mornings as independent,")
+    print("which they are not. The gap between them is roughly a factor of three.")
+
+    print(f"\n== band sensitivity (does the archetype survive moving its bands?) ==")
+    print(archetypes.band_sensitivity(s, y).to_string())
+
+    out = {"n_rows": int(len(d)), "t": args.t, "horizon": y,
+           "archetypes": prof.to_dict("records")}
+    _dump(out, config.METADATA_DIR / "exploration.json")
+    return 0
+
+
+def cmd_work_list(args) -> int:
+    """Build the pull work list from the as-of-open screen, minus what is done.
+
+    The manifest is the record of what has already been fetched, and it is
+    consulted here rather than trusted later: the point of this command is that
+    re-running it after a screen change pulls only the difference.
+    """
+    import pandas as pd
+    from . import build_screen, fetch_opening as fo
+    from .screener import ScreenConfig, run_screen
+
+    metrics = build_screen.load(asof_open=not args.unlagged)
+    print(f"screening on the {'UNLAGGED (H015 lookahead)' if args.unlagged else 'as-of-open'} "
+          f"panel ...")
+    cands, _ = run_screen(metrics, ScreenConfig())
+    print(f"  {len(cands):,} candidate symbol-days")
+
+    man = None
+    if args.manifest:
+        man = pd.read_parquet(args.manifest)
+        print(f"  manifest: {len(man):,} settled pairs from {args.manifest}")
+    work, rep = fo.build_work_list(cands, date_min=args.date_min,
+                                   date_max=args.date_max, manifest=man)
+    out = config.METADATA_DIR / "work_list.parquet"
+    config.ensure_dirs()
+    work.to_parquet(out, index=False)
+    print(f"\n-> wrote {out.relative_to(config.PROJECT_ROOT)} ({len(work):,} pairs)")
+    _dump(rep, config.METADATA_DIR / "work_list_summary.json")
+    return 0
+
+
 def cmd_opening_report(args) -> int:
     """Quality report + per-symbol-day features for the fetched opening data."""
     import pandas as pd
@@ -510,6 +589,9 @@ def main(argv=None) -> int:
     sv.set_defaults(fn=cmd_serve)
 
     sc = sub.add_parser("screen", help="headless screen summary")
+    sc.add_argument("--unlagged", action="store_true",
+                    help="screen on the entry day's own close (the H015 lookahead; "
+                         "for comparison only)")
     sc.add_argument("--set", action="append", metavar="KEY=VALUE",
                     help="override a ScreenConfig field, repeatable")
     sc.set_defaults(fn=cmd_screen)
@@ -535,6 +617,28 @@ def main(argv=None) -> int:
     ew_.add_argument("--stop-buffer", type=float, default=0.10,
                      help="%% below the running low for the stop (default 0.10)")
     ew_.set_defaults(fn=cmd_entry_window)
+
+    bh = sub.add_parser("behaviour",
+                        help="second-level behavioural features for the opening window")
+    bh.add_argument("--all-dates", action="store_true",
+                    help="include holdout dates (do not use for exploration)")
+    bh.set_defaults(fn=cmd_behaviour)
+
+    ex = sub.add_parser("explore",
+                        help="exploratory search over the opening-behaviour family")
+    ex.add_argument("--t", type=int, default=300, help="entry time in seconds (default 300)")
+    ex.add_argument("--horizon", default="excess_ret_5d_pct")
+    ex.set_defaults(fn=cmd_explore)
+
+    wl = sub.add_parser("work-list",
+                        help="build the pull work list (as-of-open screen minus manifest)")
+    wl.add_argument("--date-min", default=None)
+    wl.add_argument("--date-max", default=None)
+    wl.add_argument("--manifest", default=None,
+                    help="manifest parquet to dedup against (default: local)")
+    wl.add_argument("--unlagged", action="store_true",
+                    help="screen on the entry day's own close (the H015 lookahead)")
+    wl.set_defaults(fn=cmd_work_list)
 
     orp = sub.add_parser("opening-report", help="quality report for fetched opening data")
     orp.set_defaults(fn=cmd_opening_report)

@@ -873,3 +873,189 @@ multiple-comparisons risk is severe.
 As of 2026-08-19 every claim in this addendum is also recorded in root-level
 `HYPOTHESES.md` with a stable ID (H001–H007), including the retracted one. That
 file is the durable ledger; these addenda are the narrative.
+
+---
+
+# Phase 2.5 addendum — exploratory search over opening behaviour (2026-08-19)
+
+`src/behaviour.py`, `src/archetypes.py`, `src/explore.py`.
+`python -m src.cli behaviour` then `python -m src.cli explore`.
+
+**Everything in this section is EXPLORATORY / DATA-GENERATED.** It was produced
+by the same 2023-08-21 → 2026-08-18 data that would confirm it, so it confirms
+nothing. The 2020-04 → 2023-08 backfill is holdout and was not touched;
+`explore.fence()` raises on any row outside the exploration window rather than
+filtering, so a breach is loud. Ledger entries H008–H016.
+
+## What was asked, and what was built
+
+The brief was to stop treating the strategy as `enter at t=120s if volume > X
+and gap > Y` and start treating it as recognition of a developing behaviour:
+contraction, favourable trend, constructive open, unusually strong demand that
+*keeps arriving*, sellers failing to push price below the open, a path that
+looks like accumulation. Two representations were built in parallel:
+
+- **continuous** — 30 features computed causally at ten entry times from the
+  1-second tape: activity intensity, persistence, acceleration, path
+  orderliness, occupancy above the open, VWAP position, uptick volume share,
+  progress-per-unit-volume, higher-lows slope;
+- **behavioural** — nine named archetypes assigned from terciles of
+  within-session cross-sectional ranks, with a documented precedence ladder.
+
+No threshold in either representation is a free decimal. "High volume" means
+"top third of mornings that session". There is nothing to tune, which is the
+structural defence against the crevice-fitting the brief warned about.
+
+## Three things the data itself constrains, discovered while building
+
+- **Breeze's `1second` series is not the tape.** Median inter-bar gap 5s (p90
+  8s, p99 15s), ~54 bars per morning. There is no 1-second structure to read.
+- **~50% of bars carry `volume == 0`** and 94% have OHLC all equal; 27.8% of
+  zero-volume bars are followed immediately by a same-price bar carrying volume.
+  Volume is smeared several seconds behind price. Window totals are sound,
+  1-second volume timing is not. All shape features use 30s buckets.
+- **Opening volume decays by default** — pool-mean shares by 30s bucket run
+  15.4%, 9.6%, 13.2%, 12.0%, 10.2%, 9.0%, 9.9%, 7.3%, 7.1%, 6.4%. Against a flat
+  prior every morning is a "fading spike" and the feature merely re-encodes the
+  clock. Persistence is only meaningful relative to the pool on the same day.
+
+## The headline result inverts the brief
+
+The states that most resemble sustained aggressive demand have the **worst**
+subsequent five-day excess returns.
+
+| archetype | share | n | +5d excess | clustered t |
+| --- | --- | --- | --- | --- |
+| persistent_demand | 5.3% | 3,346 | **-0.53%** | -4.38 |
+| heavy_vol_no_progress | 8.6% | 5,388 | **-0.27%** | -3.26 |
+| absorbed_recovered | 9.8% | 6,212 | -0.12% | -1.40 |
+| chaotic | 5.5% | 3,460 | +0.05% | 0.58 |
+| orderly_breakout | 7.2% | 4,505 | +0.07% | 0.85 |
+| rejected_breakout | 10.9% | 6,843 | +0.09% | 1.14 |
+| unremarkable | 49.5% | 31,183 | +0.12% | 2.97 |
+| fading_spike | 2.7% | 1,683 | +0.15% | 1.12 |
+
+The continuous representation says the same thing independently: quintile
+spreads of -0.54% (total volume), -0.51% (trade frequency), -0.48%
+(persistence) and **+0.47%** (concentration — bursty is *better*).
+
+It is a genuine interaction, not total volume restated. Within the heaviest
+volume quintile, low persistence gives +0.18% and high persistence -0.63%, a
+spread of -0.80% (t=-3.04); in the lightest quintile the same split is -0.29%
+and not significant. **Heavy volume is not the bad state. Heavy volume that
+keeps arriving is.**
+
+And it is not simply "price already ran up". `persistent_demand` and
+`orderly_breakout` both require price above the open; matched on how far and
+paired by session, the difference is -0.96% (t=-3.46) at +0.5–1.0% advance and
+-0.87% (t=-3.44) at +1–2%.
+
+## Robustness, in the order it was checked
+
+- **Entering earlier does not rescue it.** The volume spread is -0.47% at t=30s
+  against -0.54% at t=300s. This is *not* the H003 entry-slippage effect.
+- **Not an illiquidity artefact.** The heavy-and-persistent cell is negative in
+  all five turnover quintiles, including the most liquid (-0.59%, t=-3.88,
+  median turnover Rs 53 cr).
+- **Sign-stable** across all three subperiods, both size tiers and 7 of 8
+  sectors, and *strengthens* as the archetype bands tighten (-0.46 / -0.53 /
+  -0.59 at hi = 0.60 / 0.667 / 0.75).
+- **Beats a multiplicity-corrected null.** Over 492 opening-behaviour cells the
+  observed max |t| is 6.37 against a within-date permutation null whose max |t|
+  has p95 = 3.17.
+
+## Two defects found in the existing pipeline, which matter more than the above
+
+**The screener selects a morning using that morning's own closing price
+(H015).** Indicators on the candidate row for date D come from date D's close;
+the entry is 09:20 on date D. `require_above_ema_mid=True` means *every*
+candidate morning is a session that closed above its 50-day EMA, and the
+contraction filters require the entry day itself to have been quiet. This
+contaminates the pool underlying H001–H006 as well.
+
+Splitting the +5d excess at the entry-day close:
+
+| | total | 09:20 → day-D close | day-D close → D+5 |
+| --- | --- | --- | --- |
+| volume q5 − q1 | -0.54% | **-0.35%** | -0.19% |
+| persistent_demand | -0.53% | **-0.39%** (t=-8.2) | -0.15% (t=-1.4) |
+| heavy_vol_no_progress | -0.27% | -0.11% (t=-3.2) | **-0.17%** (t=-2.3) |
+
+**About two thirds of the headline effect sits in the segment the screen
+conditions on.** What survives into genuinely forward territory is -0.15% to
+-0.30%, and only `heavy_vol_no_progress` is majority-forward and nominally
+significant. On the forward-only outcome the whole behavioural family still
+beats its null, but marginally: observed max |t| 4.99 against null p95 3.91.
+
+**Correction (2026-08-19, after review).** The paragraph that stood here argued
+a real intraday fade was "at least as plausible" as selection, on the strength of
+the `above_ema_mid` slack test (-0.28% where the day-D close is within 0.5% of
+the 50-EMA against -0.43% where it is more than 10% above). That test exonerates
+one filter and says nothing about the **contraction** family, which is the one
+that can invert the sign rather than merely inflate it: a persistent-demand
+morning that kept running all day has a wide day-D range, fails contraction, and
+is excluded from the pool, while one that faded into a narrow range is kept. The
+pool retains the failures and discards the successes. That mechanism alone can
+manufacture the entire inversion, and it is now the **leading** explanation. The
+intraday-fade reading is secondary.
+
+Consistent with it: `persistent_demand`'s forward-only effect is -0.15% at
+t≈-1.4 — not convincing. The headline -0.53% is mostly entry-day.
+
+**Phase 2.4's t-statistics treat mornings as independent (H016).** They are
+~650 sessions, not 63,698 draws. The inflation is about 2.9x: H001's headline
+"+1d excess t=4.2" is **t≈1.4** clustered, and H002's -3.3 to -7.0 become
+roughly -1.1 to -2.4. This strengthens H001's rejection rather than weakening it.
+
+## Hypotheses answered
+
+- **H009 rejected as stated, reverse supported.** Persistence is bad, not good.
+- **H010 inconclusive.** `time_above_open_frac` fixes the Phase 2.3 censoring
+  (median 0.66, no pile-up at zero) but predicts essentially nothing: -0.02%
+  spread. A dwell-time lookahead was found and fixed here; correcting it did not
+  change the conclusion.
+- **H011 partially supported.** `move_per_vol` is monotone across quintiles
+  (+0.39%) and `heavy_vol_no_progress` is the only archetype whose effect is
+  majority-forward. The microstructure measures (VWAP position, uptick share)
+  are flat.
+- **H012 rejected.** Path efficiency has the wrong sign and negligible size.
+  Tape *tidiness* does not predict; tape *activity* weakly does.
+- **H013 supported as a representation.** The archetypes recover the continuous
+  findings and name them, and the naming is what makes the result arguable with
+  a discretionary trader.
+- **H014 inconclusive.** Entry time does nothing unconditionally (flat +0.02% to
+  +0.05% across t, clustered t below 1.7), but the *state* evolves — 72.8%
+  archetype persistence over 30s, and only 48% of mornings ever labelled
+  `persistent_demand` still are at t=300s. No `setup_quality(t)` model was
+  fitted: with the surviving forward effect at ~-0.2% and H015 unresolved, that
+  would be fitting an artefact with more parameters.
+
+## Three limits on everything above, beyond the contamination
+
+- **The outcome variable is wrong for this strategy.** These results ask "what
+  is the excess return at D+5". The payoff is enter → stop losers quickly → a
+  minority run +15-20% → sell half → trail. A pool where 70% of setups end -3%
+  by D+5 but exit at -1% on the stop, and 10% reach +18% before giving most of
+  it back, reads as a bad strategy under this label and a profitable one under
+  the actual rule. H006 remains the unresolved question and needs a stop/target
+  payoff simulator, not more features.
+- **"Persistent demand" names a mechanism the data cannot see.** Volume is not
+  buying volume. Unusually much trading is equally consistent with a crowded
+  news event, two-sided disagreement, breakout chasers, institutions unloading
+  into eager buyers, or exhaustion. `heavy_vol_no_progress` is the one archetype
+  whose name matches what is measured, and it is also the one that survives.
+- **The pool is far broader than the trader.** If the uncle sees ~50 plausible
+  names a morning and trades one, ~98% of these mornings are material he would
+  reject. No unconditional edge across the whole pool is the expected result,
+  not evidence against him. Reconstructing his decision boundary needs a sample
+  of his actual dated picks.
+
+## What this is worth
+
+A short list of frozen, testable statements for the backfill, and one pipeline
+defect that has to be decided on first. It is **not** an edge: the largest
+survivor is about -0.2% at five days, it is a short rather than a long, and the
+strategy under investigation is a long-only swing trade. The most useful output
+for the conversation with the uncle is the inversion itself — the opening states
+that look most like institutional accumulation are, in this pool, the ones that
+do worst, and that is a claim he can push back on from experience.

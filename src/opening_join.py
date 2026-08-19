@@ -195,7 +195,11 @@ def build(cfg=None, save: bool = True, verbose: bool = True) -> tuple[pd.DataFra
     from . import build_screen
     from .screener import ScreenConfig, run_screen
 
-    metrics = build_screen.load()
+    # Screen on the as-of-open panel: the selection for date D must not read
+    # date D's close (H015). The unlagged panel is still loaded below, because
+    # the candidate row should record what the day actually looked like — it
+    # just must not have been *chosen* on it.
+    metrics = build_screen.load(asof_open=True)
     cands, _ = run_screen(metrics, cfg or ScreenConfig())
     feats = load_features()
     bars = pd.read_parquet(config.NORMALIZED_DIR / "daily_bars_adj.parquet",

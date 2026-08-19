@@ -296,3 +296,69 @@ def opening_features(opening: pd.DataFrame, exclude_bad: bool = True) -> pd.Data
     if exclude_bad:
         out = out[~out["suspect_volume"]]
     return out
+
+def build_work_list(candidates: pd.DataFrame,
+                    date_min: pd.Timestamp | None = None,
+                    date_max: pd.Timestamp | None = None,
+                    manifest: pd.DataFrame | None = None,
+                    rmap: pd.DataFrame | None = None,
+                    verbose: bool = True) -> tuple[pd.DataFrame, dict]:
+    """Candidate (symbol, date) pairs that still need fetching, with ISEC codes.
+
+    Two things here are easy to get wrong and both cost a re-pull of data
+    already on disk.
+
+    **Symbols must be compared on one convention.** The manifest records the
+    ticker each morning was *fetched under*, which for a renamed company is the
+    ticker that was current that day. The candidate panel is keyed on the
+    post-rename canonical ticker. Comparing them directly makes every renamed
+    symbol's whole history look unfetched. Both sides fold through
+    `renames.canonical_map()` before the difference is taken.
+
+    **"Settled" includes empty.** A morning where the stock genuinely did not
+    trade in the opening window returns no rows, and re-requesting it will keep
+    returning no rows. `pending_pairs` already treats `empty` as settled and
+    retries only `error`; this function inherits that.
+    """
+    from . import renames
+
+    want = candidates[["symbol", "date"]].drop_duplicates().copy()
+    want["date"] = pd.to_datetime(want["date"])
+    if date_min is not None:
+        want = want[want["date"] >= pd.Timestamp(date_min)]
+    if date_max is not None:
+        want = want[want["date"] <= pd.Timestamp(date_max)]
+
+    cmap = renames.canonical_map(renames.load_map() if rmap is None else rmap)
+    man = load_manifest() if manifest is None else manifest
+    if not man.empty and cmap:
+        man = man.copy()
+        man["symbol"] = man["symbol"].map(lambda s: cmap.get(s, s))
+
+    pending = pending_pairs(want, man)
+    codes, missing = resolve_codes(sorted(pending["symbol"].unique()))
+    work = pending.assign(isec_code=pending["symbol"].map(codes)).dropna(
+        subset=["isec_code"]).reset_index(drop=True)
+
+    report = {
+        "candidates_in_window": int(len(want)),
+        "already_settled": int(len(want) - len(pending)),
+        "pending": int(len(pending)),
+        "unmappable_symbols": len(missing),
+        "unmappable_pairs": int(len(pending) - len(work)),
+        "to_fetch": int(len(work)),
+        "symbols": int(work["symbol"].nunique()),
+        "dates": int(work["date"].nunique()),
+        "date_min": str(work["date"].min().date()) if len(work) else None,
+        "date_max": str(work["date"].max().date()) if len(work) else None,
+    }
+    if verbose:
+        print(f"  {report['candidates_in_window']:,} candidate mornings in window")
+        print(f"  {report['already_settled']:,} already settled in the manifest "
+              f"(not re-fetched)")
+        print(f"  {report['to_fetch']:,} to fetch across "
+              f"{report['symbols']:,} symbols and {report['dates']:,} sessions")
+        if missing:
+            print(f"  {len(missing)} symbols have no ISEC code and are skipped "
+                  f"(e.g. {', '.join(missing[:5])})")
+    return work, report

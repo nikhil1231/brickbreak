@@ -83,6 +83,45 @@ Decision left open. If backfilled, tag those years as survivor-biased.
   a low 0.2% below the open and a stop 3.2% below the entry. Do not infer one
   from the other.
 
+## Two defects that contaminate existing results — read before trusting a number
+
+- **The screener used to select a morning using that morning's own close
+  (H015). FIXED 2026-08-19** — `src/asof.py`, and `build_screen.load()` now
+  defaults to the lagged `screen_metrics_asof.parquet`. Everything built before
+  that date sits on the contaminated pool and must be re-run, not adjusted: the
+  corrected screen overlaps the old one on only **61%** of candidate mornings.
+  **Why it inverts rather than inflates:** the contraction filters read date D's
+  own high and low, so a morning whose opening demand kept running all day has a
+  wide range, fails contraction, and is excluded — while one that faded into a
+  narrow range is kept. The pool retains the failures and discards the
+  successes, which alone can manufacture "sustained opening demand is bearish".
+  Standing practice regardless: split every forward outcome at the entry-day
+  close and quote the **day-D close → D+h** segment.
+- **The +5d excess return is the wrong outcome for this strategy.** The payoff
+  is enter → stop losers quickly → a minority run +15-20% → sell half → trail. A
+  setup that ends -3% by D+5 but exits at -1% on the stop, or reaches +18% and
+  gives it back by D+5, is scored backwards by a fixed-horizon label. Every
+  negative result in H001/H002/H009/H013 is subject to this. H006 is the real
+  question and needs a stop/target payoff simulator.
+- **Do not name a feature after a mechanism the data cannot see.** Volume is not
+  buying volume; every trade has both sides. `persistent_demand` should have
+  been `sustained_high_activity` — unusually much trading is equally consistent
+  with a news event, two-sided disagreement, chasers, or institutions unloading.
+- **Row-level t-statistics are inflated ~2.9x (H016).** 63,698 mornings are ~650
+  sessions and the cross-section moves together within a session. Use
+  `explore.cluster_stats`, which reports the clustered and naive statistic side
+  by side. `labelling.horizon_summary` still emits the naive one.
+
+## Anything computed at a time `t` inside the window must be tested for lookahead
+
+Cumulative statistics sampled at `t` are safe by construction; anything using a
+*gap between* observations is not, because the gap to the next observation is
+only known once it has printed. `behaviour.py` shipped exactly that bug in
+`time_above_open_frac` — the final bar's dwell time ran to the next trade, which
+lies after `t`, so two identical first-90-seconds gave different answers.
+`test_features_at_t_ignore_everything_after_t` appends later bars and requires
+every feature at `t` to be unchanged. Write that test before trusting a feature.
+
 ## Hypotheses — `HYPOTHESES.md` is research state, not documentation
 
 Every meaningful strategy hypothesis — proposed, tested, supported, rejected, or
@@ -120,5 +159,12 @@ phase write-up.
 - Verify empirically rather than trusting docs; that has repeatedly paid off.
 - Long pulls run on the server (`user@server`) under tmux via
   `scripts/run_pull.sh`; resumable from the manifest.
-- `.venv/bin/python -m pytest tests/ -q` — keep green. Tests marked `network`
-  hit live NSE and are deselected by default; run with `-m network`.
+- `.venv/bin/python -m pytest tests/ -q` — keep green (124 tests). Tests marked
+  `network` hit live NSE and are deselected by default; run with `-m network`.
+- **Exploration is fenced.** `explore.EXPLORE_START` is 2023-08-21; the
+  2020-2023 backfill is holdout and `explore.fence()` *raises* rather than
+  filtering, because a silently-dropped holdout row is an invisible breach.
+  `python -m src.cli behaviour` builds the exploration window only.
+- A permutation null over a scan must shuffle the outcome **within date**.
+  Shuffling date-level means while leaving within-date deviations attached
+  preserves the cross-sectional signal being tested and cannot reject anything.
