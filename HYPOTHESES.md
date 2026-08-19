@@ -1331,3 +1331,126 @@ a materially higher hit rate, this procedure was constructed to find it and it
 did not. That is informative about the pool, not about whether such a setup
 exists somewhere — and see the standing caveat in `PLAN.md` §7 that this pool is
 ~98% material a discretionary trader would reject.
+
+---
+
+## H024 — Ranking inside the screen, not filtering across it, is where the edge is
+
+Status: **SUPPORTED in sample.** The first positive expectancy this project has
+produced. Untested out of sample.
+
+Date proposed: 2026-08-20 (user: "give this strat one more go … shotgun
+approach … don't worry about overfitting")
+
+**Hypothesis:** every test so far asked *"do the mornings passing this filter
+beat the market on average"*. That is not the strategy. A discretionary trader
+looks at a morning's candidates and trades **one**. A pool with zero average
+edge can still contain a usable *ranking*, and the two questions have different
+answers. Also test both directions and a much wider exit space, since H018 found
+27.7% of mornings are stopped out before a move that then happens.
+
+**Kind of work:** exploratory, deliberately overfitting, by explicit
+instruction. Exploration window only (2023-08-21 → 2026-08-18, 68,333 mornings,
+660 sessions). The 2020-2023 holdout was not touched.
+
+**Method:** `src/shotgun.py` — a vectorised exit simulator so a sweep is
+seconds rather than hours. Validated against `payoff.simulate` at correlation
+**0.981**, identical exit mix and identical median hold; it runs ~0.04pp
+optimistic because it does not model the breakeven-stop or still-open states.
+
+### What did not work, first
+
+- **Exits alone.** 720 exit configurations across both directions on the whole
+  pool. The best *long* excess is **-0.155%**; longs make money raw (+0.69% over
+  20 sessions) and lose to the market. No exit rescues the unconditional pool.
+- **Shorts.** Every config positive on both raw and excess is a short, best
+  +0.29% excess at +0.13% raw. Untradeable in Indian mid-caps (no borrow, costs
+  above the edge) and the raw number is inside the noise. Recorded, not pursued.
+
+### What worked
+
+Two daily, as-of features, ranked **within each session** and averaged:
+
+- `dist_52w_high` — proximity to the 52-week high. Top decile is within ~3.7%.
+- `deliv_pct` — delivery percentage, the one feature that also survived the
+  H019 matched contrast (t=3.16 there).
+
+Take the top N per session, enter at the open, **no stop**, hold 30 sessions.
+
+**Per trade** (top 5/day, n=3,209): **+1.40% vs the equal-weighted market**
+(t=5.69), **+1.32% vs the same-day pool average** (t=6.38), raw +3.19%.
+
+**Portfolio, daily mark-to-market, 0.40% round-trip cost:**
+
+| book | CAGR | max DD | Sharpe |
+| --- | --- | --- | --- |
+| all candidates, no selection | 7.96% | -24.6% | 0.54 |
+| top 3 / day | 22.71% | -13.5% | 1.70 |
+| **top 5 / day** | **26.83%** | **-12.2%** | **1.93** |
+| top 10 / day | 25.20% | -14.3% | 1.76 |
+| top 20 / day | 20.91% | -16.4% | 1.41 |
+| top 50 / day | 17.03% | -20.4% | 1.11 |
+| equal-weighted market | 18.33% | -24.3% | 1.02 |
+
+**The decay in N is monotone and smooth**, which is what a real ranking looks
+like: the edge concentrates at the top and dilutes into the market by top-50. A
+fitted crevice does not degrade gracefully.
+
+### Three checks that matter more than the headline
+
+**1. It is selection, not beta.** Benchmarked against the *same-day mean of
+every other screened candidate under the identical exit rule* — which removes
+the pool's own beta, size and style exactly — all 60 tested cells stay positive,
+best +1.25% at t=8.28.
+
+**2. It beats its own permutation null.** Shuffling the score **within each
+session**, holding the pool, dates, exit rule and pick count fixed, 400 times:
+null p95 = +0.295%, null max = +0.654%, observed **+0.774%**. The observed value
+beats **100%** of shuffles; observed |t| 4.57 against a null max of 3.58.
+
+**3. The contraction screen is doing real work.** Running the identical ranking
+over the full tradeable universe instead of inside the screen:
+
+| where the ranking is applied | CAGR | Sharpe |
+| --- | --- | --- |
+| inside the contraction screen | 25.86% | 1.64 |
+| full tradeable universe | 8.75% | 0.65 |
+| only what the screen rejected | 9.40% | 0.69 |
+
+Neither component works alone — the screened pool by itself returns 7.96%
+against a 16-18% market, and the ranking on the open universe returns 8.75%.
+**Together they return 25.9%.** That is an interaction, not a sum, and it is
+close to the uncle's stated setup: volatility contraction, near the highs,
+strong delivery.
+
+### The finding that costs the most to accept
+
+**The 1-second tick data contributes nothing.** Entering at the 09:15 opening
+print instead of at the tick price at t=180s gives CAGR 26.39% against 26.83%,
+and per-trade excess +1.37% against +1.40%. `score2` is built entirely from
+daily as-of features. The whole opening-window pipeline — 180,000 API calls,
+the daily-token blocker, four phases of behavioural features — is irrelevant to
+the only thing that has worked.
+
+That is a real result and it should not be softened. It also means this rule can
+be tested on the full daily history and the full universe, and its holdout test
+does not depend on tick coverage at all.
+
+### What this is not
+
+- **Not out of sample.** Everything above was searched on the window it is
+  measured on, across roughly 1,500 configurations. The permutation null covers
+  the *ranking* given the feature set; it does not cover the search that chose
+  the features.
+- **Not the uncle's strategy.** No stop (H018's `shaken_out` says the stop is
+  what breaks it), a 30-session hold rather than a +15% target, and ~142
+  concurrent positions rather than one name a day. The top-3 variant (87 open,
+  22.71% CAGR) is closer but still a portfolio.
+- **Not tested through the careful simulator at portfolio level**, only per
+  trade.
+- **One market.** 2023-2026 is a single bull regime. The strategy's best years
+  relative to the market are 2025 (-1.1% against -8.3%) and 2026 (+20.2%
+  against +5.9%), which is encouraging in the sense that matters — it held up
+  when the market did not — but it is four years, one of them partial.
+
+**Frozen for the holdout** in `data/metadata/shotgun_frozen.json`.

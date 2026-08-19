@@ -1259,3 +1259,131 @@ to be honest about.
 The most actionable observation is not a setup at all — it is that 27.7% of
 mornings are stopped out before a move of 3%+ that then happens. That is a stop
 question, and this phase deliberately did not chase it.
+
+---
+
+# Addendum — Phase 2.9: the shotgun, and the first thing that works (2026-08-20)
+
+**EXPLORATORY.** Run on explicit instruction to try a lot of things and not
+worry about overfitting, on the exploration window only. ~1,500 configurations
+were searched on the same window they are measured on. The 2020-2023 holdout is
+untouched. Nothing here is confirmed.
+
+## The framing that was wrong all along
+
+Every phase until now asked *"do the mornings passing this filter beat the
+market on average"*. Nine hypotheses answered no. But that is not the strategy:
+a discretionary trader looks at a morning's candidates and trades **one**. A
+pool with zero average edge can still contain a usable ranking, and the two
+questions have different answers.
+
+They do here. `src/shotgun.py`, `python -m src.cli shotgun`. H024.
+
+## What did not work
+
+- **Exits alone.** 720 configurations, both directions, over the whole pool.
+  The best *long* excess is -0.155%. Longs make money raw (+0.69% over 20
+  sessions) and lose to the market — that is beta, not edge.
+- **Shorts.** The only configs positive on both raw and excess are shorts, best
+  +0.29% excess on +0.13% raw. Untradeable in Indian mid-caps and inside the
+  noise. Recorded, not pursued.
+
+Two measurement errors were caught in this sweep and both would have produced a
+false positive on the first pass:
+
+- **The benchmark sign must follow the position.** Alpha is `r - m` for a long
+  and `r + m` for a short. Subtracting the market from a short charges it twice
+  and, in a single rising sample, ranks shorts by how badly the market did.
+- **`trail_from`.** Trailing from entry rather than from the scale-out is a
+  different rule — 47% of trades exiting on the trail at a median hold of 2
+  sessions against 5 — and conflating them broke the first validation against
+  `payoff.simulate`. Corrected, the two simulators agree at r = 0.981 with an
+  identical exit mix.
+
+## What worked
+
+Two daily, as-of features, ranked within each session and averaged equally:
+
+- `dist_52w_high` — proximity to the 52-week high (top decile is within ~3.7%)
+- `deliv_pct` — delivery percentage, the one feature that also survived the
+  Phase 2.8 matched contrast
+
+Top N per session, enter at the open, **no stop**, hold 30 sessions.
+
+**Per trade** (top 5/day, n=3,209): +1.40% vs the equal-weighted market
+(t=5.69), +1.32% vs the same-day pool average (t=6.38), raw +3.19%.
+
+**Portfolio, daily mark-to-market, 0.40% round-trip cost:**
+
+| book | CAGR | max DD | Sharpe |
+| --- | --- | --- | --- |
+| all candidates, no selection | 7.96% | -24.6% | 0.54 |
+| top 3 / day | 22.71% | -13.5% | 1.70 |
+| **top 5 / day** | **26.83%** | **-12.2%** | **1.93** |
+| top 10 / day | 25.20% | -14.3% | 1.76 |
+| top 50 / day | 17.03% | -20.4% | 1.11 |
+| equal-weighted market | 18.33% | -24.3% | 1.02 |
+
+The decay in N is monotone and smooth — the edge concentrates at the top and
+dilutes into the market by top-50. That is what a real ranking looks like; a
+fitted crevice does not degrade gracefully.
+
+Year by year against the market: 2023 +22.5% vs +24.5%, 2024 +28.6% vs +29.2%,
+**2025 -1.1% vs -8.3%**, **2026 +20.2% vs +5.9%**. It matches the market when
+the market is strong and separates when it is not, which is where the halved
+drawdown comes from.
+
+## The three checks that matter more than the headline
+
+**It is selection, not beta.** Benchmarked against the same-day mean of every
+other screened candidate under the identical exit rule — which removes the
+pool's own beta, size and style exactly — all 60 tested cells stay positive,
+best +1.25% at t=8.28.
+
+**It beats its own permutation null.** Shuffling the score within each session,
+holding pool, dates, exit rule and pick count fixed, 400 times: null p95
++0.387%, null max +0.665%, observed **+1.322%** — beating 100% of shuffles.
+
+**The contraction screen is load-bearing.** The identical ranking applied
+elsewhere:
+
+| where the ranking runs | CAGR | Sharpe |
+| --- | --- | --- |
+| inside the contraction screen | 25.86% | 1.64 |
+| full tradeable universe | 8.75% | 0.65 |
+| only what the screen rejected | 9.40% | 0.69 |
+
+Neither half works alone — the screened pool returns 7.96% against a 16-18%
+market, and the ranking on the open universe returns 8.75%. Together, 25.9%.
+**That is an interaction, not a sum**, and it is close to the uncle's stated
+setup: volatility contraction, near the highs, strong delivery. This is the
+first evidence in the project that his screen is doing something.
+
+## The finding that costs the most to accept
+
+**The 1-second tick data contributes nothing to the only thing that works.**
+Entering at the 09:15 opening print instead of the tick price at t=180s gives
+CAGR 26.39% against 26.83%, per-trade excess +1.37% against +1.40%. The score is
+built entirely from daily as-of features.
+
+180,000 API calls, the daily-token blocker, three phases of behavioural
+features, an entry-time grid and a nine-state opening taxonomy are all
+irrelevant to it. That should not be softened — but it has an upside worth as
+much as the cost: the rule can be tested on the full daily history and the full
+universe, and its holdout test does not depend on tick coverage at all.
+
+## What this is not
+
+- **Not out of sample.** ~1,500 configurations searched on the window they are
+  measured on. The permutation null covers the ranking *given* the feature set;
+  it does not cover the search that chose the features.
+- **Not the uncle's strategy.** No stop (Phase 2.8's `shaken_out` says the stop
+  is what breaks it), a 30-session hold rather than a +15% target and trail, and
+  ~142 concurrent positions rather than one name a day.
+- **One market.** Four years, one of them partial, one broad regime.
+
+## Data state
+
+The holdout pull finished at 21:21 BST 2026-08-19 — 42,703 of 42,703 pairs
+settled, 2,290 with data, 0 errors. The 2020-2023 backfill is complete and
+synced (1,445 session files). It has never been read.

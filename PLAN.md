@@ -40,9 +40,17 @@ corrected bar are real and about a tenth of a standard deviation** (H019); the
 trending-market hypothesis is rejected with the sign backwards (H022); and one
 matching convenience was found to inflate every contrast fourfold (H020). See
 the Phase 2.8 addendum in `FINDINGS.md`.
-**Data re-pull (exploration era complete, holdout at 86.7%)** — the server
-process hung at 16:03 BST 2026-08-19 with 4,705 pairs outstanding, all in the
-2020-2023 holdout. Finishing it needs a fresh Breeze token. See "Re-pull" below.
+**Phase 2.9 (done, 2026-08-20)** — a deliberately overfitting shotgun search,
+run on instruction. **The first positive expectancy this project has produced**
+(H024): rank the screened candidates within each session by proximity to the
+52-week high plus delivery percentage, take the top few, no stop, hold 30
+sessions. 26.8% CAGR against an 18.3% market at 0.40% round-trip cost, with half
+the drawdown. It beats a within-session permutation null 400/400, it survives
+being benchmarked against the pool rather than the market, and **it does not
+work outside the contraction screen** — the screen and the ranking are an
+interaction, not a sum. It also does not use the tick data at all.
+**Data re-pull (COMPLETE 2026-08-19 21:21 BST)** — all 42,703 pairs settled,
+0 errors. The 2020-2023 holdout is fully pulled and synced, and unread.
 
 No strategy logic, no backtest, no execution exists yet. That is deliberate.
 
@@ -402,24 +410,43 @@ Frozen for the holdout: `data/metadata/discovery_frozen.json` — four structure
 and two near-misses, with the exact `OutcomeConfig`, `MatchConfig`,
 `ClusterConfig` and `t` needed to replay them unchanged.
 
-### 6c. Finish the holdout pull — BLOCKED on a Breeze token
-The exploration window is complete. The 2020-2023 holdout is at **86.7%** of its
-new candidates: 4,705 pairs were outstanding when the server process hung at
-16:03 BST 2026-08-19 (still alive, no progress, all threads in `futex_do_wait`).
-The manifest is resumable, so nothing is lost, but restarting needs a fresh
-session token in the server's `.env`.
+### 9. NEXT: the holdout test, and it is now cheap
+H024 is the only candidate worth spending the holdout on, and it needs none of
+the tick data — the score is `dist_52w_high` + `deliv_pct`, both daily and
+as-of, and entering at the opening print costs 0.4pp of CAGR against the tick
+entry. So the test is: rebuild the screen on 2020-04 → 2023-08, rank, take the
+top N, hold 30 sessions, and compare against the same-day pool and the market.
 
-```bash
-ssh user@server 'tmux capture-pane -p -t pull | tail -5'
-# refresh .env, then:
-ssh user@server 'cd ~/brickbreak && bash scripts/run_pull.sh'
-bash scripts/sync_from_server.sh
-```
+Run it **once**. The frozen definition is in `data/metadata/shotgun_frozen.json`
+and `shotgun.SCORE_FEATURES`; changing anything about it before the run and
+after seeing the result converts the only clean test this project has into
+another exploratory one.
 
-Until it is finished, an out-of-sample test on 2020-2023 runs on a pool missing
-13.3% of its newly-screened candidates, concentrated in the alphabetical tail of
-the work list. That is a systematic gap in symbol space and must be stated if
-the holdout is used before the pull completes.
+Worth deciding before the run, not after:
+- what result would count as a pass (a sensible bar: positive against the
+  same-day pool with a clustered t above 2, and a portfolio CAGR above the
+  market's over the same window);
+- whether a fail kills the whole thing or only the ranking.
+
+### 6c. Finish the holdout pull — DONE (2026-08-19 21:21 BST)
+All 42,703 pairs settled, 2,290 with data on the final chunk, 0 errors. 1,445
+session files synced locally. The 2020-2023 backfill is complete and unread.
+
+The pull had hung at 16:03 BST with all threads in `futex_do_wait` — no
+progress for five hours while the process stayed alive. Worth knowing: **the
+supervisor cannot detect this**, because it only reacts to exit codes and a
+hung process never exits. If a long pull is run again, watch the log timestamp
+rather than the process list.
+
+Two things that cost time on the restart and are worth not rediscovering:
+- **`cli.py` on the server is stale** and fails on import (`corporate_actions`).
+  `scripts/server_pull.py` does not import it and is unaffected, so the pull
+  works even when `python -m src.cli check-auth` does not. Probe auth through
+  `BreezeClient` directly instead.
+- **`BreezeClient.daily()` does not authenticate itself.** Calling it without
+  `client.authenticate()` first returns `None response from SDK (usually an
+  expired or missing session)` — which reads exactly like a dead token and is
+  not. `check-auth` passes because it calls `authenticate()`.
 
 ### 7. Then: richer daily context, and how selective is he actually?
 The pool has tens of thousands of candidate mornings. If the uncle sees ~50

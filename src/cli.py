@@ -481,6 +481,19 @@ def cmd_discover(args) -> int:
     return 0
 
 
+def cmd_shotgun(args) -> int:
+    """The H024 rule and every check that qualifies it. EXPLORATORY."""
+    from . import shotgun
+    rep = shotgun.report(t=args.t, top_n=args.top_n, time_stop=args.hold,
+                         cost_pct=args.cost, n_perm=args.n_perm, verbose=True)
+    _dump(rep, shotgun.REPORT_PATH)
+    if args.freeze:
+        shotgun.freeze(rep)
+    print("\nEXPLORATORY. Searched on the window it is measured on, on explicit"
+          "\ninstruction to overfit. Promotion requires the 2020-2023 holdout.")
+    return 0
+
+
 def cmd_work_list(args) -> int:
     """Build the pull work list from the as-of-open screen, minus what is done.
 
@@ -718,6 +731,17 @@ def main(argv=None) -> int:
     dv.add_argument("--freeze", action="store_true",
                     help="write the shortlist to discovery_frozen.json for the holdout")
     dv.set_defaults(fn=cmd_discover)
+
+    sh = sub.add_parser("shotgun",
+                        help="the H024 ranking rule and its checks (EXPLORATORY)")
+    sh.add_argument("--t", type=int, default=180)
+    sh.add_argument("--top-n", type=int, default=5, help="picks per session")
+    sh.add_argument("--hold", type=int, default=30, help="sessions held")
+    sh.add_argument("--cost", type=float, default=0.40,
+                    help="round-trip cost in %% (default 0.40)")
+    sh.add_argument("--n-perm", type=int, default=400)
+    sh.add_argument("--freeze", action="store_true")
+    sh.set_defaults(fn=cmd_shotgun)
 
     wl = sub.add_parser("work-list",
                         help="build the pull work list (as-of-open screen minus manifest)")
