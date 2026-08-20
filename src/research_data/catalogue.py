@@ -112,6 +112,9 @@ class Catalogue:
     def __iter__(self) -> Iterator[FeatureSpec]:
         return iter(self._specs.values())
 
+    def all_features(self) -> list[FeatureSpec]:
+        return list(self._specs.values())
+
     @property
     def names(self) -> list[str]:
         return list(self._specs)

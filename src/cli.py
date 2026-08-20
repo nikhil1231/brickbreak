@@ -731,7 +731,7 @@ def main(argv=None) -> int:
     bm.add_argument("--force", action="store_true")
     bm.set_defaults(fn=cmd_build_metrics)
 
-    sv = sub.add_parser("serve", help="run the interactive screener UI")
+    sv = sub.add_parser("serve-screener", help="run the legacy interactive screener UI")
     sv.add_argument("--port", type=int, default=8765)
     sv.set_defaults(fn=cmd_serve)
 
@@ -771,8 +771,8 @@ def main(argv=None) -> int:
                     help="include holdout dates (do not use for exploration)")
     bh.set_defaults(fn=cmd_behaviour)
 
-    ex = sub.add_parser("explore",
-                        help="exploratory search over the opening-behaviour family")
+    ex = sub.add_parser("explore-opening",
+                        help="exploratory search over the opening-behaviour family (legacy)")
     ex.add_argument("--t", type=int, default=300, help="entry time in seconds (default 300)")
     ex.add_argument("--horizon", default="excess_ret_5d_pct")
     ex.set_defaults(fn=cmd_explore)
@@ -855,6 +855,40 @@ def main(argv=None) -> int:
     e.add_argument("--years-per-call", type=int, default=10)
     e.add_argument("--throttle", type=float, default=0.7)
     e.set_defaults(fn=cmd_estimate)
+
+    # -----------------------------------------------------------------------
+    # Research Lab Subcommands (PLAN.md §7)
+    # -----------------------------------------------------------------------
+    from .interface import cli as iface_cli
+
+    cat_p = sub.add_parser("catalogue", help="browse registered features in the catalogue")
+    cat_p.add_argument("--owner", default=None, help="filter by feature owner")
+    cat_p.set_defaults(fn=iface_cli.cmd_catalogue)
+
+    hyp_p = sub.add_parser("hypotheses", help="browse research ledger hypotheses (H001–H038)")
+    hyp_p.add_argument("--id", default=None, help="show specific hypothesis details")
+    hyp_p.add_argument("--status", default=None, help="filter by status")
+    hyp_p.add_argument("--family", default=None, help="filter by family")
+    hyp_p.set_defaults(fn=iface_cli.cmd_hypotheses)
+
+    led_p = sub.add_parser("ledger", help="view sample budget ledger and consumed quarters")
+    led_p.set_defaults(fn=iface_cli.cmd_ledger)
+
+    exp_p = sub.add_parser("explore", help="launch an automated exploration from a spec")
+    exp_p.add_argument("hypothesis", help="hypothesis ID (e.g. H026)")
+    exp_p.add_argument("--question", default=None, help="research question")
+    exp_p.add_argument("--signal", default=None, help="signal name")
+    exp_p.add_argument("--partition", default="train", help="partition (train/validation/test/forward)")
+    exp_p.add_argument("--role", default="exploratory", help="role (exploratory/confirmatory)")
+    exp_p.set_defaults(fn=iface_cli.cmd_explore)
+
+    cmp_p = sub.add_parser("compare", help="compare 2–10 candidate signals")
+    cmp_p.add_argument("signals", nargs="+", help="signal names to compare")
+    cmp_p.set_defaults(fn=iface_cli.cmd_compare_signals)
+
+    srv_p = sub.add_parser("serve", help="launch the interactive web dashboard")
+    srv_p.add_argument("--port", type=int, default=8080, help="port to listen on (default 8080)")
+    srv_p.set_defaults(fn=iface_cli.cmd_serve)
 
     args = p.parse_args(argv)
     try:
