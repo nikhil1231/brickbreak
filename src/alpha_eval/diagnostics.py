@@ -14,9 +14,85 @@ CRITICAL INVARIANTS:
 """
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pandas as pd
 
+
+# ---------------------------------------------------------------------------
+# overlapping forward windows
+# ---------------------------------------------------------------------------
+
+_HORIZON_RE = re.compile(r"(\d+)\s*d")
+
+
+def horizon_from_column(name: str, default: int = 1) -> int:
+    """Read the forward horizon out of a label column name.
+
+    `fwd_ret_20d_pct` -> 20. Callers may always pass `horizon=` explicitly;
+    this exists so the common path cannot forget.
+    """
+    m = _HORIZON_RE.search(str(name))
+    return int(m.group(1)) if m else default
+
+
+def _hac_var_of_mean(x: np.ndarray, lags: int) -> float:
+    """Variance of the mean of a serially dependent series (Hansen-Hodrick).
+
+    WHY THIS IS NOT OPTIONAL
+    A forward return over [t, t+h] shares h-1 days with the one starting at
+    t+1, so a daily IC series (or a daily long-short spread) is autocorrelated
+    by construction and `std/sqrt(T)` is far too small. Measured on a null
+    where the signal has *zero* predictive power, at h=20 the uncorrected
+    t-statistic had a standard deviation of 5.1 instead of 1 and rejected at
+    |t|>2 in 68% of runs.
+
+    This is a different failure from H016. Clustering by session fixes the
+    cross-sectional correlation *within* a day; this fixes the serial overlap
+    *across* days. A signal needs both.
+
+    WHY A RECTANGULAR KERNEL AND NOT BARTLETT
+    Overlapping h-day returns give the IC series an MA(h-1) structure: the
+    true autocovariances past lag h-1 are zero, and the ones inside it are
+    large. Bartlett's taper shrinks exactly the terms that carry the
+    correction. Measured over 150 null replications:
+
+        h=20   Bartlett(h-1)  std 1.34, 12.0% rejected
+               Bartlett(2h-2) std 1.26, 10.7% rejected
+               rectangular    std 1.13,  8.0% rejected   <- used
+
+    Against 68% rejected with no correction at all.
+
+    Rectangular is not positive semi-definite, so a negative estimate falls
+    back to Bartlett at twice the bandwidth.
+
+    WHAT IS STILL NOT FIXED
+    Residual over-rejection at long horizons is real: measured at 8-13% across
+    replication batches at h=20, against a nominal 5%. It is a sample-size
+    limit, not an estimator choice — 400 sessions at h=20 hold only ~20
+    non-overlapping blocks. `rank_ic` therefore reports `effective_n`
+    (sessions / horizon), and a marginal t at a long horizon backed by a small
+    `effective_n` should be read as marginal.
+    """
+    x = np.asarray(x, dtype=float)
+    x = x[np.isfinite(x)]
+    n = len(x)
+    if n < 2:
+        return np.nan
+    e = x - x.mean()
+
+    def _sum(weights) -> float:
+        s = float(e @ e) / n
+        for l in range(1, min(int(lags), n - 1) + 1):
+            s += 2.0 * weights(l) * float(e[l:] @ e[:-l]) / n
+        return s
+
+    s = _sum(lambda l: 1.0)
+    if s <= 0:
+        wide = min(2 * int(lags), n - 1)
+        s = _sum(lambda l: max(0.0, 1.0 - l / (wide + 1.0)))
+    return max(s, 0.0) / n
 
 def spearman_corr(a: pd.Series | np.ndarray, b: pd.Series | np.ndarray) -> float:
     """Spearman rank correlation using pandas rank and Pearson correlation."""
@@ -30,12 +106,21 @@ def spearman_corr(a: pd.Series | np.ndarray, b: pd.Series | np.ndarray) -> float
 # inference & session clustering
 # ---------------------------------------------------------------------------
 
-def cluster_stats(y: pd.Series, dates: pd.Series) -> dict:
+def cluster_stats(y: pd.Series, dates: pd.Series, lags: int = 0) -> dict:
     """Mean and t-statistic with standard errors clustered by session (CR0).
 
     Mornings on the same date share a market. The clustered estimator sums
     within-date residuals before squaring:
         Var(mean) = [sum_g (sum_{i in g} e_ig)^2 / n^2] * [G / (G - 1)]
+
+    With `lags > 0` this becomes Driscoll-Kraay: the same date-summed
+    residuals, plus Bartlett-weighted cross-products between dates up to
+    `lags` apart. Pass `lags = horizon - 1` whenever the outcome is an
+    overlapping forward return, or the t-statistic is inflated by roughly
+    sqrt(horizon) — see `_bartlett_var_of_mean`.
+
+    `lags=0` reproduces `explore.cluster_stats` exactly, which is the
+    implementation the H016 finding was measured with.
     """
     m = y.notna() & dates.notna()
     y, dates = y[m], dates[m]
@@ -47,10 +132,22 @@ def cluster_stats(y: pd.Series, dates: pd.Series) -> dict:
 
     mean = float(y.mean())
     resid = y - mean
-    by_date = resid.groupby(dates).sum()
+    by_date = resid.groupby(dates).sum().sort_index()
     g = len(by_date)
 
-    var = float((by_date ** 2).sum()) / (n ** 2)
+    s = by_date.to_numpy(dtype=float)
+
+    def _acc(weights) -> float:
+        a = float(s @ s)
+        for l in range(1, min(int(lags), g - 1) + 1):
+            a += 2.0 * weights(l) * float(s[l:] @ s[:-l])
+        return a
+
+    acc = _acc(lambda l: 1.0)              # rectangular; see _hac_var_of_mean
+    if acc <= 0:
+        wide = min(2 * int(lags), g - 1)
+        acc = _acc(lambda l: max(0.0, 1.0 - l / (wide + 1.0)))
+    var = max(acc, 0.0) / (n ** 2)
     if g > 1:
         var *= g / (g - 1)
 
@@ -60,6 +157,7 @@ def cluster_stats(y: pd.Series, dates: pd.Series) -> dict:
     return {
         "n": int(n),
         "n_dates": int(g),
+        "hac_lags": int(lags),
         "mean": round(mean, 4),
         "median": round(float(y.median()), 4),
         "hit_pct": round(float((y > 0).mean() * 100), 2),
@@ -80,8 +178,13 @@ def rank_ic(
     forward_col: str,
     date_col: str = "date",
     min_symbols: int = 10,
+    horizon: int | None = None,
 ) -> dict:
     """Daily Spearman rank Information Coefficient (IC) with forward returns.
+
+    `horizon` sets the Newey-West lag used for the t-statistic (h-1). It is
+    inferred from `forward_col` when not given, because forgetting it is the
+    difference between a 5% false-positive rate and a 68% one.
 
     Parameters
     ----------
@@ -95,17 +198,23 @@ def rank_ic(
         Date column name.
     min_symbols : int
         Minimum symbols required in a session to compute IC.
+    horizon : int or None
+        Forward horizon in sessions. Inferred from `forward_col` if None.
 
     Returns
     -------
     dict
         Summary dictionary with mean_ic, std_ic, ic_ir, t_stat, etc.
     """
+    h = horizon if horizon is not None else horizon_from_column(forward_col)
+    lags = max(0, int(h) - 1)
+
     valid = df[[date_col, signal_col, forward_col]].dropna()
     if len(valid) == 0:
         return {
             "mean_ic": np.nan, "std_ic": np.nan, "ic_ir": np.nan,
-            "t_stat": np.nan, "positive_ic_pct": np.nan,
+            "t_stat": np.nan, "naive_t_stat": np.nan, "positive_ic_pct": np.nan,
+            "horizon": int(h), "hac_lags": lags,
             "n_sessions": 0, "n_obs": 0, "ic_series": pd.Series(dtype=float),
         }
 
@@ -120,7 +229,8 @@ def rank_ic(
     if n_sessions == 0:
         return {
             "mean_ic": np.nan, "std_ic": np.nan, "ic_ir": np.nan,
-            "t_stat": np.nan, "positive_ic_pct": np.nan,
+            "t_stat": np.nan, "naive_t_stat": np.nan, "positive_ic_pct": np.nan,
+            "horizon": int(h), "hac_lags": lags,
             "n_sessions": 0, "n_obs": len(valid),
             "ic_series": pd.Series(dtype=float),
         }
@@ -128,7 +238,14 @@ def rank_ic(
     mean_ic = float(ic_by_date.mean())
     std_ic = float(ic_by_date.std()) if n_sessions > 1 else np.nan
     ic_ir = (mean_ic / std_ic * np.sqrt(250)) if std_ic and std_ic > 0 else np.nan
-    t_stat = (mean_ic / (std_ic / np.sqrt(n_sessions))) if std_ic and std_ic > 0 else np.nan
+
+    # The IC series is autocorrelated whenever the label overlaps, so the
+    # headline t-statistic is Newey-West. The naive one is kept beside it
+    # because the gap between them is itself worth seeing.
+    hac_var = _hac_var_of_mean(ic_by_date.to_numpy(), lags)
+    hac_se = float(np.sqrt(hac_var)) if np.isfinite(hac_var) and hac_var > 0 else np.nan
+    t_stat = (mean_ic / hac_se) if hac_se and hac_se > 0 else np.nan
+    naive_t = (mean_ic / (std_ic / np.sqrt(n_sessions))) if std_ic and std_ic > 0 else np.nan
     pos_pct = float((ic_by_date > 0).mean() * 100)
 
     return {
@@ -136,6 +253,12 @@ def rank_ic(
         "std_ic": round(std_ic, 4) if np.isfinite(std_ic) else np.nan,
         "ic_ir": round(ic_ir, 2) if np.isfinite(ic_ir) else np.nan,
         "t_stat": round(t_stat, 2) if np.isfinite(t_stat) else np.nan,
+        "naive_t_stat": round(naive_t, 2) if np.isfinite(naive_t) else np.nan,
+        "horizon": int(h),
+        "hac_lags": lags,
+        # Non-overlapping blocks behind the t-statistic. The HAC correction
+        # cannot manufacture independent observations that are not there.
+        "effective_n": int(n_sessions // max(1, int(h))),
         "positive_ic_pct": round(pos_pct, 2),
         "n_sessions": int(n_sessions),
         "n_obs": int(len(valid)),
@@ -156,12 +279,13 @@ def ic_decay(
         col = forward_col_template.format(h=h)
         if col not in df.columns:
             continue
-        res = rank_ic(df, signal_col, col, date_col=date_col)
+        res = rank_ic(df, signal_col, col, date_col=date_col, horizon=h)
         rows.append({
             "horizon": h,
             "mean_ic": res["mean_ic"],
             "ic_ir": res["ic_ir"],
             "t_stat": res["t_stat"],
+            "naive_t_stat": res["naive_t_stat"],
             "positive_ic_pct": res["positive_ic_pct"],
             "n_sessions": res["n_sessions"],
         })
@@ -179,6 +303,8 @@ def quantile_profile(
     q: int = 5,
     date_col: str = "date",
     min_symbols_per_date: int = 10,
+    horizon: int | None = None,
+    seed: int = 0,
 ) -> dict:
     """Within-session quantile profiling: Q1..Qq returns, monotonicity, spread.
 
@@ -187,22 +313,55 @@ def quantile_profile(
     q : int
         Number of buckets (5 for quintiles, 10 for deciles). Q1 is lowest score,
         Qq is highest score.
+    horizon : int or None
+        Forward horizon, for the overlap correction on the spread's
+        t-statistic. Inferred from `forward_col` when None.
+    seed : int
+        Tie-break seed. Ties are split at random rather than collapsed, so
+        buckets are always equal-sized — see below.
+
+    ON TIES
+    This used to bucket with `pd.qcut(..., duplicates="drop")`, which silently
+    renumbers when a session has fewer distinct values than buckets. On a
+    tie-heavy session the *top* bucket then came back labelled Q3 and never
+    entered Q5, while Q1 pooled 66% of the names against 20% on a clean
+    session — measured at Q1 n=4157 against Q5 n=1000 on a mixed frame. Since
+    the quantile plot is the headline visual, an unequal and mislabelled one is
+    worse than useless.
+
+    Ties are now broken at random (seeded, so runs reproduce) and buckets are
+    always exactly `q` and equal-sized. `tie_pct` reports how much of the
+    bucketing that arbitration is carrying.
     """
     valid = df[[date_col, signal_col, forward_col]].dropna().copy()
     if len(valid) < q * 10:
         return {
             "quantiles": [],
-            "spread_q_top_minus_bottom": np.nan,
+            "spread_pct": np.nan,
+            "spread_bps": np.nan,
             "spread_t": np.nan,
+            "spread_naive_t": np.nan,
             "monotonicity": np.nan,
+            "tie_pct": np.nan,
             "q_count": q,
         }
 
-    # Form quantiles per session
+    h = horizon if horizon is not None else horizon_from_column(forward_col)
+    lags = max(0, int(h) - 1)
+    rng = np.random.default_rng(seed)
+
+    # How much of the cross-section is tied, before anything is decided?
+    tie_pct = float(valid.groupby(date_col)[signal_col]
+                    .transform(lambda s: s.duplicated(keep=False)).mean() * 100)
+
     def _assign_q(s: pd.Series) -> pd.Series:
-        if len(s) < max(min_symbols_per_date, q):
+        n = len(s)
+        if n < max(min_symbols_per_date, q):
             return pd.Series(np.nan, index=s.index)
-        return pd.qcut(s, q, labels=False, duplicates="drop")
+        order = pd.Series(rng.permutation(n), index=s.index)
+        ranked = pd.DataFrame({"s": s, "t": order}).sort_values(["s", "t"])
+        buckets = np.ceil((np.arange(n) + 1) / n * q).astype(int) - 1
+        return pd.Series(buckets, index=ranked.index).reindex(s.index)
 
     valid["q_bucket"] = valid.groupby(date_col)[signal_col].transform(_assign_q)
     valid = valid.dropna(subset=["q_bucket"]).copy()
@@ -213,7 +372,7 @@ def quantile_profile(
     bucket_means = []
     for b in range(1, q + 1):
         sub = valid[valid["q_bucket"] == b]
-        cs = cluster_stats(sub[forward_col], sub[date_col])
+        cs = cluster_stats(sub[forward_col], sub[date_col], lags=lags)
         cs["bucket"] = b
         cs["name"] = f"Q{b}"
         q_stats.append(cs)
@@ -233,11 +392,17 @@ def quantile_profile(
         daily_spread = daily_spread.dropna()
         spread_mean = float(daily_spread.mean())
         spread_std = float(daily_spread.std())
-        spread_t = (spread_mean / (spread_std / np.sqrt(len(daily_spread)))) if spread_std > 0 else np.nan
+        # Overlapping labels make the daily spread series autocorrelated too.
+        sv = _hac_var_of_mean(daily_spread.to_numpy(), lags)
+        spread_se = float(np.sqrt(sv)) if np.isfinite(sv) and sv > 0 else np.nan
+        spread_t = (spread_mean / spread_se) if spread_se and spread_se > 0 else np.nan
+        spread_naive_t = (spread_mean / (spread_std / np.sqrt(len(daily_spread)))) \
+            if spread_std > 0 else np.nan
         spread_bps = round(spread_mean * 100, 1)  # 1% = 100 bps
     else:
         spread_mean = np.nan
         spread_t = np.nan
+        spread_naive_t = np.nan
         spread_bps = np.nan
 
     return {
@@ -246,6 +411,10 @@ def quantile_profile(
         "spread_pct": round(spread_mean, 4) if np.isfinite(spread_mean) else np.nan,
         "spread_bps": spread_bps,
         "spread_t": round(spread_t, 2) if np.isfinite(spread_t) else np.nan,
+        "spread_naive_t": round(spread_naive_t, 2) if np.isfinite(spread_naive_t) else np.nan,
+        "horizon": int(h),
+        "hac_lags": lags,
+        "tie_pct": round(tie_pct, 1),
         "q_count": q,
     }
 
@@ -325,6 +494,7 @@ def stratify_by_group(
     group_col: str,
     date_col: str = "date",
     min_obs: int = 50,
+    horizon: int | None = None,
 ) -> list[dict]:
     """Evaluates IC and Q5-Q1 spread broken down by a conditioning variable."""
     if group_col not in df.columns:
@@ -339,8 +509,10 @@ def stratify_by_group(
         if len(sub) < min_obs:
             continue
 
-        ic_res = rank_ic(sub, signal_col, forward_col, date_col=date_col)
-        qp = quantile_profile(sub, signal_col, forward_col, q=5, date_col=date_col)
+        ic_res = rank_ic(sub, signal_col, forward_col, date_col=date_col,
+                         horizon=horizon)
+        qp = quantile_profile(sub, signal_col, forward_col, q=5,
+                              date_col=date_col, horizon=horizon)
 
         rows.append({
             "group": str(g),

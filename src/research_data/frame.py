@@ -176,35 +176,54 @@ def forward_return(
     df: pd.DataFrame,
     horizon: int,
     version: str = "v1",
-    entry_col: str = "close",
+    entry: str = "close",
     bars: pd.DataFrame | None = None,
+    max_staleness: int = 3,
 ) -> pd.Series:
-    """Compute forward returns for a dated panel.
+    """Forward return over exactly `horizon` **market sessions**.
 
-    This is the only way to obtain the future, and it checks the horizon
-    against the split's purge budget before computing anything.
+    The only way to obtain the future, and it checks the horizon against the
+    split's purge budget before computing anything.
+
+    TWO THINGS THIS GETS RIGHT THAT THE OBVIOUS IMPLEMENTATION DOES NOT
+
+    1. **Sessions, not rows.** `groupby("symbol").shift(-horizon)` takes the
+       20th *traded bar*, which for a thinly traded or suspended name can be
+       months away. Measured on the real panel: 1.49% of rows had a 20-bar
+       label spanning more than 20 sessions, the worst spanning 1,404 — and
+       3,681 of them reached across a purged boundary into a
+       higher-priority partition. The purge is defined in market sessions, so
+       the label has to be too, or the purge does not bind.
+
+    2. **The entry is date D's own price.** The as-of panel's `close` column is
+       *D-1's* close by construction, so using it made a "5-day" label span six
+       sessions and swallow date D's entire move. On RELIANCE 2022-08-02 that
+       read +0.2971% where the D-close-to-D+5 return was -0.0832% — opposite
+       sign. Entry prices come from the bars here, never from the panel, so the
+       label means the same thing whatever frame is passed in.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        Must have 'symbol' and 'date' columns.
     horizon : int
-        Number of sessions forward.
-    version : str
-        Split version — used to check the horizon is within purge budget.
-    entry_col : str
-        Column in `df` to use as the entry price. Default "close".
-    bars : pd.DataFrame or None
-        Adjusted daily bars. Loaded from disk if not provided.
+        Sessions forward. Checked against the split's purge budget.
+    entry : {"close", "open"}
+        Price on date D to enter at. "close" is the canonical label (AGENTS.md
+        quotes the day-D close to D+h segment); "open" is available because a
+        signal known as-of the open is tradeable there.
+    max_staleness : int
+        If the symbol did not trade on session D+horizon, use its last traded
+        close within this many sessions. Never looks forward. 0 disables it.
 
     Returns
     -------
     pd.Series
-        Forward return in percent, aligned to df's index. NaN where
-        incomplete.
+        Forward return in percent, aligned to df's index, NaN where the label
+        cannot be formed.
     """
     manifest = splits.load(version)
     splits.check_horizon(horizon, manifest)
+    if entry not in ("close", "open"):
+        raise FrameError(f"entry must be 'close' or 'open', got {entry!r}")
 
     if bars is None:
         if not BARS_ADJ_PATH.exists():
@@ -213,27 +232,43 @@ def forward_return(
                 "  python -m src.cli sync-nse && python -m src.cli "
                 "sync-corp-actions")
         bars = pd.read_parquet(
-            BARS_ADJ_PATH,
-            columns=["symbol", "date", "close"])
+            BARS_ADJ_PATH, columns=["symbol", "date", "open", "close"])
 
-    b = bars.sort_values(["symbol", "date"]).reset_index(drop=True)
-    fwd_close = b.groupby("symbol", sort=False)["close"].shift(-horizon)
+    b = bars.copy()
+    b["date"] = pd.to_datetime(b["date"])
 
-    fwd = pd.DataFrame({
-        "symbol": b["symbol"].to_numpy(),
-        "date": b["date"].to_numpy(),
-        f"fwd_close_{horizon}": fwd_close.to_numpy(),
-        "n_fwd": b.groupby("symbol", sort=False).cumcount(
-            ascending=False).to_numpy(),
-    })
+    # Dense session x symbol matrices. The market calendar comes from the bars
+    # themselves because NSE trades some weekends and skips some weekdays; a
+    # generated calendar is wrong in both directions.
+    close_px = b.pivot(index="date", columns="symbol", values="close")
+    entry_px = close_px if entry == "close" else b.pivot(
+        index="date", columns="symbol", values="open")
 
-    d = df.merge(fwd, on=["symbol", "date"], how="left")
-    complete = d["n_fwd"] >= horizon
-    entry = d[entry_col].where(d[entry_col] > 0)
-    ret = ((d[f"fwd_close_{horizon}"] / entry - 1) * 100).where(complete)
+    # Exits may use the last traded price within `max_staleness` sessions, so a
+    # single untraded session does not discard the label. Entries may not: you
+    # cannot buy at a price that did not trade.
+    exit_src = close_px.ffill(limit=max_staleness) if max_staleness else close_px
+    exit_px = exit_src.shift(-horizon)
 
-    return pd.Series(ret.to_numpy(), index=df.index,
-                     name=f"fwd_ret_{horizon}d_pct")
+    cal = close_px.index
+    date_ix = pd.Series(np.arange(len(cal)), index=cal)
+    sym_ix = pd.Series(np.arange(len(close_px.columns)), index=close_px.columns)
+
+    d = pd.to_datetime(df["date"])
+    i = d.map(date_ix).to_numpy()
+    j = df["symbol"].map(sym_ix).to_numpy()
+    ok = pd.notna(i) & pd.notna(j)
+
+    out = np.full(len(df), np.nan)
+    if ok.any():
+        ii = i[ok].astype(int)
+        jj = j[ok].astype(int)
+        e = entry_px.to_numpy()[ii, jj]
+        x = exit_px.to_numpy()[ii, jj]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            out[ok] = np.where(e > 0, (x / e - 1.0) * 100.0, np.nan)
+
+    return pd.Series(out, index=df.index, name=f"fwd_ret_{horizon}d_pct")
 
 
 # ---------------------------------------------------------------------------

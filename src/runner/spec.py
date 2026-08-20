@@ -82,9 +82,18 @@ def validate_spec(
             f"Invalid role {spec.role!r}; must be one of {VALID_ROLES}."
         )
 
-    # Verify hypothesis exists or can be found in store
+    # The hypothesis must be registered. Defaulting an unknown id to a
+    # "general" family granted it confirmatory access to spent quarters,
+    # because no prior read is recorded against a family that does not exist —
+    # the exact inverse of the stated rule that ambiguous lineage blocks.
     h = store.get_hypothesis(spec.hypothesis_id)
-    family = h.family if h else "general"
+    if h is None:
+        raise SpecValidationError(
+            f"hypothesis {spec.hypothesis_id!r} is not in the store. Lineage "
+            "cannot be established, so the data budget cannot be checked. "
+            "Register the hypothesis (and its edges) before dispatching an "
+            "experiment against it — when lineage is ambiguous, block.")
+    family = h.family
 
     # Get active quarters for this partition
     manifest = splits.load(spec.dataset_version)

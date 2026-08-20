@@ -228,6 +228,23 @@ and quote the **day-D close → D+h** segment separately.
 - **A permutation null over a scan must shuffle the outcome within date.**
   Shuffling date-level means while leaving within-date deviations attached
   preserves the cross-sectional signal being tested and cannot reject anything.
+- **Overlapping forward windows inflate every t-statistic, and clustering does
+  not fix it.** A return over [t, t+h] shares h-1 days with the next one, so a
+  daily IC series or a daily long-short spread is autocorrelated by
+  construction. Measured on a null with *zero* predictive power: at h=20 the
+  uncorrected t had a standard deviation of 5.1 instead of 1 and rejected at
+  |t|>2 in **68%** of runs; at h=5, 37%. This is a *second* inflation on top of
+  H016 — clustering by session fixes the cross-section within a day, this fixes
+  the serial overlap across days, and a long-horizon claim needs both.
+  `diagnostics.rank_ic`, `quantile_profile` and `cluster_stats(lags=...)` apply
+  a Hansen-Hodrick (rectangular, lag h-1) correction and report the naive
+  statistic beside it. Bartlett tapers away exactly the terms that carry the
+  correction and is measurably worse here.
+- **The correction cannot invent independent observations.** At h=20 over 400
+  sessions there are ~20 non-overlapping blocks and residual over-rejection is
+  8-13%. `rank_ic` reports `effective_n`; read a marginal long-horizon t
+  against it. On real data this matters: `rs_60d_vs_mkt` on train reads naive
+  t=-3.26 at h=5 and HAC t=-1.55 — significant becomes not.
 - **A significant contrast is not a large one.** Phase 2.8's top feature has
   |t| = 4.3 over 2,446 matched sets and a win-rate lift of **1.06x**. A paired
   design detects shifts far below anything tradeable. Always report the effect in
@@ -244,6 +261,23 @@ and quote the **day-D close → D+h** segment separately.
 
 ## Evaluation conventions
 
+- **Divide the book by every slot it can hold, not by `top_k`.** The canonical
+  construction opens a new cohort of `top_k` names every session and holds each
+  for `holding_sessions`, so `top_k * holding_sessions` positions are open at
+  steady state. Dividing by `top_k` runs it at `holding_sessions` leverage —
+  it reported **334% CAGR on a universe compounding at 28.4%** at hold=10, and
+  4600% at hold=20, while Sharpe looked fine because Sharpe is scale-invariant.
+  A long-only book cannot out-compound every one of its constituents; if it
+  does, the arithmetic is wrong.
+- **Benchmark a partition-restricted book against both benchmarks.** On a
+  shuffled split the test partition is non-contiguous, so the book sits in cash
+  between quarters while a buy-and-hold index compounds straight through.
+  `canonical_backtest` reports `market_benchmark` (invested throughout) and
+  `market_benchmark_matched` (same cash pattern as the book); quoting only the
+  first is not a comparison.
+- **A market benchmark with too few priced names is unknown, not flat.** A
+  silent 0.0% benchmark makes every signal look like alpha. Same `ret_guard`
+  (0.6) and minimum breadth (50 names) as `context._daily_returns`.
 - **Charge a book for its cash.** Annualise across the calendar span with cash
   sessions counted at zero, not over the sessions the book happens to hold
   something — that flatters any rule that goes flat. `family.span_stats` is
@@ -315,6 +349,24 @@ project's research ledger and outlives any single refactor.
 - **`research_data` is the only door.** No experiment, report or worker opens a
   data file directly; if something is missing, add it to the module.
 - **Partitions, never date ranges.**
+- **Forward labels are counted in market sessions, and start at date D.**
+  `groupby(symbol).shift(-h)` takes the h-th *traded bar*, which for a
+  suspended name can be years away — 1.49% of rows spanned more than 20
+  sessions, the worst 1,404, and 3,681 of them reached across a purged
+  boundary. The purge is defined in sessions, so the label must be too or the
+  purge does not bind. And the entry price comes from the bars, never from the
+  panel: the as-of panel's `close` is *D-1's*, which made a "5-day" label span
+  six sessions and swallow date D's own move (RELIANCE 2022-08-02 read +0.297%
+  where D-close to D+5 was -0.083%).
+- **A guard not called from the path it guards is documentation.** The
+  catalogue knew `size_tier_rank` was unscorable and `evaluate_signal` scored
+  it anyway. Guards belong at the chokepoint: `alpha_eval.guards.assert_scorable`
+  runs inside `evaluate_signal` and `canonical_backtest`, and the ledger check
+  runs inside `validate_spec`.
+- **An unregistered hypothesis is blocked, not defaulted.** Resolving an
+  unknown id to a "general" family granted it confirmatory access to spent
+  quarters, because nothing is recorded against a family that does not exist.
+  Register the hypothesis and its edges first.
 - Thresholds live on config objects — never hardcode a belief.
 - Daily panel order is **renames → corporate actions → indicators**, and it
   matters: adjusting before merging bakes a fake step into every handover.
@@ -326,6 +378,6 @@ project's research ledger and outlives any single refactor.
 - Long pulls run on the server (`user@server`) under tmux via
   `scripts/run_pull.sh`; resumable from the manifest. Watch the **log timestamp**,
   not the process list — a hung pull never exits and the supervisor cannot see it.
-- `.venv/bin/python -m pytest tests/ -q` — keep green (237 tests). Tests marked
+- `.venv/bin/python -m pytest tests/ -q` — keep green (352 tests). Tests marked
   `network` hit live NSE and are deselected by default; run with `-m network`.
   Leakage tests are part of the suite, not optional extras.

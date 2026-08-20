@@ -99,11 +99,29 @@ class SplitError(RuntimeError):
 # Phase 3 (H033) and Phase 4 (H037).
 PRIOR_EXPOSURE: tuple[tuple[str, str, str, str], ...] = (
     ("2020-12-29", "2023-08-18", "opening_window", "confirmatory"),   # H033
+    # H033 froze and ran *H024 and H026* against the holdout, and both are
+    # filed under `discovery`. Recording only `opening_window` left the two
+    # rules that actually spent 2020-2023 as the two the ledger would let
+    # back in — the gate reported ALLOWED for a confirmatory H024 read.
+    ("2020-12-29", "2023-08-18", "discovery", "confirmatory"),        # H033
     ("2020-04-27", "2023-08-18", "resilience", "confirmatory"),       # H037
     ("2023-08-21", "2026-08-18", "opening_window", "exploratory"),
     ("2023-08-21", "2026-08-18", "resilience", "exploratory"),
+    ("2023-08-21", "2026-08-18", "discovery", "exploratory"),
     ("2023-08-21", "2026-08-18", "phase2_discovery", "exploratory"),
 )
+
+
+def exposure_version() -> str:
+    """Fingerprint of the exposure table.
+
+    Exposure is *knowledge about what was read*, and knowledge gets corrected —
+    unlike the split assignment, which is a commitment. So the frozen manifest
+    keeps a readable snapshot of it, but the ledger reseeds from this table
+    whenever the fingerprint changes, and the table is the authority.
+    """
+    raw = json.dumps(PRIOR_EXPOSURE, sort_keys=True).encode()
+    return hashlib.sha256(raw).hexdigest()[:12]
 
 
 @dataclass(frozen=True)
@@ -418,6 +436,9 @@ def build(cfg: SplitConfig | None = None, sess: pd.DatetimeIndex | None = None,
     before = {s: int((raw == s).sum()) for s in SETS}
     q_counts = {s: int((meta["set"] == s).sum()) for s in SETS}
 
+    # NOTE: `prior_exposure` below is a snapshot for readability. The ledger
+    # reseeds from `PRIOR_EXPOSURE` live (see `exposure_version`), so a
+    # correction to what was read does not require redrawing a frozen split.
     qrows = []
     for q in meta.itertuples():
         qrows.append({

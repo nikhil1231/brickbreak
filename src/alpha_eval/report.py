@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from . import diagnostics, neutralisation, backtest
+from .guards import assert_scorable
 
 
 def evaluate_signal(
@@ -29,8 +30,10 @@ def evaluate_signal(
     date_col: str = "date",
     symbol_col: str = "symbol",
     output_path: Path | None = None,
+    allow_unscorable: bool = False,
 ) -> dict:
     """Executes the standard alpha evaluation battery and emits a structured fingerprint."""
+    assert_scorable(signal_col, allow_unscorable=allow_unscorable)
     report = {
         "signal": signal_col,
         "primary_forward_col": forward_col,

@@ -14,9 +14,23 @@ import numpy as np
 import pandas as pd
 
 from .. import config
+from .guards import assert_scorable
 
 
 COST_PCT_ROUND_TRIP = 0.40
+
+# Bad-print guard and minimum breadth for the equal-weighted benchmark. Both
+# match `context._daily_returns`, so the benchmark here and the market regime
+# series elsewhere are the same object computed the same way.
+RET_GUARD = 0.6
+MKT_MIN_SYMBOLS = 50
+
+
+def _diff(a, b):
+    """Difference of two stats, NaN-safe — a missing stat is not a zero."""
+    if a is None or b is None or not np.isfinite(a) or not np.isfinite(b):
+        return np.nan
+    return round(float(a) - float(b), 2)
 
 
 @dataclass(frozen=True)
@@ -24,8 +38,9 @@ class BacktestConfig:
     top_k: int = 5
     holding_sessions: int = 10
     cost_pct: float = COST_PCT_ROUND_TRIP
-    entry_col: str = "close"      # or "open"
-    price_col: str = "close"
+    # The canonical construction marks positions on the adjusted close. Entry
+    # timing belongs to strategy research, not signal evaluation (PLAN.md
+    # §5.10), so it is deliberately not a knob here.
 
 
 def span_stats(daily_returns: np.ndarray, is_live: np.ndarray | None = None) -> dict:
@@ -83,6 +98,7 @@ def canonical_backtest(
     date_col: str = "date",
     symbol_col: str = "symbol",
     bars: pd.DataFrame | None = None,
+    allow_unscorable: bool = False,
 ) -> dict:
     """Runs standard canonical alpha backtest.
 
@@ -102,6 +118,7 @@ def canonical_backtest(
     dict
         Portfolio performance and aligned benchmark comparisons.
     """
+    assert_scorable(signal_col, allow_unscorable=allow_unscorable)
     cfg = cfg or BacktestConfig()
     valid = df[[date_col, symbol_col, signal_col]].dropna().copy()
     if len(valid) == 0:
@@ -130,7 +147,8 @@ def canonical_backtest(
     active_weights = np.zeros(n_total_sessions, dtype=float)
 
     # Build 2D price matrix for fast vector slicing (date x symbol)
-    b_piv = bars.pivot(index="date", columns="symbol", values="close").reindex(sessions)
+    b_piv = bars.pivot(index="date", columns="symbol",
+                       values="close").reindex(sessions)
     px_matrix = b_piv.to_numpy()
     sym_map = {sym: j for j, sym in enumerate(b_piv.columns)}
 
@@ -145,17 +163,21 @@ def canonical_backtest(
         if i0 is None or j is None:
             continue
 
-        # Look up price path for holding_sessions directly from matrix
+        # Price path over the holding window, kept ALIGNED to sessions. A
+        # non-traded session inside the window earns 0% and the position
+        # continues; compressing the NaNs out (as this once did) shifts every
+        # later return onto the wrong calendar session.
         i_end = min(i0 + cfg.holding_sessions + 1, n_total_sessions)
-        prices = px_matrix[i0:i_end, j]
-        prices = prices[np.isfinite(prices)]
-
-        if len(prices) < 2:
+        prices = px_matrix[i0:i_end, j].astype(float)
+        if len(prices) < 2 or not np.isfinite(prices[0]):
             continue
+        prices = pd.Series(prices).ffill().to_numpy()
 
-        # Compute daily simple returns over holding span
         daily_r = (prices[1:] / prices[:-1]) - 1.0
-        # Deduct entry cost on first bar, exit cost on last bar
+        daily_r = np.nan_to_num(daily_r, nan=0.0)
+        # Entry cost on the first bar, exit cost on the last. For a
+        # single-session hold both land on the same bar, which is correct:
+        # one round trip is charged once.
         daily_r[0] -= half_cost
         daily_r[-1] -= half_cost
 
@@ -163,34 +185,74 @@ def canonical_backtest(
         pnl[i0:i0 + h_actual] += daily_r
         active_weights[i0:i0 + h_actual] += 1.0
 
-    # Portfolio daily return = sum of trade PnLs / top_k (unfilled slots sit in cash at 0%)
-    port_daily_returns = pnl / cfg.top_k
+    # Capital is divided across every slot the construction can hold at once:
+    # a new cohort of `top_k` names each session, each held `holding_sessions`
+    # sessions, so `top_k * holding_sessions` positions are open at steady
+    # state. Dividing by `top_k` alone (as this once did) silently runs the
+    # book at `holding_sessions` times leverage — at hold=10 it reported 334%
+    # CAGR on a universe compounding at 28%. Unfilled slots sit in cash at 0%.
+    n_slots = cfg.top_k * cfg.holding_sessions
+    port_daily_returns = pnl / n_slots
     is_live = active_weights > 0
 
     port_stats = span_stats(port_daily_returns, is_live)
     if not port_stats:
         return {"error": "insufficient live sessions"}
+    port_stats["mean_exposure_pct"] = round(
+        float(np.mean(active_weights[is_live]) / n_slots * 100), 1) if is_live.any() else 0.0
 
-    # Benchmark 1: Buy-and-Hold Market Index over the identical span
-    # Compute market equal-weighted return per session
-    mkt_daily = bars.groupby("date")["close"].apply(
-        lambda s: np.nanmean(s.pct_change()) if len(s) > 1 else 0.0
-    ).reindex(sessions).fillna(0.0).to_numpy()
+    # Equal-weighted market return per session, on the same guard the rest of
+    # the project uses: a single unadjusted 10x print in a 1,600-name mean
+    # moves the index 0.6% on its own and would otherwise define a "regime"
+    # (context._daily_returns). Sessions with too few priced names are unknown,
+    # not flat, and are carried as 0 rather than inventing a number.
+    rets = b_piv.pct_change()
+    rets = rets.where(rets.abs() < RET_GUARD)
+    n_priced = rets.notna().sum(axis=1)
+    mkt = rets.mean(axis=1).where(n_priced >= MKT_MIN_SYMBOLS)
+    mkt = mkt.reindex(sessions)
 
-    # Or compute market simple return on priced closes
-    b_piv = bars.pivot(index="date", columns="symbol", values="close")
-    mkt_simple = b_piv.pct_change().mean(axis=1).reindex(sessions).fillna(0.0).to_numpy()
+    # A session with too few priced names has an unknown market return, not a
+    # flat one. If most of the span is unknown the benchmark is unavailable and
+    # says so — a silent 0.0% would read as "the market went nowhere" and make
+    # every signal look like alpha.
+    coverage = float(mkt.notna().mean())
+    benchmark_ok = coverage >= 0.5
+    mkt_simple = mkt.fillna(0.0).to_numpy()
 
-    mkt_stats = span_stats(mkt_simple, is_live)
+    # Two benchmarks, because on a non-contiguous partition they differ and
+    # neither alone is honest. `market_benchmark` is buy-and-hold, invested
+    # through every session of the span. `market_benchmark_matched` earns only
+    # on the sessions the book could be live, so it carries the same cash
+    # pattern the book is charged for.
+    if benchmark_ok:
+        mkt_stats = span_stats(mkt_simple, is_live)
+        mkt_stats["invested_pct"] = 100.0
+        mkt_stats.pop("deployed_pct", None)      # that field describes the book
+        mkt_matched = span_stats(np.where(is_live, mkt_simple, 0.0), is_live)
+        mkt_matched["invested_pct"] = round(float(is_live.mean() * 100), 1)
+        mkt_matched.pop("deployed_pct", None)
+    else:
+        unavailable = {
+            "unavailable": f"fewer than {MKT_MIN_SYMBOLS} priced names on "
+                           f"{100 * (1 - coverage):.0f}% of the span",
+            "session_coverage_pct": round(coverage * 100, 1),
+        }
+        mkt_stats = dict(unavailable)
+        mkt_matched = dict(unavailable)
 
     return {
         "config": {
             "top_k": cfg.top_k,
             "holding_sessions": cfg.holding_sessions,
             "cost_pct_round_trip": cfg.cost_pct,
+            "capital_slots": n_slots,
         },
         "portfolio": port_stats,
         "market_benchmark": mkt_stats,
-        "excess_cagr_pct": round(port_stats.get("cagr_pct", 0) - mkt_stats.get("cagr_pct", 0), 2),
-        "excess_sharpe": round(port_stats.get("sharpe", 0) - mkt_stats.get("sharpe", 0), 2),
+        "market_benchmark_matched": mkt_matched,
+        "excess_cagr_pct": _diff(port_stats.get("cagr_pct"), mkt_stats.get("cagr_pct")),
+        "excess_cagr_matched_pct": _diff(port_stats.get("cagr_pct"),
+                                         mkt_matched.get("cagr_pct")),
+        "excess_sharpe": _diff(port_stats.get("sharpe"), mkt_stats.get("sharpe")),
     }

@@ -19,6 +19,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 from .. import config
 from ..research_data import splits
 from . import store
@@ -53,28 +55,44 @@ class LedgerEntry:
 class SampleBudgetLedger:
     """Ledger tracking data consumption and enforcing confirmatory access permissions."""
 
-    def __init__(self, entries: list[LedgerEntry] | None = None) -> None:
+    def __init__(self, entries: list[LedgerEntry] | None = None,
+                 path: Path | None = None) -> None:
         self._entries: list[LedgerEntry] = entries or []
+        # A ledger remembers where it was loaded from. Without this, a ledger
+        # opened from an alternate path still saved to LEDGER_PATH, so any
+        # test or side experiment silently wrote into the production ledger.
+        self._path: Path | None = path
 
     @classmethod
     def load(cls, path: Path | None = None) -> SampleBudgetLedger:
         p = path or LEDGER_PATH
         if not p.exists():
-            # Initialise with historical prior exposure from splits.py
-            ledger = cls()
+            ledger = cls(path=p)
             ledger._init_historical_exposure()
             ledger.save(p)
             return ledger
 
         data = json.loads(p.read_text())
         entries = [LedgerEntry.from_dict(e) for e in data.get("entries", [])]
-        return cls(entries)
+
+        # If the exposure table has been corrected since this file was written,
+        # rebuild the HISTORICAL rows from it. Real experiment records are
+        # kept. A stale seed is how H024 came to be allowed back onto the
+        # holdout it spent.
+        if data.get("exposure_version") != splits.exposure_version():
+            ledger = cls([e for e in entries if e.hypothesis_id != "HISTORICAL"],
+                         path=p)
+            ledger._init_historical_exposure()
+            ledger.save(p)
+            return ledger
+        return cls(entries, path=p)
 
     def save(self, path: Path | None = None) -> Path:
-        p = path or LEDGER_PATH
+        p = path or self._path or LEDGER_PATH
         p.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "exposure_version": splits.exposure_version(),
             "n_entries": len(self._entries),
             "entries": [e.to_dict() for e in self._entries],
         }
@@ -82,20 +100,23 @@ class SampleBudgetLedger:
         return p
 
     def _init_historical_exposure(self) -> None:
-        """Seed ledger with historical exposure recorded in splits.PRIOR_EXPOSURE."""
+        """Seed the ledger from `splits.PRIOR_EXPOSURE`.
+
+        Read live from the exposure table rather than from the manifest's
+        embedded snapshot, so correcting what is known about a past read does
+        not require redrawing a frozen split.
+        """
         manifest = splits.load("v1")
         for q in manifest.get("quarters", []):
-            q_name = q["quarter"]
-            for exp in q.get("prior_exposure", []):
-                fam = exp["family"]
-                role = exp["role"]
-                # Add historical entry
+            start = pd.Timestamp(q["start"])
+            end = pd.Timestamp(q["end"])
+            for exp in splits.exposure_for(start, end):
                 self._entries.append(LedgerEntry(
                     hypothesis_id="HISTORICAL",
-                    family=fam,
-                    role=role,
+                    family=exp["family"],
+                    role=exp["role"],
                     partition=q.get("set", "unknown"),
-                    quarters=[q_name],
+                    quarters=[q["quarter"]],
                     manifest_hash="legacy",
                 ))
 

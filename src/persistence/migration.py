@@ -124,30 +124,11 @@ def migrate(save_to_store: bool = True) -> tuple[list[models.Hypothesis], ledger
     # Initialize and save the sample budget ledger
     l = ledger.SampleBudgetLedger.load()
 
-    # Record historical exposures for specific families
-    for h in hyps:
-        if h.family == "opening_window":
-            # H033 confirmatory holdout read
-            l.record_usage(
-                hypothesis_id=h.id,
-                family=h.family,
-                role="confirmatory" if h.id in ("H033", "H001") else "exploratory",
-                partition="test",
-                quarters=["2021Q1", "2021Q2", "2021Q3", "2021Q4", "2022Q1", "2022Q2", "2022Q3", "2022Q4", "2023Q1", "2023Q2"],
-                manifest_hash="legacy",
-                save_after=False,
-            )
-        elif h.family == "resilience":
-            # H037 confirmatory holdout read
-            l.record_usage(
-                hypothesis_id=h.id,
-                family=h.family,
-                role="confirmatory" if h.id == "H037" else "exploratory",
-                partition="test",
-                quarters=["2020Q2", "2020Q3", "2020Q4", "2021Q1", "2021Q2", "2021Q3", "2021Q4", "2022Q1", "2022Q2", "2022Q3", "2022Q4", "2023Q1", "2023Q2"],
-                manifest_hash="legacy",
-                save_after=False,
-            )
+    # Historical exposure is NOT re-recorded here. It is seeded from
+    # `splits.PRIOR_EXPOSURE` inside the ledger itself, which is the single
+    # authority. This block used to hardcode its own quarter lists and cover
+    # only two families, so `discovery` — which holds H024 and H026, the two
+    # rules H033 actually spent the holdout on — got no exposure at all.
 
     if save_to_store:
         l.save()

@@ -12,6 +12,8 @@ from . import backtest, diagnostics, neutralisation, report
 from .report import evaluate_signal
 
 __all__ = [
+    "ScoringGuardError",
+    "assert_scorable",
     "backtest",
     "diagnostics",
     "evaluate_signal",
