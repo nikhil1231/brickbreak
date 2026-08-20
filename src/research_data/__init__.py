@@ -17,9 +17,13 @@ for the rules that survive from the single-strategy era.
 
 Built so far:
 - `splits` — versioned, purged, quarter-level dataset partitions.
+- `catalogue` — machine-readable metadata for every feature, with PIT
+  validation, scoring guards and input-graph inheritance.
+- `frame` — point-in-time frame API: the main interface experiments use to
+  get daily data, forward returns and market regime, all partitioned.
 """
 from __future__ import annotations
 
-from . import splits
+from . import catalogue, frame, splits
 
-__all__ = ["splits"]
+__all__ = ["catalogue", "frame", "splits"]
