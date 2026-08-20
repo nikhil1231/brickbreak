@@ -58,6 +58,15 @@ Two rules that hold from now on, whatever the migration state:
   direct read. Three of this project's four lookaheads entered through ad-hoc
   parquet access.
 
+**The lab, end to end:** `python -m src.cli plan "<idea>"` proposes an
+experiment; `python -m src.cli job --hypothesis H0xx --question "..." --signal
+name` runs one in an isolated worktree with a Claude Code worker; `jobs`,
+`forward`, `burden` and `serve` inspect the results. The worker writes exactly
+one file — `job/signal.py` with `compute(df) -> Series` — and the harness runs
+from the canonical checkout, never from the worktree, so an agent cannot loosen
+the evaluation it is judged by. **The CLI must be installed:**
+`npm install -g @anthropic-ai/claude-code`, then `claude` once to log in.
+
 **Built so far:** `src/research_data/splits.py` — versioned, purged,
 quarter-level partitions, frozen as `data/metadata/split_v1_frozen.json`
 (hash `657db79f7d380880`). Select rows with `splits.assign(df)`, never with a
@@ -363,6 +372,26 @@ project's research ledger and outlives any single refactor.
   it anyway. Guards belong at the chokepoint: `alpha_eval.guards.assert_scorable`
   runs inside `evaluate_signal` and `canonical_backtest`, and the ledger check
   runs inside `validate_spec`.
+- **A bar has to be able to fail.** `spec.validate_pass_criterion` rejects a
+  threshold of zero — a sign test wearing a number's clothes, which is how H037
+  passed on -0.037% — and rejects anything inside transaction costs or inside
+  the noise.
+- **Count the questions, not just the answer.** A lab asking hundreds of cheap
+  questions of 27 quarters is a multiple-comparisons machine running slowly.
+  `runner.burden` records how many distinct signals a partition has already
+  been scored against and moves the bar with it (Šidák on the running count,
+  Benjamini-Hochberg across the set). At 50 tests the 5% bar is |t| > 3.28 and
+  92% of runs that far would throw up at least one hit by luck. It labels, it
+  does not veto — but "significant" must not quietly mean "significant among
+  the fifty things we tried". Voided results do not count.
+- **A result from a pipeline later found wrong is voided, not deleted.**
+  `store.void_exploration(id, reason)` hides it from anything that aggregates
+  and keeps it visible with the defect named. Nine explorations from before the
+  hot-path fixes are voided on exactly this basis.
+- **The forward lane is empty and that is normal.** `runner.forward.status()`
+  says so in words, because an interface that looks broken gets worked around.
+  Register a promoted signal with `forward.register(...)` and `forward.accrue()`
+  scores it on whatever sessions have arrived.
 - **An unregistered hypothesis is blocked, not defaulted.** Resolving an
   unknown id to a "general" family granted it confirmatory access to spent
   quarters, because nothing is recorded against a family that does not exist.
@@ -378,6 +407,6 @@ project's research ledger and outlives any single refactor.
 - Long pulls run on the server (`user@server`) under tmux via
   `scripts/run_pull.sh`; resumable from the manifest. Watch the **log timestamp**,
   not the process list — a hung pull never exits and the supervisor cannot see it.
-- `.venv/bin/python -m pytest tests/ -q` — keep green (352 tests). Tests marked
+- `.venv/bin/python -m pytest tests/ -q` — keep green (403 tests). Tests marked
   `network` hit live NSE and are deselected by default; run with `-m network`.
   Leakage tests are part of the suite, not optional extras.

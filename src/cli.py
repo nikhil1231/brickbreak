@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 from datetime import datetime
 
 from . import build_screen, config, estimate, fetch_sample, nse_archive, security_master
@@ -688,6 +689,107 @@ def cmd_split(args) -> int:
     return 0
 
 
+
+def cmd_plan(args) -> int:
+    """Turn a typed idea into an amendable experiment plan."""
+    from .runner import planner
+    from .research_data import frame
+
+    cols = None
+    if args.with_columns:
+        cols = list(frame.load_daily_panel(partition="train").columns)
+    plan = planner.propose(args.idea, columns=cols)
+
+    print(f"question   {plan.question}")
+    print(f"hypothesis {plan.hypothesis_id}   family {plan.family}")
+    if plan.rationale:
+        print(f"rationale  {plan.rationale}")
+    if plan.what_it_measures:
+        print(f"measures   {plan.what_it_measures}")
+    if plan.signal_sketch:
+        print(f"signal     {plan.signal_name}: {plan.signal_sketch}")
+    if plan.lineage:
+        print("lineage    " + ", ".join(
+            f"{e.get('relation')} -> {e.get('target_id')}" for e in plan.lineage))
+    print(f"bar        {plan.pass_criterion}")
+    print(f"falsified  {plan.falsification_condition}")
+    for w in plan.warnings:
+        print(f"WARNING    {w}")
+    if args.json:
+        print(json.dumps(plan.to_dict(), indent=2))
+    return 0
+
+
+def cmd_job(args) -> int:
+    """Dispatch one research job to a Claude Code worker in its own worktree."""
+    from .runner import agent, job as job_mod
+    from .runner.spec import ExperimentSpec
+
+    if not agent.available():
+        print(agent.INSTALL_HINT, file=sys.stderr)
+        return 2
+
+    spec = ExperimentSpec(
+        hypothesis_id=args.hypothesis, question=args.question,
+        signal_name=args.signal, partition=args.partition, role=args.role,
+        primary_horizon=args.horizon)
+    jb = job_mod.run_job(spec, timeout_s=args.timeout, max_turns=args.max_turns,
+                         model=args.model, keep_worktree=args.keep_worktree)
+    print(f"{jb.id}  {jb.state}  {jb.runtime_s}s  turns={jb.agent_turns}"
+          + (f"  ${jb.agent_cost_usd:.3f}" if jb.agent_cost_usd else ""))
+    if jb.error:
+        print(jb.error, file=sys.stderr)
+        return 1
+    result = json.loads(Path(jb.result_path).read_text())
+    print(f"\n{result['failure_class']}\n\n{result['interpretation']}")
+    m = result.get("multiplicity") or {}
+    if m:
+        print(f"\nmultiplicity: {m.get('note')}")
+    return 0
+
+
+def cmd_jobs(args) -> int:
+    from .runner import job as job_mod
+    jobs = job_mod.list_jobs()
+    if not jobs:
+        print("no jobs yet")
+        return 0
+    print(f"{'job':<22} {'state':<10} {'runtime':>8}  hypothesis  signal")
+    for j in jobs[:args.limit]:
+        print(f"{j.id:<22} {j.state:<10} {j.runtime_s:>7}s  "
+              f"{j.spec.get('hypothesis_id',''):<10}  {j.spec.get('signal_name','')}")
+    return 0
+
+
+def cmd_forward(args) -> int:
+    """Status of the chronological forward lane, and accrual into it."""
+    from .runner import forward
+    st = forward.status()
+    print(f"forward lane: {st['n_sessions']} sessions from {st['start']}, "
+          f"{st['n_registered']} signal(s) registered")
+    print(st["note"])
+    if args.accrue:
+        out = forward.accrue()
+        print(f"\naccrued {out['accrued']} result(s)")
+        for r in out.get("results", []):
+            print("  ", r)
+    return 0
+
+
+def cmd_burden(args) -> int:
+    """How many questions this partition has already been asked."""
+    from .runner import burden
+    s = burden.partition_summary(args.partition, q=args.fdr)
+    print(f"{args.partition}: {s['n_tests']} recorded test(s); "
+          f"a maximum over that many needs |t| > {s['sidak_bar']}")
+    print(f"surviving BH at q={s['fdr_q']}: {s['n_surviving_fdr']}")
+    for r in s["results"][:args.limit]:
+        mark = "keep" if r.get("survives_fdr") else "   -"
+        print(f"  {mark}  {r['hypothesis_id']:<8} {str(r['signal']):<24} "
+              f"t={r['t_stat']}")
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="src.cli", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -844,6 +946,40 @@ def main(argv=None) -> int:
     sp.add_argument("--force", action="store_true",
                     help="overwrite an existing frozen split — almost never right")
     sp.set_defaults(fn=cmd_split)
+
+    pl = sub.add_parser("plan", help="turn an idea into an experiment plan")
+    pl.add_argument("idea")
+    pl.add_argument("--with-columns", action="store_true",
+                    help="show the planner the available columns (slower)")
+    pl.add_argument("--json", action="store_true")
+    pl.set_defaults(fn=cmd_plan)
+
+    jb_ = sub.add_parser("job", help="run a Claude Code research job")
+    jb_.add_argument("--hypothesis", required=True)
+    jb_.add_argument("--question", required=True)
+    jb_.add_argument("--signal", required=True)
+    jb_.add_argument("--partition", default="train")
+    jb_.add_argument("--role", default="exploratory")
+    jb_.add_argument("--horizon", type=int, default=10)
+    jb_.add_argument("--timeout", type=int, default=1800)
+    jb_.add_argument("--max-turns", type=int, default=40)
+    jb_.add_argument("--model", default=None)
+    jb_.add_argument("--keep-worktree", action="store_true")
+    jb_.set_defaults(fn=cmd_job)
+
+    js = sub.add_parser("jobs", help="list research jobs")
+    js.add_argument("--limit", type=int, default=20)
+    js.set_defaults(fn=cmd_jobs)
+
+    fw = sub.add_parser("forward", help="forward-lane status and accrual")
+    fw.add_argument("--accrue", action="store_true")
+    fw.set_defaults(fn=cmd_forward)
+
+    bd = sub.add_parser("burden", help="multiple-comparisons load on a partition")
+    bd.add_argument("--partition", default="train")
+    bd.add_argument("--fdr", type=float, default=0.10)
+    bd.add_argument("--limit", type=int, default=25)
+    bd.set_defaults(fn=cmd_burden)
 
     orp = sub.add_parser("opening-report", help="quality report for fetched opening data")
     orp.set_defaults(fn=cmd_opening_report)

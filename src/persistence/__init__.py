@@ -17,6 +17,7 @@ from .ledger import BudgetExhaustedError, SampleBudgetLedger
 from .manifest import build_manifest, load_manifest, save_manifest, verify_manifest
 from .models import Edge, Evidence, Exploration, Hypothesis, IdeaGraph, Signal
 from .store import (
+    void_exploration,
     add_evidence,
     get_evidence,
     get_exploration,
@@ -34,6 +35,7 @@ from .store import (
 
 __all__ = [
     "BudgetExhaustedError",
+    "void_exploration",
     "Edge",
     "Evidence",
     "Exploration",

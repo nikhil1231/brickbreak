@@ -80,11 +80,36 @@ def get_exploration(id: str) -> Exploration | None:
     return Exploration.from_dict(json.loads(p.read_text()))
 
 
-def list_explorations(hypothesis_id: str | None = None) -> list[Exploration]:
+def void_exploration(id: str, reason: str) -> Exploration:
+    """Mark an exploration — and every piece of evidence from it — as void.
+
+    Used when the pipeline that produced a result is later found to be wrong.
+    Nothing is deleted: a wrong result that is quietly removed is a result the
+    next person will produce again.
+    """
+    from datetime import datetime as _dt
+    exp = get_exploration(id)
+    if exp is None:
+        raise KeyError(f"no exploration {id!r}")
+    exp.voided_reason = reason
+    exp.voided_date = _dt.now().strftime("%Y-%m-%d")
+    save_exploration(exp)
+    for ev in list_evidence(include_voided=True):
+        if ev.exploration_id == id and not ev.is_void:
+            ev.voided_reason = reason
+            ev.voided_date = exp.voided_date
+            add_evidence(ev)
+    return exp
+
+
+def list_explorations(hypothesis_id: str | None = None,
+                      include_voided: bool = False) -> list[Exploration]:
     _ensure_dirs()
     out = []
     for p in sorted(EXPLORATIONS_DIR.glob("*.json")):
         exp = Exploration.from_dict(json.loads(p.read_text()))
+        if exp.is_void and not include_voided:
+            continue
         if hypothesis_id and exp.hypothesis_id != hypothesis_id:
             continue
         out.append(exp)
@@ -142,11 +167,14 @@ def list_evidence(
     hypothesis_id: str | None = None,
     signal_id: str | None = None,
     role: str | None = None,
+    include_voided: bool = False,
 ) -> list[Evidence]:
     _ensure_dirs()
     out = []
     for p in sorted(EVIDENCE_DIR.glob("*.json")):
         ev = Evidence.from_dict(json.loads(p.read_text()))
+        if ev.is_void and not include_voided:
+            continue
         if hypothesis_id and ev.hypothesis_id != hypothesis_id:
             continue
         if signal_id and ev.signal_id != signal_id:

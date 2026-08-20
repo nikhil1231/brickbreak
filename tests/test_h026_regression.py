@@ -203,3 +203,121 @@ class TestH026ForwardReturns:
         assert top > bottom, \
             f"H026 signal should show top > bottom quintile returns on " \
             f"train, but got top={top:.3f}% vs bottom={bottom:.3f}%"
+
+
+# ---------------------------------------------------------------------------
+# numerical anchors — Stage A's real "done when"
+# ---------------------------------------------------------------------------
+
+_DATA_READY = (pd.io.common.Path("data/normalized/screen_metrics_asof.parquet").exists()
+               and pd.io.common.Path("data/normalized/daily_context.parquet").exists())
+
+
+@pytest.mark.skipif(not _DATA_READY, reason="requires built data files on disk")
+class TestH026NumericalRegression:
+    """The structural tests above prove the signal is *computable*. They do not
+    prove the module serves the same numbers the finding was computed from,
+    which is what Stage A actually claimed.
+
+    H026's headline (+1.73% a trade against the same-day pool, t=4.98) cannot
+    be re-measured here: it was taken on 2020-2023, which is now the `test`
+    partition and blocked for the `discovery` family that owns H026. Re-running
+    it would be the third read of a spent window. So this anchors two things
+    that can be checked without spending anything:
+
+    1. the new frame API serves *bit-identical* feature values to the legacy
+       path the finding was computed through;
+    2. the signal's fingerprint on `train` is pinned, so a silent change in the
+       data or the pipeline shows up as a failing test rather than as a
+       different answer next quarter.
+
+    A failure here means either the data was rebuilt or the pipeline moved.
+    Both are worth knowing about before trusting anything downstream.
+    """
+
+    # Measured 2026-08-20 on split v1 (hash 657db79f7d380880) after the
+    # hot-path fixes. Tolerances are loose enough for float noise and tight
+    # enough that a real change trips them.
+    ANCHOR = {
+        "rows": 1_400_086,
+        "sessions": 705,
+        "mean_ic": 0.0072,
+        "hac_t": 0.61,
+        "effective_n": 70,
+        "spread_bps": 26.9,
+        "monotonicity": 0.9,
+        "coverage": 0.9252,
+    }
+
+    @pytest.fixture(scope="class")
+    def scored(self):
+        from src.research_data import frame
+        p = frame.load_daily_panel(partition="train", include_context=True)
+        d = p.dropna(subset=["rs_60d_vs_mkt", "sector_breadth"]).copy()
+        for c in ("rs_60d_vs_mkt", "sector_breadth"):
+            d[f"{c}_p"] = d.groupby("date")[c].rank(pct=True)
+        d["h026"] = (d["rs_60d_vs_mkt_p"] + d["sector_breadth_p"]) / 2
+        d["fwd_ret_10d_pct"] = frame.forward_return(d, 10)
+        return p, d
+
+    def test_frame_api_matches_the_legacy_path_exactly(self, scored):
+        """The finding was computed off `context.load()`. If the module serves
+        different numbers, nothing downstream inherits the old evidence."""
+        from src import context
+        _, d = scored
+        ctx, _ = context.load()
+        ctx["date"] = pd.to_datetime(ctx["date"])
+        samp = d.sample(3000, random_state=0)[["symbol", "date", "rs_60d_vs_mkt"]]
+        m = samp.merge(ctx[["symbol", "date", "rs_60d_vs_mkt"]],
+                       on=["symbol", "date"], how="left",
+                       suffixes=("_new", "_legacy"))
+        assert m["rs_60d_vs_mkt_legacy"].notna().all(), \
+            "the frame API served rows the legacy context panel does not have"
+        assert (m["rs_60d_vs_mkt_new"] - m["rs_60d_vs_mkt_legacy"]).abs().max() == 0.0
+
+    def test_coverage_anchor(self, scored):
+        p, d = scored
+        assert abs(len(d) / len(p) - self.ANCHOR["coverage"]) < 0.01
+        assert abs(len(d) - self.ANCHOR["rows"]) < 0.01 * self.ANCHOR["rows"]
+
+    def test_ic_anchor(self, scored):
+        from src.alpha_eval import diagnostics
+        _, d = scored
+        ic = diagnostics.rank_ic(d, "h026", "fwd_ret_10d_pct", horizon=10)
+        assert ic["n_sessions"] == self.ANCHOR["sessions"]
+        assert abs(ic["mean_ic"] - self.ANCHOR["mean_ic"]) < 0.002
+        assert abs(ic["t_stat"] - self.ANCHOR["hac_t"]) < 0.25
+        assert ic["effective_n"] == self.ANCHOR["effective_n"]
+
+    def test_quantile_anchor(self, scored):
+        from src.alpha_eval import diagnostics
+        _, d = scored
+        qp = diagnostics.quantile_profile(d, "h026", "fwd_ret_10d_pct", q=5,
+                                          horizon=10)
+        assert abs(qp["spread_bps"] - self.ANCHOR["spread_bps"]) < 5.0
+        assert abs(qp["monotonicity"] - self.ANCHOR["monotonicity"]) < 0.15
+
+    def test_the_finding_is_not_significant_on_train(self, scored):
+        """Recorded deliberately. H026's surviving claim was about selection
+        against the same-day pool on 2020-2023, not a cross-sectional IC on
+        2023-2026, and this anchor should not be mistaken for a replication."""
+        from src.alpha_eval import diagnostics
+        _, d = scored
+        ic = diagnostics.rank_ic(d, "h026", "fwd_ret_10d_pct", horizon=10)
+        assert abs(ic["t_stat"]) < 2.0
+
+    def test_forward_return_matches_a_hand_computed_label(self, scored):
+        """The label the anchor rests on, checked against the bars directly."""
+        from src.research_data import frame
+        _, d = scored
+        bars = pd.read_parquet("data/normalized/daily_bars_adj.parquet",
+                               columns=["symbol", "date", "close"])
+        bars["date"] = pd.to_datetime(bars["date"])
+        sym = "RELIANCE"
+        b = bars[bars.symbol == sym].sort_values("date").reset_index(drop=True)
+        rows = d[d.symbol == sym].sort_values("date").iloc[[100, 300, 500]]
+        got = frame.forward_return(rows, 10).to_numpy()
+        for k, (_, r) in enumerate(rows.iterrows()):
+            i = b.index[b.date == pd.Timestamp(r["date"])][0]
+            want = (b.close[i + 10] / b.close[i] - 1) * 100
+            assert abs(got[k] - want) < 1e-9

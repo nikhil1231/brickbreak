@@ -678,6 +678,14 @@ research of any kind, execution.
 | **D. Automation** | experiment spec, job runner, Claude Code worker, result schema | a job dispatched from a spec runs end-to-end unattended and ingests cleanly |
 | **E. Interface** | Explore console, hypothesis pages, signal compare | a vague sentence becomes a plan, a run, and an interpretation without touching a terminal |
 
+**Status 2026-08-20.** All five stages are built and the v1 list is complete.
+Stage A-E shipped, then six hot-path defects were found on review and fixed
+(commit `3a10a40`); the nine explorations produced before that fix are voided
+rather than deleted. The Claude Code job runner, the planner, written
+interpretation, lab-level multiplicity accounting and the forward-lane accrual
+followed. What remains is not construction: install the CLI
+(`npm install -g @anthropic-ai/claude-code`), and wait for forward sessions.
+
 Stage A is the one that must not be rushed. Everything downstream inherits its
 guarantees, and this project's entire failure history is a history of Stage A
 defects. Within Stage A, the split is the irreversible part — every result the

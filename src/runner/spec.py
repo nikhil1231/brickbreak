@@ -22,6 +22,48 @@ class SpecValidationError(RuntimeError):
     pass
 
 
+# A bar has to be able to fail. "Both horizons negative" was satisfied by
+# -0.037% — a number indistinguishable from zero — and H037 scored a PASS it
+# had not earned. `family.PASS_CRITERION` got this right by demanding a
+# *fraction of the exploration effect retained*; a threshold of zero is a sign
+# test wearing a number's clothes.
+MIN_MEANINGFUL = {
+    "min_mean_ic": 0.005,        # below this an IC is not actionable
+    "min_spread_bps": 10.0,      # 10 bps is inside one round trip of cost
+    "min_monotonicity": 0.3,
+    "min_retained_fraction": 0.2,
+}
+
+
+def validate_pass_criterion(criterion: dict[str, float]) -> None:
+    """Reject a bar that cannot fail, or that is a sign test (H037)."""
+    if not criterion:
+        raise SpecValidationError(
+            "no pass criterion. Freeze one before dispatch, in units of the "
+            "effect — a bar written after the result is not a bar.")
+
+    unknown = [k for k in criterion if k not in MIN_MEANINGFUL]
+    if unknown:
+        raise SpecValidationError(
+            f"unrecognised pass-criterion keys {unknown}; expected any of "
+            f"{sorted(MIN_MEANINGFUL)}")
+
+    for key, floor in MIN_MEANINGFUL.items():
+        if key not in criterion:
+            continue
+        val = criterion[key]
+        if val is None or not isinstance(val, (int, float)):
+            raise SpecValidationError(f"{key} must be a number, got {val!r}")
+        if val <= 0:
+            raise SpecValidationError(
+                f"{key}={val} is a sign test, not a bar. Any positive number "
+                f"passes it, including one indistinguishable from zero (H037).")
+        if val < floor:
+            raise SpecValidationError(
+                f"{key}={val} is below {floor}, which is inside the noise or "
+                f"inside transaction costs. Set a bar you would act on.")
+
+
 @dataclass
 class ExperimentSpec:
     """The contract defining an exploration run."""
@@ -81,6 +123,8 @@ def validate_spec(
         raise SpecValidationError(
             f"Invalid role {spec.role!r}; must be one of {VALID_ROLES}."
         )
+
+    validate_pass_criterion(spec.pass_criterion)
 
     # The hypothesis must be registered. Defaulting an unknown id to a
     # "general" family granted it confirmatory access to spent quarters,

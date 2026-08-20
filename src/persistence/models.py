@@ -112,6 +112,16 @@ class Exploration:
     signals_produced: list[str] = field(default_factory=list)
     manifest_hash: str = ""
     created_date: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d"))
+    # A result produced by a pipeline later found to be wrong is not deleted.
+    # It is annotated with what the defect was and excluded from anything that
+    # aggregates, so the next person to find the same number knows it was
+    # already produced and why it did not count (AGENTS.md).
+    voided_reason: str = ""
+    voided_date: str = ""
+
+    @property
+    def is_void(self) -> bool:
+        return bool(self.voided_reason)
 
     def __post_init__(self) -> None:
         if self.failure_class not in FAILURE_CLASSES:
@@ -157,6 +167,12 @@ class Evidence:
     verdict_statement: str
     manifest_hash: str = ""
     created_date: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d"))
+    voided_reason: str = ""
+    voided_date: str = ""
+
+    @property
+    def is_void(self) -> bool:
+        return bool(self.voided_reason)
 
     def __post_init__(self) -> None:
         if self.role not in EVIDENCE_ROLES:

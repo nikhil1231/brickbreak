@@ -36,6 +36,8 @@ from ..persistence import (
 )
 from ..research_data import frame, splits
 from .classifier import classify_result
+from .interpret import write_interpretation
+from . import burden as burden_mod
 from .spec import ExperimentSpec, validate_spec
 
 
@@ -88,7 +90,21 @@ def run_exploration(
     )
 
     # 5. Failure classification & interpretation
-    failure_class, interpretation, next_moves = classify_result(eval_report, spec)
+    failure_class, verdict, next_moves = classify_result(eval_report, spec)
+    # The class stays rule-based; the prose around it is written from the same
+    # numbers, so a reader gets something they can act on rather than a table.
+    interpretation = write_interpretation(eval_report, spec, failure_class,
+                                          next_moves)
+
+    # Where this sits among everything else asked of the same partition. Not a
+    # veto — a label, so "significant" cannot quietly mean "significant among
+    # the fifty things we tried" (PLAN.md §9).
+    primary_t = (eval_report.get("predictive_content", {})
+                 .get("primary_ic", {}).get("t_stat"))
+    h_for_burden = store.get_hypothesis(spec.hypothesis_id)
+    multiplicity = burden_mod.assess(
+        primary_t, spec.partition,
+        family=h_for_burden.family if h_for_burden else None).to_dict()
     runtime = time.time() - t0
 
     # 6. Immutable cryptographic manifest
@@ -110,6 +126,8 @@ def run_exploration(
         "partition": spec.partition,
         "role": spec.role,
         "failure_class": failure_class,
+        "multiplicity": multiplicity,
+        "verdict": verdict,
         "interpretation": interpretation,
         "suggested_next_moves": next_moves,
         "evaluation": eval_report,
