@@ -652,6 +652,42 @@ def cmd_estimate(args) -> int:
     return 0
 
 
+def cmd_split(args) -> int:
+    """Build, freeze or describe a dataset split.
+
+    A split is a commitment: every result the lab produces is denominated in
+    it. `--freeze` writes it once and refuses to overwrite, so re-drawing is a
+    new version with a stated reason rather than a silent edit (PLAN.md §5.2).
+    """
+    from .research_data import splits
+
+    if args.show:
+        m = splits.load(args.version)
+    else:
+        cfg = splits.SplitConfig(version=args.version,
+                                 seed=args.seed,
+                                 max_horizon=args.max_horizon)
+        m = splits.build(cfg)
+
+    print(splits.summary(m))
+    print()
+    hdr = f"{'quarter':<8} {'set':<11} {'sessions':>8}  {'vol':>6} {'trend':>6}  exposure"
+    print(hdr)
+    print("-" * len(hdr))
+    for q in m["quarters"]:
+        ex = ", ".join(sorted({f"{e['family']}:{e['role'][:4]}"
+                               for e in q["prior_exposure"]})) or "-"
+        print(f"{q['quarter']:<8} {q['set']:<11} {q['n_sessions']:>8}  "
+              f"{q['mkt_vol_20d']:>6.1f} {q['mkt_trend_eff']:>6.2f}  {ex}")
+
+    if args.freeze:
+        path = splits.save(m, overwrite=args.force)
+        print(f"\nfrozen -> {path}")
+    elif not args.show:
+        print("\n(not written — pass --freeze to commit this split)")
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="src.cli", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -797,6 +833,17 @@ def main(argv=None) -> int:
     pf.add_argument("--target", type=float, default=15.0)
     pf.add_argument("--max-sessions", type=int, default=60)
     pf.set_defaults(fn=cmd_payoff)
+
+    sp = sub.add_parser("split", help="build/freeze/describe a dataset split")
+    sp.add_argument("--version", default="v1")
+    sp.add_argument("--seed", type=int, default=0)
+    sp.add_argument("--max-horizon", type=int, default=20,
+                    help="longest forward horizon this split is purged for")
+    sp.add_argument("--show", action="store_true", help="describe the frozen split")
+    sp.add_argument("--freeze", action="store_true", help="write the manifest")
+    sp.add_argument("--force", action="store_true",
+                    help="overwrite an existing frozen split — almost never right")
+    sp.set_defaults(fn=cmd_split)
 
     orp = sub.add_parser("opening-report", help="quality report for fetched opening data")
     orp.set_defaults(fn=cmd_opening_report)

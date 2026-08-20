@@ -255,18 +255,28 @@ Leakage across a boundary is directional, so the purge should be too:
   reaches into a following quarter that belongs to a different set. Length = the
   version's maximum forward horizon.
 - **Embargo**: drop rows from the *start* of a quarter following a different-set
-  quarter, to break serial correlation in features whose lookback spans the
-  boundary. Shorter — roughly half the purge.
+  quarter, whose features overlap the neighbour's label window. Shorter than the
+  purge, because it blocks a second-order leak (a lookback aggregate spanning
+  the neighbour's outcome path) rather than a first-order one (the outcome
+  itself). **Built at `max_horizon // 4` = 5 sessions**; a full-horizon embargo
+  was measured at 33.0% of train sessions against 20.6% at five, for the
+  second-order case only.
+- **The panel's own tail is purged too.** `forward` begins where the panel ends,
+  so a train row twenty sessions before the cutoff carries a label determined by
+  sessions inside the forward lane. This is the one boundary that exists in every
+  split regardless of the draw, and it was missing from this plan until a test
+  caught it.
 
 **Purge asymmetrically: always drop from the lower-priority set, never from
 test.** Train gives way to validation, validation gives way to test. Evaluation
 sample is the scarce resource; training rows are not.
 
-Honest cost, at a 20-session max horizon and roughly 60/20/20 quarters: about
-half the 26 internal boundaries are cross-set, and the purge removes on the order
-of **15-20% of training rows** while leaving test and validation whole. That is
-the price of not leaking, and it should be stated in the split manifest rather
-than discovered later.
+**Measured on the real panel** (split `v1`, seed 0, `max_horizon=20`): 17 of 26
+internal boundaries are cross-set, plus the panel/forward boundary. The purge
+drops 240 of 1,647 sessions — **14.6% of the panel, 22.7% of raw train sessions,
+2 of 372 validation sessions, and none at all of test.** Train keeps 749 clean
+sessions, validation 352, test 306. The manifest states this rather than leaving
+it to be discovered later.
 
 Because the purge length is a function of the maximum horizon, **`max_horizon` is
 a property of the dataset version.** An experiment requesting a longer horizon
@@ -281,8 +291,11 @@ seeded *and* constrained, with the constraints recorded in the manifest:
 - each set spans at least three distinct calendar years;
 - each set contains at least one high-volatility quarter and one trending
   quarter, by a regime label fixed before the draw;
-- no set receives more than two consecutive quarters (which would rebuild a
-  chronological block by accident).
+- no set receives more than **three** consecutive quarters. Two was the original
+  proposal and it is measurably worse: forcing alternation creates *more*
+  cross-set boundaries and therefore more purging — 21 boundaries and 26.4% of
+  train lost at two, against 17 and 20.6% at three. Three consecutive quarters is
+  nine contiguous months, nowhere near rebuilding a chronological split.
 
 The draw iterates seeds until the constraints hold, and the manifest records the
 seed, the constraints and the resulting assignment. Reproducible, and honest
@@ -659,7 +672,7 @@ research of any kind, execution.
 
 | stage | delivers | done when |
 | --- | --- | --- |
-| **A. Foundations** | `research_data`: catalogue, PIT API, split v1, leakage gate | the split manifest is frozen and hashed; H026 (the surviving finding) reproduces through the module; each of the four known lookaheads is caught by a test |
+| **A. Foundations** | `research_data`: catalogue, PIT API, split v1, leakage gate | ~~split manifest frozen and hashed~~ **done 2026-08-20** (`split_v1_frozen.json`, hash `657db79f7d380880`); H026 (the surviving finding) reproduces through the module; each of the four known lookaheads is caught by a test |
 | **B. Evaluation** | standard alpha report + canonical backtest + neutralisation | H024 and H026 both produce full fingerprints that match what is already known about them |
 | **C. Persistence** | hypothesis/evidence/signal store, manifests, sample-budget ledger | `HYPOTHESES.md` H001–H038 are migrated as real records, each mapped onto the partitions it actually read, so prior exposure is machine-readable |
 | **D. Automation** | experiment spec, job runner, Claude Code worker, result schema | a job dispatched from a spec runs end-to-end unattended and ingests cleanly |

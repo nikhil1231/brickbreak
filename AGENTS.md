@@ -58,7 +58,12 @@ Two rules that hold from now on, whatever the migration state:
   direct read. Three of this project's four lookaheads entered through ad-hoc
   parquet access.
 
-**Current state, until the refactor lands:** `build_screen.load()` defaults to
+**Built so far:** `src/research_data/splits.py` — versioned, purged,
+quarter-level partitions, frozen as `data/metadata/split_v1_frozen.json`
+(hash `657db79f7d380880`). Select rows with `splits.assign(df)`, never with a
+date range. `python -m src.cli split --show` describes it.
+
+**Current state, until the rest of the refactor lands:** `build_screen.load()` defaults to
 the lagged `screen_metrics_asof.parquet`, `explore.fence()` raises on holdout
 rows, and `family.holdout()` / `resilience.semi_stale()` re-hash frozen specs
 before reading. Treat those as the module's ancestors — extend them, do not add
@@ -321,6 +326,6 @@ project's research ledger and outlives any single refactor.
 - Long pulls run on the server (`user@server`) under tmux via
   `scripts/run_pull.sh`; resumable from the manifest. Watch the **log timestamp**,
   not the process list — a hung pull never exits and the supervisor cannot see it.
-- `.venv/bin/python -m pytest tests/ -q` — keep green (168 tests). Tests marked
+- `.venv/bin/python -m pytest tests/ -q` — keep green (237 tests). Tests marked
   `network` hit live NSE and are deselected by default; run with `-m network`.
   Leakage tests are part of the suite, not optional extras.
