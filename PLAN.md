@@ -1,4 +1,4 @@
-# brickbreak — next steps (Phase 2)
+# brickbreak — next steps (post-holdout)
 
 Seed context for a fresh session. Repo: `/path/to/brickbreak`
 
@@ -49,10 +49,61 @@ the drawdown. It beats a within-session permutation null 400/400, it survives
 being benchmarked against the pool rather than the market, and **it does not
 work outside the contraction screen** — the screen and the ranking are an
 interaction, not a sum. It also does not use the tick data at all.
+**Phase 3 (done, 2026-08-20)** — a family of structurally distinct rules,
+purged-block stress tests, a frozen pass criterion, and **the holdout, opened
+once. The verdict is FAIL.** `src/family.py`, `data/metadata/family_frozen.json`,
+`data/metadata/family_holdout.json`, H025–H033.
+
+- 234 configurations over seven axes on the exploration window; one winner kept
+  per axis. Two axes produced nothing (the pullback ranking H025, and every
+  exit rule applied to the whole pool H029).
+- Two rules were frozen as family members: H024 unchanged, and a relative-
+  strength ranking (H026). They overlap on 9.6% of the symbol-days they trade.
+- **H024 does not replicate**: -0.627% vs the market at t=-1.98 on the holdout,
+  a sign reversal, against +1.172% in sample.
+- **H026 does**, on the claim that is about selection: +1.73% a trade against the
+  same-day pool at t=4.98, *larger* than in the window it was found in. It fails
+  the frozen bar's second clause because the holdout market compounded at 41.78%
+  at a Sharpe of 2.25 and C's Sharpe is 1.74.
+- Per the criterion frozen before the run, the family is dropped rather than
+  re-tuned. **The 2020-2023 window is spent.**
+- Methodologically: the purged-block stress test did not predict replication —
+  it killed the best out-of-sample rule (H030, +2.298% at t=6.16) and kept the
+  worst (H024). Do not use it as a promotion gate again (H032).
+- A fourth non-price lookahead was caught by a test one step before the holdout
+  was opened: ranking on `size_tier_rank`, which is today's index membership
+  applied to 2021 rows (H030).
+
 **Data re-pull (COMPLETE 2026-08-19 21:21 BST)** — all 42,703 pairs settled,
-0 errors. The 2020-2023 holdout is fully pulled and synced, and unread.
+0 errors. The 2020-2023 holdout was fully pulled and synced, and has now been
+**read** (2026-08-20). It cannot be used again.
 
 No strategy logic, no backtest, no execution exists yet. That is deliberate.
+
+## What is left, now that the holdout is spent
+
+The three things that follow from the FAIL, in order:
+
+1. **Nothing here should be traded.** No rule tested has beaten buy-and-hold
+   out of sample on a risk-adjusted basis, in either window, and the one that
+   came closest matched the index return with a deeper drawdown.
+2. **The surviving claim is narrow and worth stating precisely.** Selection
+   inside the contraction screen carries out-of-sample information — three
+   independent rankings beat the same-day pool at t>3 on data none of them was
+   fitted to. What no rule managed is converting that into a portfolio that
+   beats the index. Those are different problems and the second one was never
+   directly attacked (position sizing, exposure control, and when *not* to hold
+   the book are all untouched).
+3. **The only untainted data left is the future.** Any successor is a forward
+   test on sessions after 2026-08-18, recorded in advance. `family.holdout()`
+   refuses to run a different family against the 2020-2023 window, which is the
+   mechanism that keeps this true.
+
+Still the highest-value input: **30-50 dated real picks from the uncle.** No
+unconditional edge across a pool of ~100 candidates a morning is the *expected*
+result when ~98% of the pool is material he would reject, and every phase of
+this project has now been a search for a decision boundary without a single
+example of the decision.
 
 ## The one thing to read before trusting any Phase 2 number
 
@@ -410,7 +461,17 @@ Frozen for the holdout: `data/metadata/discovery_frozen.json` — four structure
 and two near-misses, with the exact `OutcomeConfig`, `MatchConfig`,
 `ClusterConfig` and `t` needed to replay them unchanged.
 
-### 9. NEXT: the holdout test, and it is now cheap
+### 9. The holdout test — DONE (2026-08-20), verdict FAIL
+
+Superseded by Phase 3 above and H033. The section below is the plan as written
+*before* the run and is kept because it records what the bar was going to be
+before anything was seen. Two things were decided differently and both are
+recorded in `family.PASS_CRITERION` with their reasons: the portfolio clause
+became "Sharpe above the market's" rather than "CAGR above the market's" (one
+ruler has to serve a concentrated book and a partly-invested one), and the
+holdout start moved to 2020-12-29 so every rolling window in the panel is full.
+
+#### the plan as it stood beforehand
 H024 is the only candidate worth spending the holdout on, and it needs none of
 the tick data — the score is `dist_52w_high` + `deliv_pct`, both daily and
 as-of, and entering at the opening print costs 0.4pp of CAGR against the tick

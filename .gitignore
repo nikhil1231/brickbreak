@@ -17,5 +17,11 @@ data/raw/*
 data/normalized/*
 data/metadata/*
 !data/**/.gitkeep
+# ...except the frozen definitions and the holdout result. These are evidence,
+# not data: they are a few tens of KB, and the "open the holdout once" guarantee
+# is enforced by comparing a hash against `family_holdout.json`. A guard that
+# lives only in an ignored directory is one `rm` away from not existing.
+!data/metadata/*_frozen.json
+!data/metadata/family_holdout.json
 logs/
 .pytest_cache/

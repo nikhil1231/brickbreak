@@ -1336,8 +1336,11 @@ exists somewhere — and see the standing caveat in `PLAN.md` §7 that this pool
 
 ## H024 — Ranking inside the screen, not filtering across it, is where the edge is
 
-Status: **SUPPORTED in sample.** The first positive expectancy this project has
-produced. Untested out of sample.
+Status: **SUPPORTED in sample, REJECTED out of sample (2026-08-20).** On the
+2020-2023 holdout the same rule returns **-0.627% vs the market (t=-1.98)**, a
+sign reversal, and fails every clause of the frozen bar. See H033. Everything
+below stands as written — it is an accurate record of what the exploration
+window said — and none of it survived the only test that counted.
 
 Date proposed: 2026-08-20 (user: "give this strat one more go … shotgun
 approach … don't worry about overfitting")
@@ -1454,3 +1457,316 @@ does not depend on tick coverage at all.
   when the market did not — but it is four years, one of them partial.
 
 **Frozen for the holdout** in `data/metadata/shotgun_frozen.json`.
+
+---
+
+## H025 — Inside the screen, the most pulled-back candidate outperforms
+
+Status: **REJECTED in sample**, and again out of sample.
+
+Date proposed: 2026-08-20 (Phase 3, axis B)
+
+**Hypothesis:** H019/H021 found that winners sat further *below* their
+short-term moving averages than matched failures, and H022 rejected the
+trending-market premise with the sign backwards. If that reading of the pool is
+right, ranking each morning's candidates by weakness — furthest below the fast
+and mid EMAs, worst 20- and 60-day return, furthest below the 20- and 50-session
+high — and taking the top five should beat the pool.
+
+**Kind of work:** exploratory. 15 feature pairs x 3 pick counts = 45
+configurations, exploration window only, entry at date D's opening print, 30
+sessions, no stop.
+
+**Result: nothing in the axis cleared a clustered t of 2 with positive alpha.**
+The best config by portfolio Sharpe (`px_vs_ema_fast` + `ret_20d`, top 5) is
++0.259% vs the market at t=0.92, CAGR 17.39% against the market's 18.24%.
+
+**What this settles.** A matched-pair contrast of 0.107 standardised units
+(H019) does not become a selection rule. The paired design detected a shift far
+below anything tradeable, exactly as its own write-up warned, and this is the
+direct test of that warning. Replayed on the holdout as information only:
+-0.541% (t=-1.60).
+
+---
+
+## H026 — Relative strength against the market and the sector is a better ranking than price location
+
+Status: **SUPPORTED in sample. The alpha replicates out of sample; the portfolio
+does not clear the frozen bar.** See H033.
+
+Date proposed: 2026-08-20 (Phase 3, axis C)
+
+**Hypothesis:** H024 ranks on where a stock sits against its *own* past
+(`dist_52w_high`). Where it sits against everything else is a different fact and
+the one the breakout literature is actually about. Rank instead on relative
+strength versus the market and the sector, plus the health of the sector itself.
+
+**Kind of work:** exploratory to select (45 configurations), then confirmatory on
+the 2020-2023 holdout as a frozen family member.
+
+**Definition (frozen):** within each session, mean of the percentile ranks of
+`rs_60d_vs_mkt` and `sector_breadth`, both ascending; take the top 5; enter at
+date D's adjusted opening print; hold 30 sessions; no stop; 0.40% round trip.
+
+| | exploration 2023-08 → 2026-08 | holdout 2020-12 → 2023-07 |
+| --- | --- | --- |
+| n | 3,226 | 2,761 |
+| vs market | **+1.230%** (t=4.76) | **+1.366%** (t=3.31) |
+| vs same-day pool | +1.166% (t=5.16) | **+1.730%** (t=4.98) |
+| portfolio CAGR | 24.91% | 41.50% |
+| market CAGR | 18.25% | 41.78% |
+| portfolio Sharpe | 1.27 | 1.74 |
+| market Sharpe | 1.02 | 2.25 |
+| max DD | -17.7% | -28.3% |
+
+**The selection claim replicated and the portfolio claim did not, and the two
+are different claims.** Out of sample the rule beat the same-day pool by
+**+1.73% a trade at t=4.98** — a larger effect than in the window it was found
+in (retention 1.11x). It also matched the market's return while running a
+drawdown half again as deep, so its Sharpe sits below buy-and-hold and it fails
+clause 2 of the frozen criterion. Per H033 that is a fail, and the rule is not
+promoted.
+
+**Stress (exploration, 6 purged blocks with a 30-session purge):** positive in 5
+of 6; leave-one-block-out positive in all 6; positive in both halves of the
+market's own trend; beats 200/200 within-session shuffles of its own score.
+
+---
+
+## H027 — The screen's own contraction measures are a ranking, not just a gate
+
+Status: **SUPPORTED in sample, killed by the stress test, negative out of sample.**
+
+Date proposed: 2026-08-20 (Phase 3, axis D)
+
+**Hypothesis:** H024 showed the volatility-contraction screen and a ranking
+interact. If the screen is doing real work, its own quantities — base depth,
+Bollinger width, ATR ratio, small bodies, base range — should rank inside it.
+
+**Result, exploration:** `base_depth_pctile` + `base_range_20_pct`, top 5:
++0.715% vs market (t=3.28), CAGR 19.97% against 18.25%, Sharpe 1.51.
+
+**Killed before freezing.** Leave-one-block-out turns negative when block 5
+(2026-02 → 2026-07, alpha +4.75%) is removed: one four-month period carries the
+whole result. Frozen as information-only rather than as a family member.
+
+**Holdout: -0.645% (t=-2.19).** The stress test was right about this one.
+
+---
+
+## H028 — The screen is fine and it is being held at the wrong times
+
+Status: **REJECTED as a strategy. The conditional alpha is real and does not
+survive the comparison against buy-and-hold.**
+
+Date proposed: 2026-08-20 (Phase 3, axis E)
+
+**Hypothesis:** hold the *whole* screened pool, but only in a stated market
+state. No cross-sectional selection at all — the claim is about timing. Nine
+gates, all on round numbers rather than sample quantiles (a tercile of the
+window being traded is a lookahead and silently redefines itself between
+windows).
+
+**Result:** one gate of nine cleared the search bar. Holding the pool only when
+the equal-weighted market is below its own 50-EMA: +1.107% vs market (t=3.79) in
+sample, **+2.438% (t=3.69) out of sample**. The conditional alpha is real in
+both windows and points the same way as H020's mechanism — candidates bought
+into market weakness do better.
+
+**And it is not a strategy.** Deployed 30-40% of the time, the book compounds at
+10.18% against buy-and-hold's 15.11% over the same span in sample and 26.78%
+against 41.78% out of sample. Being out of the market costs more than the
+conditional edge pays.
+
+**Measurement note that changed the answer.** Under the earlier convention —
+annualising over the sessions a book *holds* something — this rule reported
+14.11% against the market's 18.24% and looked merely weak. Counting cash days at
+zero over the calendar span, which is what a timing rule must be charged, drops
+it to 10.18%. `family.span_stats` does this for every rule; for an
+always-invested rule the two conventions agree exactly.
+
+---
+
+## H029 — The exit is where the pool's edge is
+
+Status: **REJECTED**, in sample and out, on a second pool and a second entry.
+
+Date proposed: 2026-08-20 (Phase 3, axis F)
+
+**Hypothesis:** H018 found 27.7% of mornings are stopped out and *then* move 3%+
+(median MFE +7.53%) — the largest identified block in the pool. If the selection
+is fine and the stop is the problem, an exit rule applied to the whole pool
+should beat the market without any selection at all.
+
+**Method:** 72 exits — stop at none/1/2/3 x ATR, target none/+15%, trail
+none/10-EMA/20-EMA, hold 10/20/30 sessions — on every screened morning.
+
+**Result: none cleared the bar; every one has negative market-excess.** The best
+by Sharpe (+15% target, 20-EMA trail from the target, 20-session stop) is
+-0.421% vs market at t=-5.99. Out of sample, -0.155% (t=-1.82).
+
+This re-tests H024's exit sweep on a different pool (screen-defined rather than
+tick-joined), a different entry (the opening print) and a different window, and
+gets the same answer. **The unconditional pool cannot be rescued by an exit.**
+`shaken_out` remains a real description of what happens; it is not a tradeable
+instruction.
+
+---
+
+## H030 — The screen's edge is an illiquidity premium in disguise
+
+Status: **SUPPORTED in sample, killed by the stress test, and the strongest
+result on the holdout.** Not tradeable at the size the others are.
+
+Date proposed: 2026-08-20 (Phase 3, axis G)
+
+**Hypothesis:** rank not on what a stock has done but on what kind of instrument
+it is — less liquid, more volatile, lower-priced. If the screen's return is a
+size-and-illiquidity premium, this axis finds it, and its success would be the
+least interesting news about the strategy.
+
+**A lookahead was found in this axis and removed before freezing.** The first
+version ranked on `size_tier_rank` and won the axis with it (+1.312%, t=5.11,
+Sharpe 1.46). Size tiers come from NSE's *current* index constituent lists, so a
+2021 row carries 2026's membership — and membership is assigned on market cap,
+which is to say on the returns being scored. `tests/test_family.py` caught it.
+This is the fourth lookahead in this project hiding inside something that is not
+a price (H015, the `median_vol_20` denominator, `time_above_open_frac`).
+
+**Without it** — `median_tv_20_cr` + `close_raw`, ascending, top 5:
+
+| | exploration | holdout |
+| --- | --- | --- |
+| vs market | +0.924% (t=3.28) | **+2.298% (t=6.16)** |
+| vs same-day pool | +0.854% (t=3.24) | +2.662% (t=6.92) |
+| CAGR / market | 22.67% / 18.25% | **54.89% / 41.78%** |
+| Sharpe / market | 1.16 / 1.02 | 2.14 / 2.25 |
+
+**It was frozen as information-only** because leave-one-block-out turned
+negative in sample, and information-only rules cannot change the verdict. It
+then produced the largest out-of-sample alpha of anything tested. See H032.
+
+**What it buys.** In sample: median 20-day traded value **₹0.71 crore**, p10
+₹0.52 crore, 93% outside the top 500, 74% of picks in one (unclassified) sector.
+At 2.00% round-trip cost — a fairer number for names that trade ₹7 million a day
+— the in-sample book returns 8.41% against a market at 18.25%. **This is not a
+strategy that can be traded at any size; it is a measurement of where the pool's
+return lives.**
+
+---
+
+## H031 — Capping the book at one name per sector keeps the edge and cuts the concentration
+
+Status: **Marginal in sample, positive out of sample. Frozen information-only.**
+
+Date proposed: 2026-08-20 (Phase 3, axis H)
+
+**Hypothesis:** every top-N rule quietly concentrates — H024's picks are 38% in
+a single sector on average. Applying the same scores with a one-name-per-sector
+cap is distinct in portfolio construction rather than in information.
+
+**Result:** of nine configurations only the relative-strength score at top 10
+cleared the search bar (+0.548%, t=2.74) and its Sharpe (1.01) sits at the
+market's (1.02), so it was frozen information-only. Out of sample **+1.016%
+(t=3.02)**, CAGR 38.84% against 41.78%.
+
+Reading it beside H026: the sector cap costs the C ranking about a third of its
+alpha (+1.73% → +1.38% vs pool out of sample) and buys a lower single-sector
+share. It does not change the verdict either way.
+
+---
+
+## H032 — A purged-block stress test predicts out-of-sample survival
+
+Status: **REJECTED.** The filter killed the best out-of-sample rule and kept the
+worst. This is the methodological result of Phase 3.
+
+Date proposed: 2026-08-20, tested by construction on the holdout
+
+**Hypothesis:** an in-sample rule that is positive in most of six purged
+temporal blocks, positive with any one block removed, and positive in both
+halves of the market's trend is more likely to replicate than one that is not.
+The bar was fixed before any block was looked at.
+
+**What it did, scored against the holdout it could not see:**
+
+| rule | stress verdict | holdout alpha vs market |
+| --- | --- | --- |
+| A momentum location (H024) | **survives** | **-0.627%** (t=-1.98) |
+| C relative strength (H026) | **survives** | +1.366% (t=3.31) |
+| D base quality (H027) | killed (leave-one-out) | -0.645% (t=-2.19) |
+| G instrument type (H030) | killed (leave-one-out) | **+2.298%** (t=6.16) |
+| H sector capped (H031) | killed (3/6 blocks) | +1.016% (t=3.02) |
+| B pullback (H025) | never cleared the search | -0.541% (t=-1.60) |
+
+Two of the three rules the stress test killed were positive out of sample, one
+of them the strongest result in the whole phase; one of the two it kept was
+negative. **On this sample the filter is uninformative about replication.**
+
+**Why this is worth keeping rather than explaining away.** Six blocks of ~110
+sessions each contain one four-month regime apiece, so leave-one-out is a test
+of *regime uniformity*, not of robustness — and a rule that only pays in some
+regimes is exactly what a rule that pays should look like. The test is not
+useless (it is a fair description of how concentrated a result is in time) but
+it must not be used as a promotion gate again. n = 6 rules; this is a direction,
+not a measurement.
+
+---
+
+## H033 — The frozen family replicates on the 2020-2023 holdout
+
+Status: **REJECTED — verdict FAIL.** The 2020-2023 window is now spent.
+
+Date proposed: 2026-08-20, before the window was opened. Criterion frozen in
+`data/metadata/family_frozen.json` and `family.PASS_CRITERION`.
+
+**Kind of work:** confirmatory. The first out-of-sample test this project has
+run. Definitions, the holdout window, the cost, and the pass bar were all
+written down and hashed before the frame was built.
+
+**The bar, as frozen.** Per member: positive market-excess expectancy at
+clustered t≥2; portfolio Sharpe above the market's over the same calendar span
+at 0.40% round trip; at least a third of the exploration alpha retained. Family
+PASS needs the union book to clear the first two *and* at least two members to
+pass. PARTIAL if only the union book clears. FAIL otherwise — and a FAIL drops
+the family rather than re-tuning it.
+
+**The window.** 2020-12-29 → 2023-07-06, 59,844 screened mornings over 575
+sessions. It starts at the 250th session of the archive so every rolling window
+in the panel is full (before that, `dist_52w_high` is measured over a truncated
+history that excludes the pre-COVID peak), and its last entry is purged by 30
+sessions so no holdout trade is settled on exploration-window prices.
+
+**The result.**
+
+| | exploration alpha | holdout alpha | retention | Sharpe / market |
+| --- | --- | --- | --- | --- |
+| A momentum location (H024) | +1.172% | **-0.627%** (t=-1.98) | -0.53x | 2.18 / 2.25 |
+| C relative strength (H026) | +1.230% | **+1.366%** (t=3.31) | 1.11x | 1.74 / 2.25 |
+| union book | +1.106% | +0.359% (t=1.17) | 0.32x | 1.95 / 2.25 |
+
+**Members passing: 0 of 2. VERDICT: FAIL.**
+
+**Two things happened, and they should not be blurred together.**
+
+1. **H024 does not replicate.** The project's first positive result is negative
+   out of sample, at t=-1.98, with the sign of its alpha reversed. Proximity to
+   the 52-week high plus delivery percentage is not a ranking that survives a
+   change of period.
+2. **The bar's second clause did the killing for everything else.** The
+   equal-weighted market compounded at **41.78% with a Sharpe of 2.25** over the
+   holdout — the post-COVID small-cap melt-up. C matched its return (41.50%) with
+   a deeper drawdown (-28.3% vs -19.1%), so it fails on Sharpe while beating the
+   same-day pool by +1.73% a trade at t=4.98.
+
+**The second point is not a reason to reopen the verdict.** The clause was
+chosen before the run precisely because "beats the index" is the question a
+person with money faces, and a bar that is only applied when it is passed is not
+a bar. What the split does establish is which claim survived: **selection inside
+the screen carries real, out-of-sample information (C, and information-only G
+and H all beat the same-day pool at t>3); converting that information into a
+portfolio that beats buy-and-hold did not work in either window.**
+
+**What is now spent, and what is not.** The 2020-2023 backfill has been read and
+cannot be used again. The only untainted data left is the future: sessions after
+2026-08-18. Any successor to this work is a forward test, not a backtest.

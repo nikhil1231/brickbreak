@@ -494,6 +494,31 @@ def cmd_shotgun(args) -> int:
     return 0
 
 
+def cmd_family(args) -> int:
+    """Search the axes, stress-test the winners, freeze the family. EXPLORATORY."""
+    from . import family
+    rep = family.report(n_perm=args.n_perm, do_freeze=not args.no_freeze,
+                        verbose=True)
+    _dump(rep, family.REPORT_PATH)
+    print("\nEXPLORATORY. Everything above was searched on the window it is "
+          "measured on.\nThe verdict comes from `python -m src.cli holdout`, "
+          "which may be run once.")
+    return 0
+
+
+def cmd_holdout(args) -> int:
+    """Open the 2020-2023 holdout against the frozen family. ONCE.
+
+    Deliberately a separate command from `family`. Freezing and testing in one
+    invocation would mean the definitions and the result arrive together, and
+    the whole value of the arrangement is that the definitions are written down
+    and *then* the window is opened.
+    """
+    from . import family
+    out = family.holdout(verbose=True)
+    return 0 if out["verdict"] in ("PASS", "PARTIAL") else 1
+
+
 def cmd_work_list(args) -> int:
     """Build the pull work list from the as-of-open screen, minus what is done.
 
@@ -742,6 +767,17 @@ def main(argv=None) -> int:
     sh.add_argument("--n-perm", type=int, default=400)
     sh.add_argument("--freeze", action="store_true")
     sh.set_defaults(fn=cmd_shotgun)
+
+    fm = sub.add_parser("family",
+                        help="search, stress-test and freeze the rule family (EXPLORATORY)")
+    fm.add_argument("--n-perm", type=int, default=200)
+    fm.add_argument("--no-freeze", action="store_true",
+                    help="report without writing family_frozen.json")
+    fm.set_defaults(fn=cmd_family)
+
+    ho = sub.add_parser("holdout",
+                        help="open the 2020-2023 holdout against the frozen family (ONCE)")
+    ho.set_defaults(fn=cmd_holdout)
 
     wl = sub.add_parser("work-list",
                         help="build the pull work list (as-of-open screen minus manifest)")

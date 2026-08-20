@@ -133,6 +133,28 @@ Decision left open. If backfilled, tag those years as survivor-biased.
   |t| = 4.3 over 2,446 matched sets and a win-rate lift of **1.06x**. A paired
   design detects shifts far below anything tradeable. Always report the effect
   in decision units — win rate by band — beside the t-statistic.
+- **A "current snapshot" attribute is a lookahead (2026-08-20).** `size_tier_rank`
+  is NSE's *present* index membership applied to every historical row, and index
+  membership is assigned on market cap — i.e. on the returns being scored.
+  Ranking on it in a 2021 holdout means ranking small names by whether they were
+  still small in 2026. Caught by `tests/test_family.py` one step before the
+  holdout was opened. Sector labels come from the same snapshot; they are kept
+  because a classification does not move with the stock's return, but the
+  distinction has to be stated, not assumed. **Fourth non-price lookahead in
+  this project — check denominators, static-looking attributes and snapshot
+  files, not just price columns.**
+- **Charge a book for its cash (2026-08-20).** `shotgun.book_stats` annualises
+  over the sessions a book *holds* something, which flatters any rule that goes
+  flat: a timing rule deployed 35% of the time reports the return it earned
+  while deployed as though it earned it all year. `family.span_stats` counts
+  cash sessions at zero across the calendar span and agrees exactly with the old
+  convention for an always-invested rule. Compare against buy-and-hold over the
+  same span, invested throughout.
+- **Do not gate promotion on a purged-block stress test (H032).** Scored against
+  the holdout afterwards, the filter killed two rules that were positive out of
+  sample — one of them the phase's best — and kept one that was negative. Six
+  blocks hold one regime apiece, so leave-one-block-out measures regime
+  uniformity, not robustness. Compute it and report it; do not let it decide.
 - **The stated stop is not a stop as measured.** At t=180s the running-low stop
   has a median distance of 0.41% against a median ATR of 3.37%. `discovery`
   floors risk at 0.5 x ATR. Widening a stop cannot break
@@ -188,9 +210,15 @@ phase write-up.
 - `.venv/bin/python -m pytest tests/ -q` — keep green (168 tests). Tests marked
   `network` hit live NSE and are deselected by default; run with `-m network`.
 - **Exploration is fenced.** `explore.EXPLORE_START` is 2023-08-21; the
-  2020-2023 backfill is holdout and `explore.fence()` *raises* rather than
+  2020-2023 backfill was holdout and `explore.fence()` *raises* rather than
   filtering, because a silently-dropped holdout row is an invisible breach.
   `python -m src.cli behaviour` builds the exploration window only.
+- **The holdout has been spent (2026-08-20, verdict FAIL — H033).** It was
+  opened once against a family frozen and hashed beforehand, and
+  `family.holdout()` refuses to run a *different* family against it. Nothing may
+  be re-tuned and re-tested on 2020-2023. The only untainted data left is
+  sessions after 2026-08-18, so any successor is a forward test recorded in
+  advance.
 - **A search reports a maximum, so the bar is the permuted maximum.** Over 68
   features the 95th percentile of max |t| under the null is ~3.4, not 1.96.
   `discovery.permutation_null` shuffles the winner label *inside each matched

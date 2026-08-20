@@ -1387,3 +1387,189 @@ universe, and its holdout test does not depend on tick coverage at all.
 The holdout pull finished at 21:21 BST 2026-08-19 — 42,703 of 42,703 pairs
 settled, 2,290 with data, 0 errors. The 2020-2023 backfill is complete and
 synced (1,445 session files). It has never been read.
+
+---
+
+# Addendum — Phase 3: a family, a stress test, and the holdout (2026-08-20)
+
+**The holdout has been opened. The verdict is FAIL, and H024 — the project's
+only positive result — does not replicate.**
+
+## What was asked
+
+Generate three to five more structurally distinct profitable candidates on the
+exploration set, stress-test them across purged temporal blocks and regimes,
+freeze everything with exact definitions and a family-level pass criterion, and
+then open the 2020-2023 holdout once.
+
+## Why a family and not a better single rule
+
+H024 came out of ~1,500 configurations searched on the window that measured it.
+One survivor from a sweep that wide is the shape of a thing that might be there,
+not the thing. The cheapest way to find out is to ask whether anything *else*
+works, and to require the something-elses to be mechanically unrelated — a
+different information source, a different selection mechanism, a different exit,
+a different portfolio. Five correlated variants of one ranking passing a holdout
+is one result. Five unrelated rules passing is five, and the family-level claim
+("selection inside this screen carries information") is what is actually at
+stake.
+
+## The frame changed, and the tick data was dropped
+
+`src/family.py` builds its pool from the as-of screen alone and enters at date
+D's adjusted **opening print**. H024 measured the tick entry at 26.8% CAGR
+against the opening print's 26.4%, so the 1-second panel buys 0.4pp and costs
+the ability to test anything at all before 2023. Three things follow: the
+holdout window is built by the identical code path; the pool is the screen
+rather than "the screened mornings a tick pull happened to cover"; and every
+scoring feature is strictly from D-1 — the date-D open is the entry, so using it
+as a feature would mean acting on a price at the instant it prints. That
+excludes Phase 2.8's top feature (`open_base_pos_20`) and is a real cost, paid
+for rules that are unambiguously implementable.
+
+On the exploration window the daily-entry frame reproduces H024 at +1.06% vs
+the same-day pool (t=5.32) and CAGR 23.50% against the tick version's +1.32%
+and 26.83%. Different pool (69,536 screened mornings against 68,333 tick-joined
+ones), same result.
+
+## The search: 234 configurations over seven axes, one kept per axis
+
+| axis | what it claims | configs | best in sample |
+| --- | --- | --- | --- |
+| B pullback | the weakest candidate in the screen wins | 45 | nothing cleared |
+| C relative strength | strength vs market and sector wins | 45 | +1.230% (t=4.76), SR 1.27 |
+| D base quality | the tightest base wins | 45 | +0.715% (t=3.28), SR 1.51 |
+| E regime timing | hold the pool only in some market states | 9 | +1.107% (t=3.79), SR 0.69 |
+| F exit structure | the exit carries it, no selection | 72 | nothing cleared |
+| G instrument type | less liquid, cheaper, more volatile wins | 9 | +0.924% (t=3.28), SR 1.16 |
+| H sector capped | same score, one name per sector | 9 | +0.548% (t=2.74), SR 1.01 |
+
+The objective was fixed before the search: portfolio Sharpe subject to positive
+market-excess at clustered t≥2, one winner kept per axis. Sharpe rather than
+CAGR because the same yardstick has to serve a concentrated long book and a
+partly-invested one, and because it is the quantity the holdout bar is written
+in — the search and the test are measured on one ruler.
+
+**The two axes that failed are results.** No exit rule applied to the whole pool
+beats the market (H029), on a different pool and entry from the sweep that first
+said so. And the matched-pair contrast that Phase 2.8 spent its whole budget on
+does not become a selection rule (H025) — a 0.107-standardised shift detected by
+a paired design is not tradeable, exactly as H019's own write-up warned.
+
+## A lookahead, caught by a test, one step before the holdout
+
+The first version of axis G won on `size_tier_rank` at +1.312% (t=5.11) and
+Sharpe 1.46. Size tiers come from NSE's **current** index constituent lists, so
+a 2021 row carries 2026's membership — and membership is assigned on market cap,
+which is to say on the returns being scored. `test_every_frozen_feature_is_a_d_
+minus_one_quantity` failed on it, the axis was re-run without it, and its winner
+changed. This is the fourth lookahead in this project found inside something
+that is not a price: after the screen's own close (H015), the `median_vol_20`
+denominator, and `time_above_open_frac`'s dwell time. **The pattern is now
+unmistakable — the dangerous ones are never in the numerator.**
+
+## Purged blocks, and the measurement that changed an answer
+
+Six contiguous blocks across the exploration window, with the last 30 sessions
+of each dropped so no trade's holding window crosses a boundary (a 30-session
+hold makes abutting blocks share information, and "positive in five of six"
+would otherwise be a fiction). It costs 35% of the sample.
+
+Separately, portfolio statistics were moved onto a **span** convention: cash
+sessions earn zero and still count against the clock, measured from a book's
+first live session to its last. The old convention annualised over the sessions
+a book *held* something, which flatters a rule that sits in cash — E's timing
+rule reported 14.11% against a market at 18.24% and became 10.18% against 15.11%
+once it was charged for being out. For an always-invested rule the two agree
+exactly.
+
+## What was frozen, and what the bar was
+
+Two members: **A** (H024, unchanged) and **C** (relative strength). Six
+information-only rules — the axis winners that failed either the in-sample gate
+or the stress test — replayed on the holdout for what they say about the
+in-sample screen, and barred by construction from changing the verdict.
+
+The members share almost nothing: **9.6% Jaccard overlap** in the symbol-days
+they trade, with a 0.81 correlation of daily book returns that is market beta
+rather than agreement.
+
+The bar, written before the window was opened. Per member: positive
+market-excess at clustered t≥2; portfolio Sharpe above the market's over the
+same span at 0.40% round trip; at least a third of the exploration alpha
+retained. Family PASS needs the union book to clear the first two *and* both
+members to pass; PARTIAL if only the union book does; FAIL otherwise, and a FAIL
+drops the family without re-tuning.
+
+## The holdout
+
+2020-12-29 → 2023-07-06, 59,844 screened mornings over 575 sessions. It starts
+at the archive's 250th session so every rolling window is full, and its last
+entry is purged by 30 sessions so nothing settles on exploration prices.
+
+| | exploration | holdout | retention |
+| --- | --- | --- | --- |
+| A momentum location (H024) | +1.172% (t=4.83) | **-0.627% (t=-1.98)** | -0.53x |
+| C relative strength | +1.230% (t=4.76) | **+1.366% (t=3.31)** | 1.11x |
+| union book | +1.106% (t=5.60) | +0.359% (t=1.17) | 0.32x |
+| equal-weighted market | 18.25% CAGR, SR 1.02 | **41.78% CAGR, SR 2.25** | |
+
+**Members passing: 0 of 2. VERDICT: FAIL.**
+
+## Two things happened and they must not be blurred
+
+**H024 does not replicate.** Negative, at t=-1.98, with the sign of its alpha
+reversed. The first thing this project found that worked, does not work.
+
+**Everything else was killed by the second clause, in the hardest possible
+window.** The equal-weighted market compounded at 41.78% at a Sharpe of 2.25
+over the holdout — the post-COVID small-cap melt-up. C matched its return
+(41.50%) with a deeper drawdown, so its Sharpe (1.74) sits below buy-and-hold.
+Against the same-day pool, which is the selection question and is immune to what
+the market did, C beat it by **+1.73% a trade at t=4.98** — a *larger* effect
+than in the window it was found in.
+
+That clause is not being reopened. It was chosen before the run because "beats
+the index" is the question a person with money faces, and a bar applied only
+when it is passed is not a bar. But the split says exactly which claim survived:
+
+- **Selection inside the screen carries out-of-sample information.** C at
+  +1.73% vs pool (t=4.98), and the information-only replays agree — G at +2.66%
+  (t=6.92), H at +1.38% (t=5.22).
+- **Turning that information into a portfolio that beats buy-and-hold did not
+  work**, in either window, for any rule tested.
+
+## The methodological result: the stress test did not predict anything
+
+| rule | stress verdict | holdout alpha |
+| --- | --- | --- |
+| A momentum location | survives | -0.627% |
+| C relative strength | survives | +1.366% |
+| D base quality | killed | -0.645% |
+| G instrument type | killed | **+2.298%** |
+| H sector capped | killed | +1.016% |
+
+Two of the three rules the purged-block filter killed were positive out of
+sample, one of them the strongest result in the phase; one of the two it kept
+was negative. Six blocks of ~110 sessions hold one regime apiece, so
+leave-one-block-out is a test of regime uniformity rather than of robustness,
+and a rule that pays in some regimes and not others is what a real rule looks
+like. **Do not use it as a promotion gate again** (n = 6 rules; a direction, not
+a measurement).
+
+## Where the pool's return actually lives, and why it is not tradeable
+
+The strongest out-of-sample rule in the phase ranks on illiquidity: least
+traded, lowest priced. +2.298% vs market (t=6.16), CAGR 54.89% against 41.78%.
+Its picks have a **median 20-day traded value of ₹0.71 crore** — about ₹7
+million a day — with 93% outside the top 500 and 74% of picks in one
+unclassified sector. At a 2.00% round trip, which is a fairer number for names
+that thin, the in-sample book returns 8.41% against a market at 18.25%. It is a
+measurement of where the return sits, not a strategy.
+
+## Data state
+
+The 2020-2023 backfill has been read. `data/metadata/family_holdout.json` is the
+record, and `family.holdout()` refuses to run a *different* family against it.
+The only untainted data this project has left is the future: sessions after
+2026-08-18. Anything after this is a forward test.
