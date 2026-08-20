@@ -1770,3 +1770,278 @@ portfolio that beats buy-and-hold did not work in either window.**
 **What is now spent, and what is not.** The 2020-2023 backfill has been read and
 cannot be used again. The only untainted data left is the future: sessions after
 2026-08-18. Any successor to this work is a forward test, not a backtest.
+
+---
+
+## H034 — Resilience during a broad-market decline predicts subsequent returns
+
+Status: **REJECTED, and the sign is the other way.** The relationship is real
+enough to be worth naming but it is *reversal*: inside a causally-identified
+market decline, the **least** resilient decile outperforms over the next 1-20
+sessions, and the most resilient underperforms.
+
+Date proposed: 2026-08-20. **Kind of work: exploratory / data-generated.** Run
+on the sanctioned exploration window 2023-08-21 → 2026-08-18 only. Nothing here
+is confirmed, and per H033 there is no clean holdout left to confirm it on.
+
+**The hypothesis as stated.** Identify broad-market down periods using only
+information available as of each date; inside each sector, rank liquid stocks by
+beta/sector-adjusted resilience over the decline; higher resilience should buy
+higher subsequent 1/5/10/20-session returns, in market- and sector-excess terms.
+
+**How "a decline" was made causal.** A decline is only ever a statement about
+the **trailing** window. At date D the window is D-K .. D-1 (K = 10 and 20, both
+carried), and whether that was a decline is answered from the market's return
+over exactly those sessions. The trough is never located, and nothing dated D or
+later enters the definition, the universe, or the score. Sessions are cut at
+quintiles of the trailing market return over the sample rather than at a chosen
+threshold, so the whole shape is visible instead of one side of a line.
+
+**The score.** `resid = r_i(W) - beta_i * r_mkt(W)`, with `beta_i` fitted by OLS
+over the 120 sessions ending **one session before W opens** — never on the
+decline itself. Ranked into deciles across the day's liquid universe, deciles
+after subtracting the sector median, and quintiles inside each sector. Liquid =
+EQ, non-ETF, trailing 20-session median turnover ≥ ₹10 cr, prior close ≥ ₹20:
+about 650 names a session. Entry at date D's opening print.
+
+**The result (k = 10, broad equal-weighted market, decline stratum = 171
+sessions).** Deciles 1→10 by market-excess return, decile 10 being the most
+resilient:
+
+| h | D1 … D10 (market-excess, %) | D10 − D1 | t (NW) | Spearman |
+| --- | --- | --- | --- | --- |
+| 1 | +0.01 +0.07 +0.03 −0.01 −0.01 +0.03 −0.00 −0.03 +0.02 −0.11 | −0.125% | −2.08 | −0.52 |
+| 5 | +0.29 +0.20 +0.08 +0.03 −0.10 −0.09 −0.12 −0.14 −0.01 −0.13 | −0.422% | −2.45 | −0.84 |
+| 10 | +0.50 +0.20 +0.06 −0.04 −0.25 −0.18 −0.13 −0.13 +0.04 −0.06 | −0.561% | −2.05 | −0.54 |
+| 20 | +0.47 +0.14 −0.01 −0.21 −0.32 −0.29 −0.05 −0.13 +0.33 +0.08 | −0.398% | −0.83 | −0.14 |
+
+**It is monotone in the depth of the decline, which is what makes it a finding
+about declines rather than about anything else.**
+
+| trailing 10-session market return | sessions | D10−D1 at h=5 | t | at h=10 | t |
+| --- | --- | --- | --- | --- | --- |
+| below −6% | 54 | −0.702% | −2.83 | −1.139% | −3.65 |
+| −6% to −3% | 101 | −0.289% | −1.55 | −0.297% | −0.92 |
+| −3% to −1% | 102 | −0.199% | −1.20 | −0.109% | −0.61 |
+| −1% to +1% | 134 | +0.152% | +0.80 | +0.391% | +1.79 |
+| above +1% | 352 | +0.270% | +1.69 | +0.366% | +1.27 |
+
+**The literal form of the question — quintiles inside each sector, scored on
+sector-excess returns — gives the same answer**, and its per-session rank
+correlation is the cleanest single statistic in the study: at h = 5, quintiles
+Q1→Q5 read +0.30 +0.03 −0.07 −0.13 −0.10, Q5−Q1 = −0.407% (t = −3.21,
+Spearman −0.90), rank-IC = **−0.033 (t = −4.85)**, positive on only 32% of
+sessions.
+
+**What survives and what does not.**
+
+- *Robust to the definitions.* Negative at every horizon, under both decline
+  windows, under both market proxies (all-name equal-weighted and the top-100-
+  by-trailing-turnover large-cap stand-in), in market-, sector- and
+  beta-adjusted excess, and whether or not date D itself is skipped (skipping it
+  keeps −0.382% of the −0.422% at k = 10, h = 5 — so it is not the opening
+  bounce or the bid-ask spread).
+- *Not one episode.* Leave-one-episode-out over the six decline episodes of ≥10
+  sessions leaves the spread between −0.34% and −0.46% (t −1.91 … −2.54). Seven
+  of nine episodes have a positive decile-1 excess.
+- *Not the overlap.* On non-overlapping sessions (every 5th), all five offsets
+  are negative, mean −0.26% to −0.58%; a sign test on 35 independent spreads
+  gives 24 negative, exact two-sided **p = 0.041**.
+- *Does not survive the multiplicity bar as a single cell.* Over the 20-cell
+  grid of 5 market strata × 4 horizons, the permuted maximum |t| has a median of
+  2.31 and a 95th percentile of 3.43 against an observed maximum of 2.45:
+  **p = 0.42**. The evidence for this is the consistency of the sign and the
+  depth gradient, not any one t-statistic, and it should never be quoted the
+  other way round.
+- *Dead after costs.* At the project's 0.40% round trip the decile long-short
+  nets −0.38% a trade at h = 5; long-only decile 1 nets −0.11% at h = 5, +0.10%
+  at h = 10 and +0.07% at h = 20. The whole gross spread is smaller than the
+  cost of collecting it.
+
+See [[H035]] for the rebound conditioning and [[H036]] for the confound that
+explains most of it.
+
+---
+
+## H035 — The effect is stronger when the market subsequently rebounds
+
+Status: **SUPPORTED, and NON_CAUSAL.** Conditions on the future by construction;
+it is a statement about mechanism, never an expectancy.
+
+Date proposed: 2026-08-20 (asked as part of the same brief as [[H034]]).
+**Kind of work: exploratory, and not even implementable.**
+
+Splitting the decline stratum by the market's *realised* forward return over the
+same horizon:
+
+| h | | sessions | D10−D1, market-excess | t | D10−D1, beta-adjusted | t |
+| --- | --- | --- | --- | --- | --- |
+| 5 | market rebounds | 107 | −0.587% | −2.77 | −1.060% | −4.57 |
+| 5 | market keeps falling | 64 | −0.146% | −0.77 | **+0.493%** | +2.33 |
+| 10 | market rebounds | 95 | −0.763% | −1.64 | −1.880% | −3.45 |
+| 10 | market keeps falling | 76 | −0.308% | −1.47 | **+0.339%** | +2.18 |
+
+**The mechanism, and it is not alpha.** The beta-adjusted column changes sign:
+when the market keeps falling, the resilient names do hold up better, exactly as
+the original hypothesis says. The bounce is therefore mostly a beta trade —
+and specifically a trade on the fact that **estimated beta and realised beta are
+different objects**. In the decline stratum, decile 1's pre-decline OLS beta is
+0.93 against decile 10's 1.13, yet decile 1's beta *realised over the next five
+sessions* is 1.14 against decile 10's 1.04. Sorting on how far a stock fell is
+in large part sorting on how much market sensitivity it is about to have, which
+no beta fitted before the decline can see.
+
+Not all of it is beta: the per-decile forward regression leaves an intercept of
++0.18% for decile 1 and −0.16% for decile 10 over five sessions.
+
+---
+
+## H036 — Resilience is not separable from the plain drawdown, and it is not momentum, beta or illiquidity
+
+Status: **PARTLY SUPPORTED.** The residual is *not* separable from the raw
+window return. It *is* separable from pre-window momentum, beta, liquidity and
+trailing volatility.
+
+Date proposed: 2026-08-20, before [[H034]] was run, as its control.
+**Kind of work: exploratory.**
+
+**Ranking on the raw window return does the job at least as well as ranking on
+the beta- and sector-adjusted residual** — at k = 10, h = 5, D10−D1 is −0.665%
+(t = −3.09) on the raw return against −0.422% (t = −2.45) on the residual. A
+double sort shows why the question cannot be settled: the two scores are nearly
+collinear, so the off-diagonal cells hold 15-30 observations against 18,000 on
+the diagonal. Fitting both in the same cross-sectional regression gives
+resid +1.07 (t = 0.90) and raw −1.68 (t = −1.29) — a textbook collinearity
+blow-up in which neither is estimable. **The honest statement is that this data
+cannot separate "held up better than beta predicted" from "fell less", and the
+beta/sector adjustment earns nothing observable.**
+
+The other controls behave better. Fama-MacBeth over the decline stratum, all
+regressors as centred cross-sectional percentile ranks, so a coefficient is the
+top-to-bottom effect in percent:
+
+| h | resid alone | + trailing vol | + vol, beta, turnover, pre-window momentum |
+| --- | --- | --- | --- |
+| 5 | −0.407 (t −2.88) | −0.501 (t −3.58) | −0.451 (t −3.06) |
+| 10 | −0.445 (t −1.77) | −0.656 (t −2.71) | −0.680 (t −2.28) |
+
+Trailing volatility carries its own positive coefficient (+0.94, t = 2.04 at
+h = 5) and *strengthens* the resilience coefficient rather than absorbing it, so
+"beaten-down names are just volatile names" is not the explanation. Pre-window
+relative momentum, measured over the 60 sessions ending where the decline window
+opens and therefore sharing no session with it, is flat (t = −0.12). Turnover is
+flat (t = −0.23) — unlike H030, this is not an illiquidity premium in disguise;
+decile 1's median trailing turnover is ₹31.8 cr against ₹42 cr in the middle
+deciles, a mild tilt within a universe that is liquid by construction.
+
+**A selection check that came out clean, for once.** Requiring a sector label
+restricts the universe to NSE's *current* index membership — the same class of
+lookahead `size_tier_rank` was caught on. Here it is not load-bearing: 84.4% of
+decline-stratum rows carry one, and the market-excess spread is −0.422%
+(t = −2.45) on all liquid names against −0.435% (t = −2.07) on the labelled
+subset alone.
+
+---
+
+## H037 — The reversal-in-declines gradient replicates on 2020-2023
+
+Status: **PASS on the bar as frozen — and the bar had a clause that was too
+weak.** Read both halves of that sentence.
+
+Date proposed: 2026-08-20, **before the window was opened**. Spec and criterion
+frozen in `data/metadata/resilience_frozen.json`, hash `6738a48730b093ee`,
+re-hashed and checked by `resilience.semi_stale()` before it reads anything.
+
+**Kind of work: confirmatory, on a SEMI-STALE window.** 2020-2023 was opened once
+already, against the opening-window family ([[H033]]). Nothing that test learned
+bears on a cross-sectional reversal signal, so this is worth more than another
+pass over 2023-2026 — but the window is not virgin and this result must never be
+called out-of-sample. Run on the user's explicit instruction, once.
+
+**Note the sign being tested.** [[H034]] — resilience predicts *higher* returns —
+is already rejected. What is being confirmed here is the thing that replaced it:
+inside a causally identified decline the **least** resilient decile outperforms,
+monotone in the depth of the decline.
+
+**The window.** 2020-04-16 → 2023-07-21, 814 sessions, 163 in the decline
+stratum (bottom quintile of the trailing 10-session market return, boundary
+−2.12%, recut inside this window so no boundary is imported from the
+exploration). It starts where the panel first supports a full 120-session beta
+fit and ends 20 sessions before the exploration window opens. **The COVID crash
+itself is not in it** — there is no history in front of February 2020 to fit a
+beta on — so this window contains the post-COVID recovery, the 2021 run and the
+2022 correction, not the crash.
+
+**The result, against exploration.**
+
+| | exploration | semi-stale | |
+| --- | --- | --- | --- |
+| h=1 decile spread | −0.125% (t −2.08) | **−0.228% (t −2.58)** | replicates, stronger |
+| h=5 decile spread | −0.422% (t −2.45) | **−0.484% (t −2.00)** | replicates, same size |
+| h=10 decile spread | −0.561% (t −2.05) | −0.037% (t −0.10) | **gone** |
+| h=20 decile spread | −0.398% (t −0.83) | +0.367% (t +0.72) | **gone, sign flipped** |
+| deepest band (<−6%), h=5 | −0.702% (t −2.83) | **−1.220% (t −3.03)** | replicates, stronger |
+| within-sector rank-IC, h=5 | −0.033 (t −4.85) | **−0.042 (t −4.99)** | replicates, stronger |
+| k=20 variant, h=5 | −0.318% (t −1.28) | −0.082% (t −0.34) | **gone** |
+
+Depth gradient at h=5, in a window that never saw the exploration: −1.220%
+(<−6%), −0.314% (−6..−3), −0.149% (−3..−1), +0.008% (−1..1), −0.045% (>1).
+
+**Why PASS, and why PASS overstates it.** The frozen bar asked for both h=5 and
+h=10 negative, one of them at |t| ≥ 2, and the depth gradient preserved. All
+three hold. But **h=10 passed its clause on −0.037%, a number indistinguishable
+from zero**, and "negative" was too weak a way to write that clause — it should
+have asked for a fraction of the exploration effect retained, the way
+`family.PASS_CRITERION` does. That is a lesson about writing bars, not a reason
+to revise the verdict: a bar applied only when it is passed is not a bar.
+
+**What honestly replicated is the short-horizon effect and the depth gradient.**
+h=1 and h=5, the deepest-decline band, and the within-sector rank correlation
+all came back at full strength or better. h=10, h=20 and the whole k=20 window
+did not. The finding is narrower than [[H034]] reported: it is a **one-to-five
+session** reversal that gets stronger the harder the market has fallen.
+
+**And it is still dead after costs, in both windows.** Long-only decile 1 earns
++0.339% market-excess at h=5 and nets **−0.061%** at a 0.40% round trip. Nothing
+about the replication changes this.
+
+---
+
+## H038 — The resilience score is a drawdown bet and a beta bet with opposite signs
+
+Status: **SUPPORTED, algebraically and in both windows.** This is the answer to
+[[H036]], which could not separate the two by regression.
+
+Date proposed: 2026-08-20. **Kind of work: exploratory (the decomposition and
+its exploration-window numbers), then confirmatory on the semi-stale window as
+a non-gating clause of [[H037]].**
+
+**The algebra.** Within one session `resid_i = r_i − beta_i · r_mkt`, and
+`r_mkt` is a constant across the cross-section. So projecting `resid` off the
+raw window return `r_i` can leave only `−r_mkt` times the part of `beta_i` that
+`r_i` does not explain. **Conditional on how far a stock fell, "held up better
+than its beta predicted" is nothing but beta.** Checked rather than assumed:
+per-session correlation between the orthogonalised score and
+`−r_mkt · beta⊥drawdown` is **1.000000 on 100% of decline sessions**, and
+`test_orthogonal_score_is_exactly_beta_in_disguise` fails if that ever stops
+holding.
+
+The score is therefore a blend of two bets pointing opposite ways, which is why
+it is weaker than either of them:
+
+| component | exploration h=5 | semi-stale h=5 | semi-stale h=20 |
+| --- | --- | --- | --- |
+| drawdown ⊥ residual (fell less) | −0.904% (t −1.92, ρ −0.95) | −0.250% (t −0.45, ρ −0.48) | −1.649% (t −2.10, ρ −0.84) |
+| beta ⊥ drawdown (resilience proper) | +0.555% (t +1.27, ρ +0.90) | −0.018% (t −0.03, ρ −0.02) | +1.485% (t +1.92, ρ +0.79) |
+| beta alone | +0.759% (t +1.64, ρ +0.96) | +0.260% (t +0.48, ρ +0.18) | +1.745% (t +2.20, ρ +0.81) |
+
+The beta component is indistinguishable from ranking on beta itself, in both
+windows, at every horizon — which is what the algebra says it must be. The
+Spearman coefficients are high on both sides even where the spreads are not
+significant, so both halves are genuine gradients rather than outlier buckets.
+
+**What this settles.** The beta and sector adjustments in the original
+formulation are not refinements of the drawdown score; they add a second,
+opposing sort on beta. Anyone wanting "resilience" as a distinct idea should
+rank on beta directly and stop calling it resilience — and should expect a
+rebound bet ([[H035]]), not alpha.

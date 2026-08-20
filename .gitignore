@@ -23,5 +23,7 @@ data/metadata/*
 # lives only in an ignored directory is one `rm` away from not existing.
 !data/metadata/*_frozen.json
 !data/metadata/family_holdout.json
+!data/metadata/resilience_semi_stale.json
 logs/
 .pytest_cache/
+data/whatsapp_gc/
