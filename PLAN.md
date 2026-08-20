@@ -1,576 +1,775 @@
-# brickbreak — next steps (post-holdout)
+# brickbreak → alpha lab
 
-Seed context for a fresh session. Repo: `/path/to/brickbreak`
+A plan to refactor this repository from *"Abhijeet strategy research code"* into a
+general-purpose alpha research environment: a small autonomous laboratory that can
+ask hundreds of disciplined questions cheaply, keep every answer, and never
+rediscover its own dead ends.
 
-## Where things stand
+This document is deliberately **code-agnostic**. It describes objects, contracts
+and stages, not modules, signatures or file layouts. Implementation planning
+comes after this is agreed.
 
-**Phase 0 (done)** — Breeze feasibility. Verdict GO. See `FINDINGS.md`.
-**Phase 1 (done)** — point-in-time daily universe + screener + interactive UI.
-**Phase 2.1 (done)** — corporate-action adjustment + ten missing trading
-sessions recovered. See the 2026-08-19 addendum in `FINDINGS.md`.
-**Phase 2.2 (done)** — symbol renames merged. 258 links applied, 3,606 → 3,348
-symbols; renames now run *before* CA adjustment. See the Phase 2.2 addendum.
-**Phase 2.3 (done)** — opening features joined to candidates (91.6% coverage)
-and the pool characterised. Two results change what comes next: the gap must
-come from bhavcopy's OPEN, not the tick open, and `om_low_vs_open_pct` is
-censored at zero and cannot gate anything as computed.
-**Phase 2.4 (done)** — forward returns labelled. **Both stated entry filters
-have negative excess returns, and tightening either one makes it worse.** See
-the Phase 2.4 addendum in `FINDINGS.md`. This is the first result that
-contradicts the brief rather than refining it.
-**Phase 2.5 (done, and largely invalidated by what it found)** — behavioural
-features, archetypes and an exploratory search over the opening window (H008–
-H016). It reported that the opening states most resembling sustained
-accumulation have the *worst* forward returns. **Do not carry that claim
-forward.** The same phase found the screener selects each morning using that
-morning's own close (H015), and the contraction filters can *manufacture* that
-inversion — see below. Phase 2.4's t-statistics are also inflated ~2.9x by
-ignoring within-session correlation (H016).
-**Phase 2.6 (done, 2026-08-19)** — the H015 lookahead is fixed. `src/asof.py`,
-`screen_metrics_asof.parquet`, and the screen now defaults to the as-of-open
-panel everywhere.
-**Phase 2.7 (done, 2026-08-19)** — the traded payoff simulated (H017); it is
-worse than the fixed-horizon label, not better. The intraday pull is not
-justified by H006.
-**Phase 2.8 (done, 2026-08-20)** — reverse discovery. The pool was rebuilt on
-the corrected screen (85,065 exploration-window mornings, up from 63,698), a
-path-aware outcome taxonomy was built and priced (H018), and strong winners were
-matched against lookalike failures. **The distinctions that survive a properly
-corrected bar are real and about a tenth of a standard deviation** (H019); the
-trending-market hypothesis is rejected with the sign backwards (H022); and one
-matching convenience was found to inflate every contrast fourfold (H020). See
-the Phase 2.8 addendum in `FINDINGS.md`.
-**Phase 2.9 (done, 2026-08-20)** — a deliberately overfitting shotgun search,
-run on instruction. **The first positive expectancy this project has produced**
-(H024): rank the screened candidates within each session by proximity to the
-52-week high plus delivery percentage, take the top few, no stop, hold 30
-sessions. 26.8% CAGR against an 18.3% market at 0.40% round-trip cost, with half
-the drawdown. It beats a within-session permutation null 400/400, it survives
-being benchmarked against the pool rather than the market, and **it does not
-work outside the contraction screen** — the screen and the ranking are an
-interaction, not a sum. It also does not use the tick data at all.
-**Phase 3 (done, 2026-08-20)** — a family of structurally distinct rules,
-purged-block stress tests, a frozen pass criterion, and **the holdout, opened
-once. The verdict is FAIL.** `src/family.py`, `data/metadata/family_frozen.json`,
-`data/metadata/family_holdout.json`, H025–H033.
+The refactor starts at the data layer, because that is where every failure in
+this project's history has actually lived: §5.1 and §5.2 define a single module
+that owns all market-data access and replaces the current chronological holdout
+with versioned, purged, quarter-level splits.
 
-- 234 configurations over seven axes on the exploration window; one winner kept
-  per axis. Two axes produced nothing (the pullback ranking H025, and every
-  exit rule applied to the whole pool H029).
-- Two rules were frozen as family members: H024 unchanged, and a relative-
-  strength ranking (H026). They overlap on 9.6% of the symbol-days they trade.
-- **H024 does not replicate**: -0.627% vs the market at t=-1.98 on the holdout,
-  a sign reversal, against +1.172% in sample.
-- **H026 does**, on the claim that is about selection: +1.73% a trade against the
-  same-day pool at t=4.98, *larger* than in the window it was found in. It fails
-  the frozen bar's second clause because the holdout market compounded at 41.78%
-  at a Sharpe of 2.25 and C's Sharpe is 1.74.
-- Per the criterion frozen before the run, the family is dropped rather than
-  re-tuned. **The 2020-2023 window is spent.**
-- Methodologically: the purged-block stress test did not predict replication —
-  it killed the best out-of-sample rule (H030, +2.298% at t=6.16) and kept the
-  worst (H024). Do not use it as a promotion gate again (H032).
-- A fourth non-price lookahead was caught by a test one step before the holdout
-  was opened: ranking on `size_tier_rank`, which is today's index membership
-  applied to 2021 rows (H030).
+Written 2026-08-20, replacing the phase-gated single-strategy plan. The prior
+plan's content survives in `FINDINGS.md` and `HYPOTHESES.md`, which are the
+project's actual memory and are **not** superseded by this refactor.
 
-**Data re-pull (COMPLETE 2026-08-19 21:21 BST)** — all 42,703 pairs settled,
-0 errors. The 2020-2023 holdout was fully pulled and synced, and has now been
-**read** (2026-08-20). It cannot be used again.
+---
 
-No strategy logic, no backtest, no execution exists yet. That is deliberate.
+## 1. Why pivot now
 
-## What is left, now that the holdout is spent
+Seven phases produced one positive-expectancy rule (H024), which reversed sign
+out of sample, and one narrow surviving claim: selection *inside* the contraction
+screen carries out-of-sample information at t>3 against the same-day pool, in
+three independent rankings, on data none was fitted to. Nothing has beaten
+buy-and-hold risk-adjusted in either window.
 
-The three things that follow from the FAIL, in order:
+The valuable output of those phases is not any hypothesis. It is the accumulated
+set of **things that are true about doing this work correctly** — four distinct
+non-price lookaheads caught, clustered inference, permuted-maximum bars,
+same-session matching, cash-charged annualisation, the uselessness of purged-block
+stress as a promotion gate. That knowledge is currently encoded as prose warnings
+in `AGENTS.md` and as conventions inside one strategy's code. It should be
+encoded as **architecture**, and then reused across every future question.
 
-1. **Nothing here should be traded.** No rule tested has beaten buy-and-hold
-   out of sample on a risk-adjusted basis, in either window, and the one that
-   came closest matched the index return with a deeper drawdown.
-2. **The surviving claim is narrow and worth stating precisely.** Selection
-   inside the contraction screen carries out-of-sample information — three
-   independent rankings beat the same-day pool at t>3 on data none of them was
-   fitted to. What no rule managed is converting that into a portfolio that
-   beats the index. Those are different problems and the second one was never
-   directly attacked (position sizing, exposure control, and when *not* to hold
-   the book are all untouched).
-3. **The only untainted data left is the future.** Any successor is a forward
-   test on sessions after 2026-08-18, recorded in advance. `family.holdout()`
-   refuses to run a different family against the 2020-2023 window, which is the
-   mechanism that keeps this true.
+The re-frame that drives everything below:
 
-Still the highest-value input: **30-50 dated real picks from the uncle.** No
-unconditional edge across a pool of ~100 candidates a morning is the *expected*
-result when ~98% of the pool is material he would reject, and every phase of
-this project has now been a search for a decision boundary without a single
-example of the decision.
+> The primary question is not *"did this strategy make money?"* but
+> *"does this signal contain predictive information, under what conditions, and
+> how robustly?"*
 
-## The one thing to read before trusting any Phase 2 number
+Strategy construction is a later, separate activity. Conflating the two is what
+contaminated Phases 2.5 and 2.9.
 
-**The contraction screen can invert the sign of an opening-behaviour result.**
+---
 
-The screen requires date D itself to have been a quiet, contracted day
-(`atr_ratio`, `bb_width_pctile`, `base_depth` all read date D's own high and
-low). So for a morning with genuine persistent buying:
+## 2. Non-negotiables — lessons that become architecture, not convention
 
-- if it keeps running all day → date D's range is wide → contraction fails →
-  **the morning is excluded from the pool**;
-- if the opening demand fades back into a narrow range → contraction passes →
-  **the morning is kept**.
+Each of these was learned expensively. In the new system, none of them may be a
+thing a researcher has to *remember*.
 
-The pool keeps the persistent-demand mornings that died and discards the ones
-that worked. That alone can produce "sustained opening demand predicts poor
-returns" out of a strategy in which sustained demand is good. And the evidence
-fits: of `persistent_demand`'s -0.53% headline, -0.39% is on the entry day
-itself (the segment the screen conditions on) and only **-0.15% is genuinely
-forward, at t≈-1.4 — not convincing**. Roughly two thirds of the effect sits
-exactly where the contamination is.
-
-An earlier note in `FINDINGS.md` argued a real intraday fade was "at least as
-plausible" on the strength of the `above_ema_mid` slack test. That test
-exonerated one filter and said nothing about the contraction family, which is
-the one with the inverting mechanism. The mechanism above is now the leading
-explanation and the intraday-fade reading is the secondary one.
-
-**What survives as plausible:** `heavy_vol_no_progress` — huge turnover, price
-going nowhere — is the one archetype whose effect is majority-forward (-0.17%,
-t=-2.31). It is also the one with an intuitive reading. And the finding worth
-*preserving* rather than explaining away is that **concentrated/bursty volume
-did better than persistent volume**: if the uncle's "strong volume" means an
-explosive initial burst followed by price holding firm, that is a different and
-testable claim from "lots of volume throughout".
-
-**"Persistent demand" is a misleading name and should be retired.** Volume is
-not buying volume; every trade has both sides. What is measured is *unusually
-much trading kept occurring, and price did X*. That is equally consistent with a
-crowded news event, two-sided disagreement, breakout chasers, institutions
-unloading into eager buyers, or an opening move already exhausting. The
-archetype name asserts a mechanism the data cannot see.
-
-## Data on hand
-
-| dataset | path | scope |
+| lesson | source | becomes |
 | --- | --- | --- |
-| daily bars (NSE bhavcopy) | `data/normalized/daily_bars.parquet` | 2020-01-01 → 2026-08-18, 3.35M rows, 1,647 sessions, point-in-time |
-| **adjusted daily bars** | `data/normalized/daily_bars_adj.parquet` | same + `adj_factor` and `*_raw` twins; **use this one** |
-| corporate actions | `data/metadata/corporate_actions.parquet` | 15,439 NSE records, ratios parsed |
-| symbol changes | `data/metadata/symbol_changes.parquet` | 1,056 published NSE renames, 1999→ |
-| rename map | `data/metadata/rename_map.parquet` | 609 touching the panel, 258 applied, per-link status |
-| CA reconciliation | `data/metadata/ca_reconciliation.parquet` | 847 ex-date events, per-event match status |
-| screening metrics panel | `data/normalized/screen_metrics.parquet` | 3.35M rows, ~50 indicator cols, built on adjusted prices |
-| opening 1s ticks | `data/normalized/opening_1s/*.parquet` | 2023-08-21 → 2026-08-18 complete (3.34M rows) |
-| opening features | `data/normalized/opening_features.parquet` | 64,799 clean symbol-days |
-| **candidate panel** | `data/normalized/candidate_panel.parquet` | 63,698 candidate symbol-days with opening data joined |
-| characterisation | `data/metadata/characterization.json` | distributions, censoring check, cut-point grid |
-| **labelled candidates** | `data/normalized/candidate_labels.parquet` | 63,698 mornings + forward returns, MFE/MAE, excess vs market |
-| labelling report | `data/metadata/labelling.json` | per-horizon outcomes, bucket profiles, stop diagnostics |
+| The screener read date D's own close | H015 | `research_data` cannot express "today's close" without an explicit, logged, reviewed escape hatch |
+| Normalisers are lookaheads too | 2026-08-20 | every derived feature declares its inputs; the catalogue rejects a feature whose denominator is unlagged |
+| A current snapshot attribute is a lookahead | H030 | every feature carries `point_in_time: true/false`; non-PIT features are blocked from ranking/scoring by default |
+| Gap-between-observations leaks inside a window | `time_above_open_frac` | intraday features are auto-tested by appending later bars and requiring invariance at `t` |
+| Row-level t-stats inflated ~2.9x | H016 | every statistic in the standard report is clustered by session; the naive one is shown beside it, never alone |
+| Matched controls must be same-session | H020 | matching is a first-class primitive with the market-offset diagnostic printed every run; a non-zero offset fails the run |
+| A search reports a maximum | H019 | any scan's significance bar is the permuted maximum over the scanned family, computed automatically |
+| Price the label before believing it | H018 | every path/outcome taxonomy is run through the canonical payoff before it may be used as a target |
+| Charge a book for its cash | 2026-08-20 | the canonical backtest annualises across the calendar span, always, with no per-rule option |
+| Purged-block stress is not a promotion gate | H032 | reported as a diagnostic, structurally excluded from any pass criterion |
+| A score built by subtracting a factor is a sort on that factor | H038 | neutralisation diagnostics are mandatory, and a score is auto-projected off what it adjusts for |
+| Write bars in units of the effect, not its sign | H037 | pass criteria require a *fraction of the exploration effect retained*; sign tests are rejected by the spec validator |
+| Significance is not size | Phase 2.8 | every effect is reported in decision units (win rate by band, bps per trade) beside its t |
+| The holdout sat *before* the training window, one window, one regime | Phase 3 | versioned quarter-level splits with purging, plus a permanent chronological forward lane (§5.2) |
+| Thirty modules each opening their own parquet | this refactor | one data module, and direct file access from experiment code is a build error |
+| Don't name a feature after a mechanism the data can't see | `persistent_demand` | catalogue entries require a description of what is *measured*; mechanism goes in the hypothesis, not the feature name |
 
-**A second pull is running on the server** (`user@server`, tmux session
-`pull`) covering **2020-04-27 → 2023-08-18**, 74,777 pairs, ETA ~5.3h from
-06:50 BST 2026-08-19. When it finishes:
+### 2.1 The data budget is part of the architecture
 
-```bash
-bash scripts/sync_from_server.sh          # safe to re-run
-.venv/bin/python -m src.cli opening-report
+**2020-2023 has been read twice and is spent for the hypothesis families that
+read it.** The only wholly untainted data is sessions after 2026-08-18.
+
+The new system needs a **sample budget ledger**: a first-class record of which
+partitions have been touched by which experiment, in which role (train /
+validation / test / forward). Reading a partition in a confirmatory role burns it
+for that hypothesis family, permanently and visibly. The runner refuses such a
+run rather than filtering it — the existing fence-raises-rather-than-filters
+behaviour, generalised beyond one hardcoded date.
+
+The ledger and the split (§5.2) are two halves of one mechanism: the split says
+what each partition *is*, the ledger says what has already been *spent* out of
+it.
+
+---
+
+## 3. The four objects
+
+Everything in the system is one of four things. This is the data model, the URL
+structure, and the mental model.
+
+```
+Hypothesis  →  Exploration  →  Signal  →  Evidence
 ```
 
-Check progress without disturbing it:
-```bash
-ssh user@server 'cat ~/brickbreak/data/metadata/pull_status.json; tail -3 ~/brickbreak/logs/pull.log'
+**Hypothesis** — a durable idea with a stable ID, in natural language, with an
+economic or behavioural rationale. *"Stocks that resist a market selloff
+outperform on the rebound."* It has a status, a lineage, and it lives forever.
+Statuses: `proposed · exploring · promising · rejected · validated · decayed`.
+
+**Exploration** — one concrete investigation of a hypothesis. Bounded, dated,
+reproducible, with an immutable manifest. Produces zero, one, or several
+candidate signals plus a verdict. An exploration is never edited after it runs;
+a changed question is a new exploration.
+
+**Signal** — a named, versioned, computable cross-sectional score over the
+universe. `resilience_rel_20d_v2`. It has a definition, a coverage profile, a
+turnover profile, and an owner hypothesis. Signals are the unit of comparison and
+combination.
+
+**Evidence** — one measured result attached to a signal or hypothesis, tagged
+with the window it was measured on, the role that window played, and the
+manifest that produced it. Evidence accumulates; it is never overwritten.
+Supporting and contradicting evidence sit side by side on the hypothesis page.
+
+The three-way distinction already enforced in `HYPOTHESES.md` — *generation*,
+*exploratory*, *confirmatory* — is a required field on every piece of evidence,
+because it determines how much the evidence is worth.
+
+### 3.1 The idea graph
+
+Hypotheses are nodes; typed edges connect them:
+
+```
+relative resilience
+├─ specialises → sector-relative resilience
+├─ specialises → beta-adjusted resilience
+├─ conditions  → resilience during volatility spikes
+├─ contradicts → momentum reversal at 20d
+└─ subsumed-by → generic momentum      (added automatically by neutralisation)
 ```
 
-## Hard limits worth not rediscovering
+Edge types worth having: `specialises`, `generalises`, `conditions-on`,
+`contradicts`, `subsumed-by`, `adjacent-to`, `retest-of`.
 
-- **Daily history floor is 2020-01-01.** `sec_bhavdata_full` 404s before it and
-  the older `cmDDMMMYYYYbhav.csv.zip` format is retired. Breeze has 1-second data
-  back to 2018-04-02, but candidates cannot be screened without daily bars, so
-  2020 is the effective floor for the whole pipeline.
-- **Breeze rate limit is real**: ~4-5 req/s safe, 429s from ~7.5 req/s. Client
-  throttle is lock-guarded; 429s auto-retry.
-- **Breeze session tokens expire daily** (~midnight IST). No headless auth. Any
-  run longer than a day must be resumed manually after refreshing `.env`.
-- **Corporate actions**: handled as of 2026-08-19. Bhavcopy `PREV_CLOSE` is
-  *not* a usable adjustment source — NSE leaves it raw on TATASTEEL's split and
-  pre-adjusts it on DRCSYSTEMS'. Ratios come from NSE's corporate-actions API
-  and are applied only where the tape confirms them; 739 of 847 events matched.
-- **NSE trades on some weekends** (budget Saturdays, Muhurat, DR drills). Never
-  restrict a bhavcopy sync to Mon-Fri, and always file a response under the
-  date *inside* the file — 2021-11-04's session is served at the 05112021 URL.
-- Breeze needs ISEC codes, not NSE symbols; ~5% of symbols fail to map (renames).
-- Muhurat dates (2024-11-01, 2025-10-21) have no 09:15 session.
-- 9 symbol-days carry negative volume (archive defect) and are excluded.
+The graph exists so that a failure produces a *branch*, not a restart. When
+something dies, the system proposes nearby unexplored nodes rather than dreaming
+up an unrelated strategy. It is also the guard against silently retesting the
+same idea under a new name — a rule `AGENTS.md` already imposes on humans.
 
-## Phase 2 — proposed, in order
+---
 
-### 1. Corporate-action adjustment — DONE (2026-08-19)
-`src/corporate_actions.py`, `python -m src.cli sync-corp-actions`.
-739 of 847 ex-date events adjusted; demergers (74) and unpriceable rights (26)
-are flagged and left raw by design. `build_screen` now consumes the adjusted
-bars automatically and the screener's price bounds use `close_raw`, since a
-minimum-price filter is a statement about what actually traded that day.
-Full write-up in `FINDINGS.md`.
+## 4. System architecture
 
-### 1b. Symbol renames — DONE (2026-08-19)
-`src/renames.py`, folded into `python -m src.cli sync-corp-actions`.
-
-NSE publishes the rename list at `content/equities/symbolchange.csv`; the tape
-decides whether each link is one continuous series. 258 of 263 candidate links
-applied, 3,606 → 3,348 symbols, median merged history 660 → 1,636 sessions.
-Four long suspensions left unmerged by design.
-
-Two things this settled that are easy to get wrong:
-- **Continuity must be tested on `close_raw`.** Adjustment factors accumulate
-  per ticker, so the adjusted series has a fake step at every handover
-  (MOTHERSUMI→MOTHERSON: 1.003 raw, 0.446 adjusted).
-- **Renames merge before CA adjustment.** Adjusting first bakes that fake step
-  in. Reordering also lifted CA matches from 739 to 752 for free.
-
-`find_renamed_symbol` stays as a backstop — it answers a different question
-(which ticker did *this* action trade under) and is still tested.
-
-### 2. Join opening features to daily candidates — DONE (2026-08-19)
-`src/opening_join.py`, `python -m src.cli candidate-panel`.
-63,698 of 69,528 in-window candidate symbol-days joined (91.6%); the shortfall
-is attributed, not assumed. Both sides fold through `renames.canonical_map()`.
-
-**The gap does not come from the tick open.** bhavcopy's OPEN and Breeze's
-first 1-second bar disagree on the *sign* of the gap on 10.6% of mornings —
-NSE's opening print comes from the pre-open call auction and Breeze's series
-starts at the first continuous-session trade, typically a few seconds later.
-MINDACORP 2024-05-21: -6.0% gap by the opening print, +0.8% by the first tick.
-`gap_pct` therefore comes from the daily panel; `open_drift_pct` keeps the
-difference as an execution feature.
-
-### 3. Characterise, do not yet filter — DONE (2026-08-19)
-`src/characterize.py`, `python -m src.cli characterize`.
-
-- **Gaps are small.** Median +0.24%, p90 +1.03%; only 2.1% exceed 2%. The
-  screener selects for volatility contraction, so the pool is quiet by
-  construction. A "modest gap" floor above ~1.5% trades a few hundred days out
-  of 64,000 — defensible, but it should be a knowing choice.
-- **Opening volume** is a median 2.98% of the symbol's median daily volume,
-  p90 10.2%. Use `vol_5m_pct_of_median_daily`: a trailing average of `vol_5m`
-  is selection-biased, since ticks exist only for days already screened in.
-- **`om_low_vs_open_pct` is censored at zero** and 36.2% of days sit exactly on
-  the boundary — 55% in the thinnest turnover quintile against 25% in the most
-  liquid. As computed it rewards illiquidity. It must be conditioned on trade
-  frequency or replaced before it gates anything.
-- Cut-point grid is in `characterization.json`; even the strictest cell keeps
-  916 mornings across 577 symbols, so sample size will not decide the
-  thresholds. Forward returns have to.
-
-### 4. Forward-return labelling — DONE (2026-08-19)
-`src/labelling.py`, `python -m src.cli label`. Entry at `close_5m`, the last tick
-of the opening window.
-
-**This tests one narrow hypothesis (H001): "wait until 09:20 and enter at the
-five-minute close".** It is not the discretionary strategy, which enters at an
-unknown point inside the window as the setup develops. The results below are a
-verdict on the 09:20 entry only.
-
-The pool is a coin flip: hit rate 46-47% at every horizon, median return
-negative, mean excess over an equal-weighted same-session benchmark of
-0.02-0.05%. Then the part that matters:
-
-- **Every cell of the Phase 2.3 cut-point grid has a negative +5d excess
-  return**, from -0.17% to -1.04%, t-stats -3.3 to -7.0, and it worsens
-  monotonically as either filter tightens. Raising the gap floor or the volume
-  floor destroys value rather than concentrating it.
-- **The mechanism is the opening window itself.** The five minutes between the
-  selecting print and the actionable price reverse the gap (+1.16% mean on
-  mornings gapping below -2%, -1.13% above +5%) and run with volume (+0.73% in
-  the heaviest bucket). On exactly the mornings the rules select, you pay more
-  than the forward edge is worth. Re-running against the untradeable opening
-  print recovers roughly half of it — locating the effect, not rescuing it.
-- **A stop finding from this phase was wrong and has been retracted** (H004).
-  It paired the first-minute low with a 09:20 entry — different times — and so
-  produced "stops above entries" on 32% of mornings. Read at the same `t`, the
-  invariant `stop < running_low_t <= entry` holds on 100% of rows. Corrected
-  measurement is H005 / `python -m src.cli entry-window`.
-
-This does not kill the strategy — it rejects the 09:20 entry and moves the
-burden onto the exits (H006): mean MFE at +10d is +6.82% against mean MAE
--5.25%, 10.84% of mornings touch +15% within ten sessions, 88.25% touch the
-stop, **6.49% touch both**, and daily bars cannot say which came first.
-
-### 4b. Entry-time correction — DONE (2026-08-19)
-`src/entry_window.py`, `python -m src.cli entry-window`. The opening window
-evaluated at t ∈ {30,60,90,120,180,240,300}s, using nothing after `t`. Enforces
-`stop < running_low_t <= entry` (clean on 464,318 rows) and separates the setup
-measure (`low_vs_open_pct`) from the risk measure (`stop_dist_pct`), which the
-retracted H004 conflated. Conditioned on the entry having advanced 2%+ above the
-open, the running low sits at the open while the stop is 2.41% below the entry —
-a tight setup with normal risk.
-
-**`t` is still a free variable and picking one is not yet on the table.** The
-grid is a primitive for discovering an entry rule, not a rule.
-
-### 4c. The lookahead — FIXED (2026-08-19)
-`src/asof.py`, `python -m src.cli build-metrics --force`.
-
-Every column derived from date D's own session is lagged one trading session per
-symbol. The two exceptions are explicit and tested: date D's **opening print**
-(the 09:15:00 pre-open auction, on the tape before the 09:20 entry) and the
-previous close, because lagging those would break `gap_pct`. Anything not
-explicitly listed as knowable is lagged, so a newly-added indicator cannot
-silently reintroduce the lookahead.
-
-`build_screen.load()` now defaults to the as-of panel; `opening_join`, `serve`
-and `cli screen` all use it. `--unlagged` is available for comparison only.
-
-**Verified, not assumed.** `asof.audit` compares the two panels directly:
-RELIANCE's lagged `close` matches the previous session's close on 1,646 of 1,646
-rows, and the build raises if the spot check fails. A no-op shift is caught.
-
-**How much it matters:** 151,363 candidate mornings under the contaminated
-screen against 151,238 under the corrected one — nearly the same count, but
-**only 61% overlap** (Jaccard 0.612). 36,365 mornings are new and 36,490 are
-gone. A quarter of the pool is different, so nothing downstream can be assumed
-to carry over.
-
-### 4d. Re-pull under the corrected screen — RUNNING (started 13:08 BST 2026-08-19)
-`python -m src.cli work-list`, then `scripts/run_pull.sh` on the server.
-
-151,236 corrected candidates in the tick window, of which **107,152 were already
-settled in the manifest and are not re-fetched**. 42,703 pairs to pull (22,161 in
-the 2020-2023 era, 20,542 in 2023-2026), ~3.1h at 3.6 calls/s. Verified: zero
-overlap between the work list and the settled manifest.
-
-The dedup has one trap worth not rediscovering: the manifest records the ticker
-each morning was **fetched under**, while the candidate panel is keyed on the
-post-rename canonical ticker. Compared directly, every renamed company's whole
-history looks unfetched. `fetch_opening.build_work_list` folds both sides through
-`renames.canonical_map()`; `test_asof.py` guards it.
-
-```bash
-ssh user@server 'cat ~/brickbreak/data/metadata/pull_status.json; tail -3 ~/brickbreak/logs/pull.log'
-bash scripts/sync_from_server.sh     # when complete
+```
+  idea (natural language)
+    ↓
+  AI research planner            → an experiment spec, human-amendable
+    ↓
+  research job runner            → git worktree, isolated, manifest-stamped
+    ↓
+  Claude Code CLI worker         → writes experiment code against the data module
+    ↓
+  research_data                  → THE ONLY DOOR: point-in-time features,
+                                   universes, benchmarks, forward labels,
+                                   versioned deterministic splits
+    ↓
+  automatic leakage tests        → run before results are accepted
+    ↓
+  standard alpha report          → the same battery for every signal
+    ↓
+  canonical backtest             → one portfolio construction, for everything
+    ↓
+  AI interpretation              → verdict + failure class + follow-ups
+    ↓
+  hypothesis ledger + idea graph → evidence accrues, branches proposed
 ```
 
-Then rebuild, in this order:
-```bash
-.venv/bin/python -m src.cli candidate-panel
-.venv/bin/python -m src.cli label
-.venv/bin/python -m src.cli behaviour
+Two properties matter more than the individual boxes:
+
+1. **The worker cannot reach the data except through `research_data`.** Arbitrary
+   parquet reads are how three of the four lookaheads got in. Raw file access
+   from experiment code is a build error, not a style preference.
+2. **The worker's freedom is in the *code*, not in the *output*.** Every job ends
+   by emitting a structured result conforming to a schema. The dashboard ingests
+   the schema, not a terminal transcript.
+
+---
+
+## 5. Layer by layer
+
+### 5.1 `research_data` — the only door to market data
+
+Everything above the data layer is worthless if the data layer is wrong, and
+every failure in this project's history has been a data-layer failure. So the
+refactor starts here: **one module that is the sole route by which any experiment
+reaches market data.** Nothing else opens a parquet file.
+
+**Naming.** `data/` is already the on-disk store of parquet files, so a Python
+package of the same name would be a permanent source of confusion. The module is
+`research_data`; `data/` stays what it is — bytes on disk that only
+`research_data` is allowed to open.
+
+**Responsibilities, all of them:**
+
+| responsibility | what it guarantees |
+| --- | --- |
+| point-in-time features | nothing knowable only after the stated timestamp is reachable |
+| universes | point-in-time membership, survivorship handled, ETFs and defects excluded |
+| adjusted vs raw prices | indicators get adjusted; tradeability claims get raw; the choice is explicit at every call |
+| benchmarks | market, sector and peer series that are same-session by construction |
+| forward labels | the only route to the future, and labelled as such so it can never be an input |
+| splits | deterministic, versioned, purged partitions — identical for every experiment |
+| catalogue | machine-readable metadata for every feature (§5.3) |
+| lineage | dataset hashes and version stamps for the manifest |
+
+The API shape the researcher works with:
+
+- `frame.asof(date)` — the panel as it was knowable at a moment, not a
+  date-filtered view of a fully-built panel.
+- `feature.lag(n)` — explicit, and the default for anything not declared knowable.
+- `forward_return(horizon)` — the only way to obtain the future.
+- `universe(date)`, `market()`, `sector()`, `peers()`.
+- `split(version).train / .validation / .test / .forward` — partitions, never
+  raw date ranges.
+- `match(controls)` — matched-set construction with the same-session constraint
+  and the market-offset diagnostic built in.
+
+### 5.2 Deterministic dataset splits
+
+**The problem being fixed.** The current arrangement is backwards: the holdout
+(2020-04 → 2023-08) sits *before* the exploration window (2023-08 → present).
+Rules were developed on recent data and tested on older data. That inverts the
+direction of every real deployment, tests nothing about forward robustness, and
+hands each window a different regime — the holdout window's market compounded at
+41.78% at a Sharpe of 2.25, which is why H026 could beat the pool by t=4.98 and
+still fail the portfolio clause. One window, one regime, one shot, and no way to
+tell a regime effect from a decay effect.
+
+**The design.**
+
+- **Assign whole calendar quarters** to `train` / `validation` / `test` by a fixed
+  seeded shuffle. Chronological order is preserved *within* each quarter; only
+  the assignment of quarters is randomised. This buys regime diversity in every
+  split without the leakage of shuffling individual stock-days.
+- **Purge around every cross-set boundary** so that overlapping forward-return
+  windows cannot cross. Sized to the dataset version's declared maximum horizon.
+- **Version the split manifest and store it beside the dataset.** Every
+  experiment uses exactly the same partitions unless a new dataset version is
+  deliberately created. The split version goes in every manifest.
+
+The panel holds **27 quarters** (2020Q1 → 2026Q3), median 62 sessions each. That
+is a small number of blocks, which drives most of the refinements below.
+
+#### Purging, and what it costs
+
+Leakage across a boundary is directional, so the purge should be too:
+
+- **Purge**: drop rows from the *end* of a quarter whose forward-return window
+  reaches into a following quarter that belongs to a different set. Length = the
+  version's maximum forward horizon.
+- **Embargo**: drop rows from the *start* of a quarter following a different-set
+  quarter, to break serial correlation in features whose lookback spans the
+  boundary. Shorter — roughly half the purge.
+
+**Purge asymmetrically: always drop from the lower-priority set, never from
+test.** Train gives way to validation, validation gives way to test. Evaluation
+sample is the scarce resource; training rows are not.
+
+Honest cost, at a 20-session max horizon and roughly 60/20/20 quarters: about
+half the 26 internal boundaries are cross-set, and the purge removes on the order
+of **15-20% of training rows** while leaving test and validation whole. That is
+the price of not leaking, and it should be stated in the split manifest rather
+than discovered later.
+
+Because the purge length is a function of the maximum horizon, **`max_horizon` is
+a property of the dataset version.** An experiment requesting a longer horizon
+than its version was purged for is an error, not a warning.
+
+#### Constraints on the draw
+
+A blind seeded shuffle over 27 blocks can produce a degenerate assignment — all
+of 2020 in test, or a test set that never sees a drawdown. So the draw is
+seeded *and* constrained, with the constraints recorded in the manifest:
+
+- each set spans at least three distinct calendar years;
+- each set contains at least one high-volatility quarter and one trending
+  quarter, by a regime label fixed before the draw;
+- no set receives more than two consecutive quarters (which would rebuild a
+  chronological block by accident).
+
+The draw iterates seeds until the constraints hold, and the manifest records the
+seed, the constraints and the resulting assignment. Reproducible, and honest
+about not being uniformly random.
+
+#### The test set is drawn once and never re-drawn
+
+A subtlety worth building in from the start: re-shuffling to get a second opinion
+reads the test data twice, which is exactly how 2020-2023 was spent.
+
+- **Test quarters are frozen at dataset-version creation.** They are read once per
+  hypothesis, at promotion, and the read is logged to the ledger.
+- **Train and validation may be re-drawn** within the remaining quarters under a
+  sub-seed, giving k-fold-style repetition and split-stability diagnostics
+  without touching test.
+- A new dataset version that re-draws test is a deliberate, recorded act with a
+  stated reason — not something a researcher does by passing a different seed.
+
+#### Two axes of generalisation, kept separate
+
+The shuffled split answers *does this work across regimes?* It cannot answer
+*does this still work?*, because a shuffled test set is interleaved with training
+in time. Alpha decay is invisible to it.
+
+So the module exposes a fourth partition, `forward`: **all sessions after the
+dataset version was created**, strictly chronological, never shuffled, growing by
+one session a day. Every promoted signal accrues forward evidence automatically.
+The two axes are reported separately and never averaged, because they answer
+different questions:
+
+| partition | question | failure mode it catches |
+| --- | --- | --- |
+| shuffled `test` | does it work across regimes? | regime-specific fitting |
+| chronological `forward` | does it still work? | decay, crowding, structural change |
+
+#### Reconciling the split with the burned window
+
+This is the one genuinely awkward part and it needs deciding, not glossing.
+2020-2023 has been read twice. A seeded shuffle will inevitably assign some of
+those quarters to `test`.
+
+The proposal: **prior exposure is a property recorded per quarter, not a reason to
+discard the quarter.** Each quarter carries a `prior_exposure` list naming the
+hypothesis families that have already read it. Then:
+
+- a genuinely new signal, unrelated to anything previously tested, may use those
+  quarters as test with a noted caveat;
+- any descendant of the opening-window family or the resilience family — anything
+  the idea graph links to H024, H026 or H034-H038 — is **blocked** from scoring on
+  them, by the ledger, automatically;
+- the `forward` partition is the only unqualified confirmatory evidence for those
+  families, and the interface should say so plainly rather than showing a clean
+  green tick.
+
+The alternative — declaring all of 2020-2023 permanently unusable — throws away
+55% of the history to protect against a contamination that only applies to two
+hypothesis families. The graph-aware version is stricter where it matters and
+cheaper everywhere else, and it degrades honestly: when in doubt about lineage,
+the ledger blocks.
+
+### 5.3 The feature catalogue
+
+The catalogue is the agent's map of the world, so it never has to grep source
+files to discover what exists. It lives inside `research_data` because PIT status
+is a data-layer fact. Every feature carries:
+
+| field | why |
+| --- | --- |
+| `available_as_of` | the timestamp at which this value is knowable |
+| `lookback` | how many sessions of history it consumes |
+| `adjusted / raw` | indicators on adjusted prices; tradeability claims on raw |
+| `point_in_time` | false for snapshot attributes — sector, index tier |
+| `universe_coverage` | what fraction of symbol-days it exists for, over time |
+| `inputs` | the features it derives from, so PIT status is inherited |
+| `max_horizon_safe` | the longest forward horizon it can be paired with |
+| `known_caveats` | censoring at zero, illiquidity bias, archive defects |
+| `owner` | which pipeline stage produces it |
+
+Initial catalogue, all already computable here: price OHLCV, turnover, delivery %,
+market and index series, sector label, index tier, ATR and volatility measures,
+Bollinger width, base depth, relative strength, rolling highs/lows and distance to
+them, gap, opening-window tick features, corporate actions, rename lineage,
+listing age, liquidity percentiles, market regime labels.
+
+Two catalogue rules that follow directly from this project's history:
+
+- A feature whose `point_in_time` is false may be used for *stratification*
+  (report by sector) but not for *scoring* (rank on sector), and the module
+  enforces the difference rather than documenting it.
+- **PIT status is inherited from inputs.** This is what would have caught the
+  unlagged `median_vol_20` denominator automatically — a clean numerator over a
+  contaminated one.
+
+### 5.4 Leakage tests as a gate
+
+Standard tests run automatically on every experiment, before its results are
+accepted:
+
+- append-future-bars invariance for anything computed at a time `t` inside a
+  window;
+- shuffle-the-future invariance for cross-sectional scores;
+- a PIT audit that recomputes sampled rows from the as-of frame and requires an
+  exact match;
+- a **split-integrity check** — no symbol-day appears in two partitions, and no
+  training row's forward window reaches into validation or test.
+
+An experiment whose leakage tests fail does not produce a "result with a caveat".
+It produces a failure.
+
+### 5.5 The experiment specification
+
+Every exploration is defined by a spec before it runs — generated by the planner,
+amendable by hand, validated before dispatch. It names:
+
+- hypothesis ID and the question in one sentence;
+- universe, dataset version and **partition** (train / validation / test /
+  forward) — never a hand-written date range — checked against the sample-budget
+  ledger before dispatch;
+- the signal(s) to construct, and their parameter neighbourhood;
+- the outcome(s): horizons, and whether the canonical payoff applies;
+- the standard report to run (usually: all of it);
+- neutralisation set;
+- pass criterion, in units of the effect — required, and validated as not a sign
+  test;
+- what would falsify it.
+
+The spec is the contract between the human, the planner and the worker. It is
+also what makes two runs comparable.
+
+### 5.6 Immutable manifests and lineage
+
+Every experiment emits a manifest it cannot edit:
+
+code hash · dataset version and hash · **split version** · catalogue version ·
+hypothesis ID · spec · parameters · universe · partition · model used · prompt ·
+runtime · environment · result hash.
+
+This is what lets the dashboard answer **"why did this result change?"** instead
+of the answer arriving six hours later as "the parquet was stale". Dataset
+hashing is the cheap part and pays for itself the first time it fires.
+
+### 5.7 The Claude Code job runner
+
+The web layer never executes generated shell text. It creates a **job**, and a
+worker consumes it:
+
+```
+dashboard → job spec → queue → worker → Claude Code CLI (headless, JSON output)
+          → isolated git worktree → research_data → leakage tests
+          → experiment runner → experiment_result.json → ingest → dashboard
 ```
 
-### 5. Re-run Phase 2.5 on the clean pool — NEXT, once the pull lands
-Everything in H008–H014 is measured on the contaminated pool and must be redone
-rather than adjusted. Specifically:
+Design points:
 
-- re-test H009 (persistence), H011 (`heavy_vol_no_progress`) and H013 (the
-  archetype ordering) on the corrected pool;
-- **rename the archetypes to describe what is measured, not what it might
-  mean.** `persistent_demand` → something like `sustained_high_activity`;
-- keep the entry-day / forward decomposition as standing practice, because it is
-  cheap and it is what exposed the problem;
-- the 2020-2023 era stays holdout. `explore.EXPLORE_START` fences it and
-  `fence()` raises rather than filtering.
+- **Isolated git worktree per job.** One exploration cannot trash another or
+  mutate the canonical data pipeline. Data is mounted read-only; only the job's
+  own output directory is writable.
+- **Claude Code CLI in headless mode**, so the existing subscription is the
+  billing path. No API keys, no separate metering. *(Prerequisite: the CLI is not
+  currently installed on this machine.)*
+- **The worker gets a scoped toolkit**: `research_data`, the catalogue, the
+  standard report, the canonical backtest, and the repo's test runner. It writes
+  the experiment-specific code — the part that genuinely needs intelligence — and
+  is structurally prevented from re-implementing data plumbing badly.
+- **Schema-conformant output or failure.** The job's last act is writing a result
+  document that validates against the schema. Non-conforming output is a failed
+  job, not a partial one.
+- **Bounded**: wall-clock, token and retry limits per job; a killed job is a
+  recorded outcome with its partial manifest.
+- **Idempotent re-runs.** Re-running a manifest must reproduce its result, and a
+  divergence is itself a finding.
 
-### 6. The outcome variable — TESTED (2026-08-19), and it does not rescue anything
-`src/payoff.py`, `python -m src.cli payoff`. H017.
+### 5.8 The standard alpha evaluation suite
 
-The objection was right that the labels differ. They differ by more than
-expected, and in the opposite direction to the hope:
+Every exploration gets the same battery unless the spec explicitly opts out with
+a stated reason. Consistency is the point: it produces a comparable *fingerprint*
+per alpha, and it removes the researcher's freedom to report only the flattering
+cut.
 
-| label, same 63,698 trades | mean excess | hit | t |
-| --- | --- | --- | --- |
-| fixed horizon (+5d) | +0.021% | 43.3% | 0.52 |
-| traded payoff (stop/target/half-out/trail) | **-0.130%** | 25.0% | -2.80 |
+**Core predictive content**
+- rank IC / Spearman with forward returns
+- IC by horizon: 1, 5, 10, 20 sessions (and decay curve)
+- quantile/decile returns — **the headline visual**
+- monotonicity across buckets
+- top-minus-bottom spread
+- hit rate and effect size in decision units
+- same-day market- and sector-relative returns
+- clustered confidence intervals (by session), naive shown beside
 
-78.7% stop out, 4.5% gap through the stop, 14.2% fill the target, median hold 4
-sessions. Swept from a 0.5% to an 8% stop buffer the payoff excess is negative
-throughout (-0.115% to -0.475%), and restricting to real setups (price advanced
-0.5%+ above the open) makes it worse still (-0.21% to -0.28%).
+**Signal mechanics**
+- turnover of the signal
+- persistence / autocorrelation of the score
+- coverage over time and across the universe
 
-**One trap in that sweep worth carrying forward.** The *raw* payoff improves
-monotonically as the stop widens and eventually beats the raw five-day return.
-The *excess* worsens the whole way. Wider stops mean longer holds, and a longer
-hold collects more market return in a rising market — the apparent improvement
-is bought beta. Judge this on excess only.
+**Conditioning**
+- by year
+- by sector
+- by market-cap tier / liquidity bucket
+- by market regime
+- parameter-neighbourhood sensitivity — is this a plateau or a spike?
 
-So the "we are measuring the wrong thing" defence for H001/H002 does not hold.
-Still to redo on the corrected pool when the re-pull lands.
+The quantile plot goes at the top of the report. An orderly slope across
+Q1→Q5 is the thing worth looking at; one magic bucket surrounded by garbage is a
+much weaker object, and the report should make that visually obvious in one
+second.
 
-### 6b. The intraday pull is NOT justified by H006 — decided
-H006 said the only remaining reason for the full-session intraday pull was
-resolving which came first on the 6.49% of mornings touching both the target and
-the stop within ten sessions.
+### 5.9 Neutralisation diagnostics
 
-**That premise was wrong.** Ordering across *different* sessions is known from
-the dates. Only a stop and a target touched in the **same session** is
-undetermined, and with a ~2% stop and a +15% target that needs a ~17% one-day
-range. Running the rule with every same-session ambiguity resolved first for and
-then against the trade:
+For every candidate, mandatory: *does this survive after removing exposure to
+market, sector, size, beta, volatility and generic momentum?*
 
-- unresolvable trades: **10 of 63,698 (0.02%)**
-- expectancy hanging on the answer: **0.002%**, never above 0.009% at any stop
-  width tested
+The output is a decomposition, reported as such:
 
-The pull would buy two thousandths of a percent. If it is run, it must be for a
-different reason — and none is currently on the table.
+```
+relative resilience  =  70% generic momentum
+                     +  20% low beta
+                     +  10% genuinely unusual resilience
+```
 
-### 6d. The reasoning that got here, kept because it was right to ask
-The objection was: almost everything asks *"if I buy here, what is the excess
-return at D+5?"* while the payoff is `enter → stop losers quickly → a minority
-run +15-20% → sell half → trail`. If 70% of setups end -3% by D+5 but the stop
-exits at -1%, and 10% reach +18% then give it back, the forward-return label
-calls a profitable rule bad.
+The 10% is the object of interest. H038 is the cautionary case in the other
+direction — a score built by subtracting beta was *algebraically* beta — so the
+suite also projects a score off what it claims to adjust for and reports what
+remains. Both directions of that error are now covered by the same machinery.
 
-That was the right question and it was cheap to answer — the simulator on daily
-bounds cost nothing and brackets the answer. It just came back negative. Worth
-keeping because the *reasoning* generalises: any future exit structure has to be
-measured this way rather than assumed to be equivalent to a horizon label.
+### 5.10 The canonical backtest
 
-### 5b. Reverse discovery — DONE (2026-08-20)
-`src/context.py`, `src/discovery.py`, `python -m src.cli context`, then
-`python -m src.cli discover --freeze`. H018-H023.
+Deliberately simple, identical for every alpha, and never optimised:
 
-Everything above in item 5 was superseded by running the search backwards from
-outcomes instead of forwards from rules. What it settled:
+> Each day, rank the universe by signal. Hold equal-weight top 5/10/20 for N
+> sessions. Charge conservative costs (this project's measured floor: 0.40%
+> round trip). Compare against the index and against the equal-weight universe.
+> Annualise across the calendar span, charging cash for uninvested sessions.
 
-- **The outcome taxonomy is validated against the money**, not asserted. Nine
-  path-aware states, each run through `payoff.simulate`. The three winner states
-  earn +13.31%, +2.86% and +1.29% excess; the six failure states -0.31% to
-  -1.65%. One state had to be renamed after pricing showed it earned +0.05%.
-- **The stop as stated is not a stop.** Median distance 0.41% against a median
-  ATR of 3.37%. Risk is floored at 0.5 x ATR throughout this phase.
-- **What survives:** two features, both saying winners sat slightly further
-  below their short-term moving averages, at 0.107 standardised — a win-rate
-  lift of 1.06x on a 16.13% base. Stable everywhere it was cut. Too small to
-  build on.
-- **The direction is against the breakout premise.** Winners were lower in
-  their base and further below their 20/50-day highs, not higher. Not explained
-  by "more room to travel" (H021).
-- **Trending markets do not help; chop does** (H022). And market volatility is
-  a bigger effect (1.7x) than any stock-level feature (1.06x) — with a stated
-  mechanical caveat.
-- **No second winner archetype** (H023). Clustering peaks at 1.22x in sample.
+It answers exactly one question: **if this predictive relationship were exploited
+naively, is it economically meaningful?** Not "what is the best version of this".
+No stop tuning, no holding-period search, no sizing, no regime timing at this
+stage — that is how signal discovery got contaminated by strategy optimisation
+before.
 
-**The one number to carry forward is not a setup.** `shaken_out` — stopped out,
-and then the stock moves 3%+ — is **27.7% of all mornings**, median MFE +7.53%.
-That is a stop-placement question and it is now the largest identified block in
-the pool.
+The three layers stay separate and are labelled as such everywhere:
 
-**Read `H020` before trusting any matched contrast in this project.** Matching
-controls across +/-2 sessions instead of the same session tripled every headline
-result, because winners cluster on local market troughs and a control two days
-away sits 0.45% higher in the market index on 71.2% of sets.
+| layer | question |
+| --- | --- |
+| signal diagnostics | does information exist? |
+| canonical alpha backtest | is it economically large enough to care about? |
+| strategy research | how would one actually trade it? — **later** |
 
-Frozen for the holdout: `data/metadata/discovery_frozen.json` — four structures
-and two near-misses, with the exact `OutcomeConfig`, `MatchConfig`,
-`ClusterConfig` and `t` needed to replay them unchanged.
+### 5.11 AI interpretation and the failure taxonomy
 
-### 9. The holdout test — DONE (2026-08-20), verdict FAIL
+The post-experiment analysis produces a paragraph a human can act on:
 
-Superseded by Phase 3 above and H033. The section below is the plan as written
-*before* the run and is kept because it records what the bar was going to be
-before anything was seen. Two things were decided differently and both are
-recorded in `family.PASS_CRITERION` with their reasons: the portfolio clause
-became "Sharpe above the market's" rather than "CAGR above the market's" (one
-ruler has to serve a concentrated book and a partly-invested one), and the
-holdout start moved to 2020-12-29 so every rolling window in the panel is full.
+> *Relative resilience contains a modest monotonic signal over 5–15 sessions.
+> Strongest after broad drawdowns beyond X; largely disappears after controlling
+> for sector momentum. Three follow-up hypotheses suggested.*
 
-#### the plan as it stood beforehand
-H024 is the only candidate worth spending the holdout on, and it needs none of
-the tick data — the score is `dist_52w_high` + `deliv_pct`, both daily and
-as-of, and entering at the opening print costs 0.4pp of CAGR against the tick
-entry. So the test is: rebuild the screen on 2020-04 → 2023-08, rank, take the
-top N, hold 30 sessions, and compare against the same-day pool and the market.
+Not a transcript, not a wall of tables. The tables stay one click away.
 
-Run it **once**. The frozen definition is in `data/metadata/shotgun_frozen.json`
-and `shotgun.SCORE_FEATURES`; changing anything about it before the run and
-after seeing the result converts the only clean test this project has into
-another exploratory one.
+And failure is **classified**, never just `FAILED`:
 
-Worth deciding before the run, not after:
-- what result would count as a pass (a sensible bar: positive against the
-  same-day pool with a clustered t above 2, and a portfolio CAGR above the
-  market's over the same window);
-- whether a fail kills the whole thing or only the ranking.
+`NO_SIGNAL` · `SIGNAL_BUT_BETA` · `SIGNAL_ONLY_ONE_REGIME` · `SIGNAL_TOO_SMALL` ·
+`HIGH_TURNOVER` · `UNSTABLE` · `LIKELY_OVERFIT` · `INSUFFICIENT_SAMPLE` ·
+`DATA_QUALITY` · `REDUNDANT_WITH_EXISTING_ALPHA`
 
-### 6c. Finish the holdout pull — DONE (2026-08-19 21:21 BST)
-All 42,703 pairs settled, 2,290 with data on the final chunk, 0 errors. 1,445
-session files synced locally. The 2020-2023 backfill is complete and unread.
+Because the class determines the follow-up:
 
-The pull had hung at 16:03 BST with all threads in `futex_do_wait` — no
-progress for five hours while the process stayed alive. Worth knowing: **the
-supervisor cannot detect this**, because it only reacts to exit codes and a
-hung process never exits. If a long pull is run again, watch the log timestamp
-rather than the process list.
+| class | the system's next move |
+| --- | --- |
+| `SIGNAL_BUT_BETA` | residualise against sector and beta; re-run |
+| `SIGNAL_ONLY_ONE_REGIME` | characterise those periods; is the regime itself predictable? |
+| `NO_SIGNAL` | branch laterally — *"raw drawdown resilience failed; resilience conditional on unusually high sector volume is conceptually adjacent"* |
+| `SIGNAL_TOO_SMALL` | check whether it combines with a low-correlation existing alpha |
+| `REDUNDANT_WITH_EXISTING_ALPHA` | record the subsumption edge; stop |
+| `LIKELY_OVERFIT` | shrink the parameter space, re-run on the neighbourhood |
 
-Two things that cost time on the restart and are worth not rediscovering:
-- **`cli.py` on the server is stale** and fails on import (`corporate_actions`).
-  `scripts/server_pull.py` does not import it and is unaffected, so the pull
-  works even when `python -m src.cli check-auth` does not. Probe auth through
-  `BreezeClient` directly instead.
-- **`BreezeClient.daily()` does not authenticate itself.** Calling it without
-  `client.authenticate()` first returns `None response from SDK (usually an
-  expired or missing session)` — which reads exactly like a dead token and is
-  not. `check-auth` passes because it calls `authenticate()`.
+This is what makes suggestions *coherent* rather than Claude randomly proposing
+another strategy. Note that this project already has a worked example of every
+one of these classes in `HYPOTHESES.md`, which is a good corpus for calibrating
+the classifier.
 
-### 7. Then: richer daily context, and how selective is he actually?
-The pool has tens of thousands of candidate mornings. If the uncle sees ~50
-plausible names in a morning and trades **one**, the pool is ~98% material he
-would reject, and asking whether broad features recover his judgement is asking
-the wrong question. No unconditional edge in a pool that broad is the *expected*
-result, not evidence against him.
+### 5.12 Signal comparison and the novelty objective
 
-His decision boundary plausibly spans: correct sector + the right kind of daily
-base + location relative to a breakout + recent trend + opening behaviour —
-jointly, not opening volume alone. So:
+A Signal Compare view over any 2–10 signals:
 
-- build the richer daily-context interactions (base shape, distance to
-  breakout level, sector state) rather than more opening-window features;
-- **get a sample of his actual decisions** — even 30-50 dated symbol picks would
-  let the pool be scored against real selections instead of guessed ones. This
-  is now the highest-value thing to ask him for.
+- correlation between scores;
+- correlation between realised returns;
+- overlap in top-ranked names;
+- does one subsume the other (incremental predictive value, both directions);
+- combined-portfolio behaviour under the canonical construction.
 
-### 8. Still worth testing, unchanged
-The -2% to -1% gap bucket was the best cell in the H002 table (+0.38% excess at
-+5d, 52.2% hit rate against 46.5% pool-wide) — a fade rather than a
-follow-through. Data-generated (H007), never tested out of sample. Freeze the
-bucket definition **before** looking and test on the 2020-2023 holdout.
+The end goal is not the single strongest alpha. It is **several relatively
+independent weak alphas**. So the suggestion engine must explicitly value
+novelty:
 
-## Research ledger
+> *"This performs slightly worse than Signal 17, but correlation is only 0.14,
+> so it may be more valuable in combination."*
 
-`HYPOTHESES.md` (root) records every hypothesis with a stable ID — H001–H007 as
-of 2026-08-19, including the retracted H004. Per `AGENTS.md` it is updated
-before moving substantially past a result, negative results are never deleted,
-and data-generated ideas are marked exploratory until tested on unseen data.
+Without that, the system will optimise the same momentum family forever — which
+is, recognisably, what the last seven phases did within one strategy family.
 
-## Open questions for the uncle
-- "Below the largest ~250" — by market cap rank? We only have index-membership
-  tiers (50/100/200/500/750), no true cap rank; NSE publishes no free cap file.
-- What counts as a "modest gap" and "strong volume" numerically? **The question
-  has changed shape.** It is no longer where to cut but why to cut at all: both
-  filters have negative excess returns at every threshold tested, and the pool's
-  median gap is +0.24% against a p90 of +1.03%, so "modest gap" as commonly
-  meant (1-3%) already describes the top ~10% of mornings — the worst-performing
-  ones. Worth showing him the grid and asking what he thinks it is measuring
-  that this does not.
-- **At what point in the window does he actually enter?** This is now the
-  central open question, and it matters more than either filter — the first five
-  minutes move against the selected mornings by 0.3-0.7% (H003). Does he watch
-  for a specific trigger (a break of the first-minute high? a hold above the
-  open?), and roughly how far into the window does that usually happen?
-- How far below the running low does the stop go, and is it a fixed buffer, a
-  tick, or a fraction of the opening range?
-- "The low not far below the open" — as computed this is censored at zero and
-  36% of days sit exactly on the boundary, mostly thin ones. Ask whether he
-  means the first *minute* or the first five, and whether he is really
-  describing the candle's shape (body vs wick) rather than a distance.
-- Does he avoid earnings dates? Nothing currently models that.
+---
 
-## Conventions
-- Never hardcode thresholds; they belong on `ScreenConfig`.
-- Prefer `daily_bars_adj.parquet` over `daily_bars.parquet`. Indicators go on
-  adjusted prices; anything asserting what was tradeable goes on `*_raw`.
-- Pipeline order is **renames → corporate actions → indicators**. Anything
-  keyed on symbol must be folded through `renames.canonical_map()`.
-- Everything that touches Breeze goes through `src/breeze_client.py` (throttle +
-  retry + call logging to `data/metadata/api_calls.jsonl`).
-- Verify empirically rather than trusting docs — that has paid off repeatedly.
-- `.venv/bin/python -m pytest tests/ -q` — 84 tests, keep them passing.
-  Live-NSE tests are marked `network` and deselected by default; run them
-  deliberately with `-m network`.
+## 6. The dashboard
+
+### Explore — the research console
+Type a vague idea. *"Do stocks that hold up unusually well during Nifty drawdowns
+rebound harder?"* The planner returns a research plan and shows what it intends
+to measure; you amend it; you launch. Progress is visible; the deliverable is the
+interpretation, with the report and the raw transcript behind it.
+
+### Hypotheses — the centre of the system
+One durable page per hypothesis: the original natural-language idea, the
+rationale, the status, every experiment ever run against it, universes and
+windows used, charts and diagnostics, related hypotheses, supporting evidence,
+contradicting evidence, the AI interpretation, and the next suggested
+investigations.
+
+**Failed hypotheses stay visible.** This project has already learned why that
+matters, and `HYPOTHESES.md` is the prototype.
+
+### Idea graph
+The hypothesis lineage, navigable. Where the branches are, what is unexplored.
+
+### Signal Compare
+As above. Correlation, overlap, subsumption, incremental value.
+
+### Alpha leaderboard — not ranked by CAGR
+Columns: `Alpha · IC · Q5–Q1 · Robustness · Turnover · Cost-adjusted · Novelty ·
+OOS · Confidence`, plus an overall research score.
+
+A boring alpha with modest returns, excellent monotonicity, low turnover and low
+correlation to everything else should rank **highly**. A 26.8% CAGR fitted rule
+with one magic bucket should not — H024 would have ranked poorly here before the
+holdout was spent on it, which is the whole argument for the leaderboard.
+
+### Graveyard
+Every dead alpha, one line, with the reason:
+
+> *Volume persistence — rejected; effect largely contaminated by selection
+> lookahead.*
+> *H024 proximity-to-high — strong exploration result, reversed OOS.*
+
+It stops both the human and the AI from rediscovering the same seductive ideas in
+six months. It is also the cheapest possible input to the suggestion engine.
+
+### Research inbox
+Auto-populated from three sources: AI-generated hypotheses from existing findings,
+patterns noticed incidentally inside experiments, and your own notes. Each item
+states **why it exists** — *"suggested because H041 found relative-strength
+predictive power only in high-volatility periods"* — so research forms a tree
+rather than a random walk.
+
+---
+
+## 7. v1 scope
+
+Build only these ten. Everything else in this document is v2+.
+
+1. Explore / new-hypothesis interface
+2. Standard experiment specification
+3. Claude Code job runner (worktree-isolated, schema-conformant output)
+4. `research_data` — the single data module, with versioned purged splits
+5. Standard cross-sectional alpha report
+6. Canonical backtest
+7. Hypothesis and evidence pages
+8. Experiment manifests and data lineage
+9. Failure classification and suggested follow-ups
+10. Signal comparison and correlation
+
+Deferred by design: idea-graph visualisation, leaderboard scoring, research
+inbox automation, combination/portfolio construction across alphas, strategy
+research of any kind, execution.
+
+### Suggested build order
+
+| stage | delivers | done when |
+| --- | --- | --- |
+| **A. Foundations** | `research_data`: catalogue, PIT API, split v1, leakage gate | the split manifest is frozen and hashed; H026 (the surviving finding) reproduces through the module; each of the four known lookaheads is caught by a test |
+| **B. Evaluation** | standard alpha report + canonical backtest + neutralisation | H024 and H026 both produce full fingerprints that match what is already known about them |
+| **C. Persistence** | hypothesis/evidence/signal store, manifests, sample-budget ledger | `HYPOTHESES.md` H001–H038 are migrated as real records, each mapped onto the partitions it actually read, so prior exposure is machine-readable |
+| **D. Automation** | experiment spec, job runner, Claude Code worker, result schema | a job dispatched from a spec runs end-to-end unattended and ingests cleanly |
+| **E. Interface** | Explore console, hypothesis pages, signal compare | a vague sentence becomes a plan, a run, and an interpretation without touching a terminal |
+
+Stage A is the one that must not be rushed. Everything downstream inherits its
+guarantees, and this project's entire failure history is a history of Stage A
+defects. Within Stage A, the split is the irreversible part — every result the
+lab ever produces is denominated in it, so freeze it deliberately and version it
+from day one rather than settling it after a few experiments have already been
+run against a provisional draw.
+
+---
+
+## 8. What carries over, what retires
+
+**Carries over unchanged** — this is the genuinely valuable inventory:
+
+- the point-in-time daily panel, 2020-01-01 → present, with corporate-action
+  adjustment, rename merging and the pipeline order that makes both correct;
+- the as-of lagging machinery and its audit — the single most important piece of
+  code in the repo;
+- market regime, breakout location and relative-strength context;
+- opening 1-second tick data, 2023-08 → present, and its at-`t` invariance tests;
+- clustered statistics, permutation nulls, matched-set construction with the
+  market-offset diagnostic, stability splits, quantile profiling;
+- the payoff simulator and span-based book statistics;
+- `FINDINGS.md` and `HYPOTHESES.md` in full.
+
+**Becomes generic** — currently strategy-specific, should be signal-agnostic:
+the screener (one universe filter among many, not *the* pool), the exploration
+scan machinery, the outcome taxonomy, and the freeze/holdout mechanism, which
+generalises into the split plus the sample-budget ledger.
+
+**Absorbed into `research_data`**: every direct parquet read scattered across the
+current modules; the as-of panel; the rename map and corporate-action adjustment;
+universe construction; benchmark and context series; forward labelling. These
+keep their logic and lose their independence — after the refactor they are
+internals of one module, not thirty entry points.
+
+**Retires**: the phase gate itself; the assumption that the contraction screen is
+the universe; strategy-specific naming throughout; and the single hardcoded
+chronological holdout, replaced by the versioned split.
+
+**Stays parked**: the uncle's 30–50 dated real picks remain the single
+highest-value input available, and are now easier to use, not less relevant —
+a labelled set of real decisions is exactly the kind of thing the new system can
+evaluate as a signal in one afternoon. Same for the WhatsApp group data.
+
+---
+
+## 9. Risks and open decisions
+
+- **The lab can overfit as a whole.** Hundreds of cheap experiments against one
+  finite history is a multiple-comparisons machine. The permuted-maximum bar
+  handles one scan; it does not handle a thousand explorations across months. The
+  sample-budget ledger and a lab-level accounting of how many questions the data
+  has been asked are the mitigation, and this needs an explicit design decision,
+  not a hope.
+- **Data is the binding constraint, not method.** 2020-01-01 floor, 1,647
+  sessions, 27 quarters, one market. Some questions in this document are not
+  answerable at this sample size, and the system should say so
+  (`INSUFFICIENT_SAMPLE`) rather than produce a fragile answer.
+- **27 blocks is a small number to shuffle.** With ~5 test quarters, the test
+  estimate carries real assignment variance: a different seed would give a
+  materially different number, and there is no way to average that away without
+  reading test repeatedly. Mitigations are the constrained draw (§5.2) and
+  reporting test results with a stated block count rather than as a point
+  estimate. This is a genuine limitation of the design, not a detail — it should
+  be visible on the evidence page, not buried in a manifest.
+- **Purging costs training rows.** Roughly 15-20% at a 20-session horizon, and it
+  scales with the maximum horizon. A dataset version supporting 60-session
+  forward returns would purge far more, which is an argument for keeping the
+  default `max_horizon` modest and creating a separate long-horizon version only
+  when a hypothesis actually needs one.
+- **Prior exposure of 2020-2023 is handled by lineage, which requires the idea
+  graph to be honest.** If a hypothesis is a descendant of H024 or H034-H038 and
+  nobody records the edge, the ledger will let it score on quarters it should not
+  touch. Default to blocking when lineage is ambiguous, and make "unlinked
+  hypothesis" a thing the planner must justify rather than the easy path.
+- **Claude Code CLI is not installed here.** Installing it and confirming the
+  headless/JSON-output mode works under the subscription is a Stage D
+  prerequisite worth verifying early, since it gates automation entirely.
+- **Cost of the agent loop.** Worktree isolation plus full data means each job
+  has real setup cost. Job granularity — one hypothesis or one whole exploration
+  family — is an open design question.
+- **Who writes the pass criterion.** If the AI proposes the bar and also
+  evaluates it, the bar drifts. Proposed rule: the planner drafts it, the human
+  approves it, and it is frozen into the manifest before dispatch.
+- **Deciding when a signal is "validated"** requires forward data, and forward
+  data accrues one session a day. Expect the validated column to stay empty for
+  months, and design the interface so that is visibly *normal* rather than
+  looking broken.
+
+---
+
+## 10. Conventions that survive the refactor
+
+- **`research_data` is the only door.** No experiment, report, notebook or
+  worker opens a data file directly; if something is missing, it is added to
+  the module rather than worked around.
+- **Partitions, never date ranges.** An experiment names a dataset version and
+  a partition; hand-written windows are how a holdout gets read twice.
+- Thresholds are configuration, never hardcoded beliefs.
+- Indicators on adjusted prices; tradeability claims on raw prices.
+- Pipeline order is renames → corporate actions → indicators, always.
+- Anything keyed on symbol folds through the canonical rename map.
+- Verify empirically rather than trusting documentation — that has repeatedly
+  paid off here.
+- Negative results are never deleted, and an idea invalidated by a bug is marked
+  superseded and kept, with the bug described.
+- Record a hypothesis before moving substantially past it.
+- Keep the test suite green; leakage tests are part of it, not optional extras.
