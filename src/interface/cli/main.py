@@ -9,7 +9,7 @@ import argparse
 import sys
 
 from ...core import config
-from . import data, lab as iface_cli, opening_window
+from . import data, discretionary, lab as iface_cli, opening_window
 
 
 def _add_family_commands(sub: argparse._SubParsersAction) -> None:
@@ -310,6 +310,12 @@ def main(argv=None) -> int:
     cmp_p = sub.add_parser("compare", help="compare 2–10 candidate signals")
     cmp_p.add_argument("signals", nargs="+", help="signal names to compare")
     cmp_p.set_defaults(fn=iface_cli.cmd_compare_signals)
+
+    # -----------------------------------------------------------------------
+    # The discretionary loop (MISSION.md): idea -> cases -> decisions ->
+    # baselines -> outcomes -> report.
+    # -----------------------------------------------------------------------
+    discretionary.register(sub)
 
     srv_p = sub.add_parser("serve", help="launch the primary backend and web application")
     srv_p.add_argument("--port", type=int, default=8080, help="port to listen on (default 8080)")

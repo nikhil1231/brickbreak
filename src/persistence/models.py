@@ -21,7 +21,18 @@ HYPOTHESIS_STATUSES = (
     "proposed",
     "exploring",
     "promising",
+    # An exploration that neither supported nor rejected the idea. Distinct
+    # from "rejected" on purpose (MISSION §9): a hypothesis whose test was
+    # underpowered, or whose case set was too thin, has not been answered, and
+    # recording it as rejected loses the difference between "we looked and it
+    # is not there" and "we looked and could not tell". The second is a
+    # candidate for a larger sample; the first is not.
+    "inconclusive",
     "rejected",
+    # The decision process — definition, prompt version, model — is pinned and
+    # registered onto the forward lane. Nothing about it may change while it
+    # accrues; a frozen hypothesis that is edited is a new hypothesis.
+    "frozen",
     "validated",
     "decayed",
     "superseded",

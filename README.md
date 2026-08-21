@@ -1,182 +1,192 @@
-# brickbreak — NSE swing-trading research
+# brickbreak
 
-**Phase 0** (complete): Breeze data-access feasibility spike → [FINDINGS.md](FINDINGS.md), verdict **GO**.
-**Phase 1** (current): historical daily screener + interactive threshold explorer. No trading, no backtest, no second-level fetching.
+An AI-driven trading research laboratory for NSE equities.
+
+`MISSION.md` is the authoritative statement of purpose. The question the whole
+repository is arranged around:
+
+> **Can an AI, given rich point-in-time market context, identify unusually
+> attractive trading opportunities better than strong simple quantitative
+> baselines?**
+
+Not *does the AI make money* — that is answerable by luck. The question is
+whether **selection** improves outcomes relative to the opportunities it was
+given, measured on the identical candidate set against baselines that see
+exactly the same cases.
+
+This is a research instrument, not a trading system. Nothing here places orders.
 
 ---
 
-## Phase 1 — the daily screener
-
-The funnel, in order. Every threshold is a field on `ScreenConfig`; nothing is
-baked in as a belief.
+## The loop
 
 ```text
-point-in-time universe (that day's bhavcopy)
-  -> tradeability   price / series / traded
-  -> size bucket    exclude the largest N (default 250)
-  -> liquidity      median 20d traded VALUE, not share count
-  -> sector uptrend equal-weight sector index EMA, and/or sector breadth
-  -> stock uptrend  EMA stack, close above EMA50
-  -> contraction    ATR ratio, base depth, BB-width percentile, NR7, ...
-  -> candidate      only these names/dates ever need 09:15-09:20 tick data
+IDEA                      a sentence: "stocks that resist a selloff may rebound harder"
+  ↓
+OPPORTUNITY DEFINITION    frozen: generator, case budget, which judge, and the bar
+  ↓
+CANDIDATE GENERATION      broad and high-recall — deliberately not optimised
+  ↓
+CASE CONSTRUCTION         one situation, as a trader could have known it
+  ↓
+DECISION                  AI and every baseline, on identical cases
+  ↓
+══ SEAL ══════════════    decisions hashed and committed
+  ↓
+REVEAL                    the future — the only step that spends sample
+  ↓
+EVALUATION                selector lift, per-session paired, cost-aware
+  ↓
+LEARNING                  which kinds of reasoning preceded which outcomes
 ```
 
-### Where the daily data comes from — not Breeze
+Run it:
 
-Phase 0 assumed Breeze for daily bars. NSE's own archives turn out to be
-strictly better for this layer, and need no authentication:
+```bash
+.venv/bin/python -m src.cli opportunity "Stocks that resist a broad selloff may rebound harder" --hypothesis H041 -n 500
+```
 
-| Source | Gives us |
+```bash
+.venv/bin/python -m src.cli replay RPL_<id> --phase generate && .venv/bin/python -m src.cli replay RPL_<id> --phase build
+```
+
+```bash
+.venv/bin/python -m src.cli replay RPL_<id> --phase decide
+```
+
+```bash
+.venv/bin/python -m src.cli replay RPL_<id> --phase reveal && .venv/bin/python -m src.cli replay RPL_<id> --phase evaluate
+```
+
+`decide` and `reveal` are separate commands because they sit on opposite sides
+of the seal. Read what the judge actually saw with `cases RPL_<id>`, and what it
+decided with `decisions RPL_<id> --full`.
+
+---
+
+## The four ideas that make the answer trustworthy
+
+**Generation is not selection.** A generator finds situations *worth examining*;
+it is not the trading decision. Tuned until it looks profitable, it has stolen
+the experiment — the lift is then measured against a baseline that already
+contains the answer. The default generator is `liquid_universe`: every tradeable
+name, every session, no opinion. A narrow generator flatters the selector by
+hiding its hard cases.
+
+**The case cannot see the future, and that is tested rather than promised.**
+Every number comes from the as-of panel (indicators end at D-1) plus date D's
+opening call-auction print. `tests/test_case_pit.py` builds a case against a
+panel truncated at D and against the full panel and requires the bytes to be
+**identical**. This project has caught four distinct non-price lookaheads and
+assumes there is a fifth.
+
+**Cases are anonymised by default.** A model may simply remember what a named
+Indian stock did in a named quarter, and no amount of frame hygiene closes a
+leak that lives in the weights. The symbol and the calendar never reach the
+judge; prices are rebased to 100 and dates become sessions-before-the-decision.
+Running the same case set with identity revealed and differencing the two is a
+*measurement of memorisation* (H042), and it gates belief in everything else.
+
+**Baselines run at the AI's own take rate.** A selector that takes 12% of what
+it is shown beats one that takes everything on any pool better than average,
+with no skill involved. Matching the rate leaves only *which* ones it took.
+
+---
+
+## Reading a result
+
+```text
+DID SELECTION HELP?   (per-session paired, HAC-corrected)
+  vs the pool it was given    +82.4 bps   t=3.1
+  vs what it skipped          +97.1 bps   t=3.4
+  vs top_n_by_score           +31.0 bps   t=1.9
+```
+
+Every outcome is **excess** return over the equal-weighted market compounded
+across the same holding window, so market exposure is the zero line rather than
+an arm somebody has to remember to run. Contrasts are per-session paired
+differences — controls drawn from adjacent sessions tripled every contrast in an
+earlier phase of this project (H020), because winners cluster on local market
+troughs.
+
+**The bar is in basis points, not in t**, and that is a measured decision.
+Against 60 coin-flip selectors on this data the session-clustered,
+Hansen-Hodrick-corrected |t| still exceeded 1.96 **13.3%** of the time — the
+corrections work, they simply cannot invent independent observations at a few
+dozen non-overlapping blocks. A bps-denominated bar rejected the same nulls 59
+times out of 60. Transaction costs are 0.40% round trip, this project's measured
+conservative floor, so a lift inside that is not a result.
+
+The report prints `independent_blocks` and says in words not to promote on a
+t-statistic.
+
+---
+
+## What else is here
+
+The discretionary loop sits on top of an alpha lab that predates it and is
+unchanged by it.
+
+| | |
 | --- | --- |
-| `sec_bhavdata_full_DDMMYYYY.csv` | full-universe daily OHLCV **plus turnover and delivery %**, ~2,500 names/day, back to 2020 |
-| `ind_nifty*list.csv` | sector labels (Industry) and size tiers (50/100/200/500/750) |
+| `src/research_data/` | **the only door to market data.** Point-in-time panel, versioned splits, corporate actions, symbol renames, the feature catalogue, forward labels |
+| `src/alpha_eval/` | rank IC, quantile profiles, factor neutralisation, the canonical backtest, the bracket trade simulator, session-clustered and HAC inference |
+| `src/persistence/` | the four research objects — hypothesis, exploration, signal, evidence — plus manifests and the sample-budget ledger |
+| `src/runner/` | the signal path: an LLM writes `compute(df) -> Series` in an isolated worktree; label-free pre-flight, the dispatch gate, multiplicity accounting |
+| `src/discretionary/` | the loop above |
+| `src/research/families/` | concrete research lines (opening-window, resilience). A leaf of the architecture, never imported by the lab |
 
-Bhavcopy is **point-in-time by construction**: each file lists exactly the
-securities that traded that day, which is what removes survivorship bias.
-Breeze is now needed *only* for 1-second opening data on screened candidates.
+The **signal path still works and is still used** — `python -m src.cli suggest`,
+`plan`, `job`, `explore`, `compare`. A replay and an exploration spend the
+partition the same way and are counted by the same multiplicity code; a replay
+files evidence under `signal_id = "replay:<id>"` so `burden` sees it beside
+every signal ever scored.
 
-> **Three archive traps (all handled, all regression-tested):**
->
-> 1. **Holiday URLs don't 404.** NSE serves the *previous* trading day's file —
->    requesting 26-Jan-2026 returns 23-Jan-2026 rows. Taking the URL date on
->    faith duplicates a session onto every holiday.
-> 2. **A session's file is not always at that session's URL.** The 2021-11-04
->    Muhurat bhavcopy is served at the **05112021** URL. So every response is
->    filed under the date *inside* it, never the date requested — which handles
->    trap 1 as a side effect.
-> 3. **NSE trades on some weekends.** Union Budget Saturdays, Diwali Muhurat and
->    disaster-recovery drills are real sessions on Sat/Sun. A Mon–Fri-only sync
->    silently dropped ten of them; each hole reads downstream as a market-wide
->    one-day price step. Weekends are now requested and cached as markers.
->
-> Plus one genuine one-off: on **2022-08-08** the `.csv` URL returns an XLSX
-> workbook, so the parser sniffs for a zip header and falls back.
+### Discipline that is enforced rather than encouraged
 
-### Corporate actions — reconciled, not asserted
+- **Partitions, never date ranges.** A hand-written window is how a holdout gets
+  read twice. `research_data.splits` assigns whole quarters to
+  train/validation/test with purged boundaries, plus a permanent forward lane.
+- **The sample budget refuses rather than warns.** 2020–2023 has been read twice
+  and is spent for the opening-window and resilience families; descendants are
+  blocked from scoring on those quarters. When lineage is ambiguous, it blocks.
+- **A bar has to be able to fail.** A threshold of zero is a sign test wearing a
+  number's clothes, and one passed that way once (H037). Bars below transaction
+  costs or inside the noise are rejected before dispatch.
+- **The budget is spent late.** A replay that is defined, generated, built and
+  judged has read nothing about what happened next. Only `reveal` touches the
+  partition, so abandoning a replay before it costs nothing.
 
-Bhavcopy prices are raw: TATASTEEL's 1:10 split on 2022-07-28 appears as a
-−90% day. Untreated it corrupts every EMA, ATR and `ret_60d` spanning the
-ex-date.
+---
 
-The obvious shortcut — read the adjustment out of bhavcopy's `PREV_CLOSE` —
-**does not work**. NSE leaves that column raw on TATASTEEL's split and
-pre-adjusts it on DRCSYSTEMS'. It is inconsistent, so it is unusable either way.
+## Data
 
-Instead, two sources are cross-checked. NSE's corporate-actions API gives exact
-stated ratios but an occasionally-off ex-date; the tape shows exactly where
-prices stepped but cannot tell a 1:2 split from a stock that genuinely halved.
-A ratio is applied **only where both agree** (739 of 847 ex-date events), and
-every disagreement is written to `data/metadata/ca_reconciliation.parquet`
-rather than silently resolved.
-
-Adjusted bars carry `*_raw` twins. Indicators use adjusted prices; anything
-asserting what was *tradeable* — the minimum-price screen, a stop, a circuit
-limit — uses the price that actually printed.
-
-See the 2026-08-19 addendum in `FINDINGS.md` for the full reconciliation, and
-for the three findings that fell out of it: actions sharing an ex-date must be
-combined, `Bonus Ncrps 4:1` is not an equity bonus, and the corporate-actions
-feed keys on today's symbol while the tape keys on the old one.
-
-### Sector uptrend — two independent reads
-
-NSE publishes no free market-cap file and no sector-index history covering
-smaller names, so sector trend is derived from the bars themselves:
-
-1. **Equal-weight synthetic sector index** — mean daily return of a sector's
-   constituents, compounded. Equal-weight rather than cap-weight because we have
-   no caps, and because a cap-weighted sector index is mostly a proxy for its two
-   largest members, which is not what "the sector is moving" means.
-2. **Sector breadth** — % of constituents above their own EMA50. Robust to one
-   megacap dragging the index.
-
-`sector_mode` selects `index` / `breadth` / `either` / `both` / `off`.
-
-### Contraction — a family, not one number
-
-The description ("volatility contraction, small-range or doji-like candles")
-maps onto several measurable things that don't always agree, so
-[src/research_data/pipelines/indicators.py](src/research_data/pipelines/indicators.py) computes all of them and lets the screen
-decide: `atr_ratio` (ATR5/ATR20), `base_depth` (k-day high-low as % of price),
-`bb_width_pctile` (percentile-ranked, since 3% is tight for a smallcap and loose
-for a large cap), `range_pct_ma`, `nr_k` (NR7), `body_ratio`/`doji_like`,
-`inside_day`, `vol_squeeze`, and `contraction_steps` (successively tighter
-blocks — the VCP shape).
-
-### Size buckets — an honest limitation
-
-NSE publishes no free market-cap file (`MCAP*.xlsx` 404s) and Breeze's master has
-`IssueCapital` empty for all 2,901 names, so a true continuous market-cap rank is
-**not available**. `size_tier_rank` is instead the smallest NSE broad index
-containing the symbol — 50, 100, 200, 500, 750, or 9999 (outside NIFTY Total
-Market). Coarse, but real and roughly point-in-time. Treat it as buckets:
-1-50, 51-100, 101-200, 201-500, 501-750, 751+.
-
-Sector labels cover ~750 symbols (NIFTY Total Market). Everything below is
-`UNCLASSIFIED`; `sector_require_labelled` controls whether those are dropped.
-
-### Running Phase 1
+Daily OHLCV comes from **NSE's own bhavcopy archive** — free, unauthenticated,
+carrying turnover and delivery percentage, and point-in-time by construction:
+each file lists exactly what traded that day, which is what removes survivorship
+bias. Breeze is needed only for 1-second opening data.
 
 ```bash
 .venv/bin/python -m src.cli sync-nse --start 2022-01-01
 ```
-Downloads bhavcopy + index lists. No auth. ~1,200 files, a few minutes.
 
 ```bash
-.venv/bin/python -m src.cli sync-corp-actions
+.venv/bin/python -m src.cli sync-corp-actions && .venv/bin/python -m src.cli build-metrics && .venv/bin/python -m src.cli context
 ```
-Fetches NSE corporate actions, reconciles stated ratios against observed price
-steps, and writes `data/normalized/daily_bars_adj.parquet`. Prints which events
-were adjusted, which were resolved to a pre-rename ticker, and which were left
-raw. Run this **before** `build-metrics`.
 
-```bash
-.venv/bin/python -m src.cli build-metrics
-```
-Computes the indicator panel once into `data/normalized/screen_metrics.parquet`,
-using the adjusted bars when they exist (and warning loudly when they do not).
+Order matters: renames → corporate actions → indicators. Adjusting before
+merging bakes a fake step into every ticker handover.
 
-```bash
-./scripts/run_backend.sh
-```
-Starts the primary alpha-lab backend and built web application at
-http://127.0.0.1:8080. It also mounts the opening-window screener API, so the
-screener is a feature of the application rather than a separate core service.
-Pass a different port with `./scripts/run_backend.sh --port 9000`.
+Corporate actions are **reconciled, not asserted**: NSE's stated ratios are
+cross-checked against where prices actually stepped on the tape, a ratio is
+applied only where both agree, and every disagreement is written out rather than
+silently resolved. `PREV_CLOSE` is not usable as an adjustment source — NSE
+leaves it raw on one split and pre-adjusts it on another.
 
-For focused legacy screener debugging only, `python -m src.cli serve-screener`
-still starts its standalone server on port 8765.
-
-```bash
-.venv/bin/python -m src.cli screen --set min_size_rank=500 --set min_median_tv_cr=2
-```
-Headless equivalent, prints the funnel summary as JSON.
+`AGENTS.md` carries the full list of archive traps, Breeze gotchas, and the four
+lookaheads this project has caught. Read it before touching the data layer.
 
 ---
-
-# Phase 0 — Breeze data-access feasibility spike
-
-A small, throwaway-grade tool that answers one question empirically: **can ICICI
-Direct's Breeze API supply historical NSE cash-equity data good enough to
-research a swing-trading strategy that depends on first-five-minutes-of-session
-behaviour?**
-
-There is no strategy code here, and there should not be until
-[FINDINGS.md](FINDINGS.md) reaches a verdict.
-
-## What it does
-
-| Module | Purpose |
-| --- | --- |
-| [src/core/config.py](src/core/config.py) | Env/credential loading, paths |
-| [src/research_data/sources/security_master.py](src/research_data/sources/security_master.py) | Downloads + parses ICICI's public NSE scrip master; maps NSE symbol → ISEC `stock_code` |
-| [src/research_data/sources/breeze.py](src/research_data/sources/breeze.py) | Thin instrumented wrapper; times and logs **every** call to `data/metadata/api_calls.jsonl` |
-| [src/research_data/feasibility/universe.py](src/research_data/feasibility/universe.py) | The 10-security test universe (liquid / thin / delisted) |
-| [src/research_data/feasibility/probes.py](src/research_data/feasibility/probes.py) | The probe matrix — depth, limits, stability, corporate actions, indices |
-| [src/research_data/pipelines/validation.py](src/research_data/pipelines/validation.py) | Data-quality checks → machine-readable JSON |
-| [src/research_data/pipelines/storage.py](src/research_data/pipelines/storage.py) | Parquet raw + normalized storage |
-| [src/research_data/feasibility/estimate.py](src/research_data/feasibility/estimate.py) | Extrapolates full-download cost from measurements |
-| [src/cli.py](src/cli.py) | Entry point |
 
 ## Setup
 
@@ -184,117 +194,35 @@ There is no strategy code here, and there should not be until
 python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
 ```
 
-### Environment variables
-
-Copy `.env.example` to `.env`. `.env` is gitignored; never commit it.
-
-| Variable | Lifetime | Where it comes from |
-| --- | --- | --- |
-| `BREEZE_API_KEY` | long-lived | Breeze app registration page |
-| `BREEZE_API_SECRET` | long-lived | Breeze app registration page |
-| `BREEZE_SESSION_TOKEN` | **expires daily** | browser login, see below |
-
-### Daily login (required before any live call)
-
-Breeze has no headless auth. The session token must be obtained through an
-interactive browser login, and it expires every day around midnight IST.
-
-```bash
-.venv/bin/python -m src.cli login-url
-```
-
-Open the printed URL, log in with your ICICI Direct credentials, and copy the
-`apisession` value out of the redirect URL. Paste it into `.env` as
-`BREEZE_SESSION_TOKEN`, then:
-
-```bash
-.venv/bin/python -m src.cli check-auth
-```
-
-## Running
-
-```bash
-.venv/bin/python -m src.cli master
-```
-Downloads and summarizes the NSE scrip master. **Needs no authentication** —
-run this first to see the universe stats.
-
-```bash
-.venv/bin/python -m src.cli run --quick
-```
-Connectivity + daily + first-five-minute probes only (~30 calls).
-
-```bash
-.venv/bin/python -m src.cli run
-```
-The full matrix: historical depth walk-back, max-range-per-call, repeat
-stability, delisted securities, corporate actions, index availability.
-A few hundred calls, throttled to ~85/min by default (`--throttle`).
-
-```bash
-.venv/bin/python -m src.cli estimate --securities 2900 --bytes-per-row <measured>
-```
-Extrapolates storage/calls/duration from the measured call log.
+Copy `.env.example` to `.env`. For the discretionary loop set `ANTHROPIC_API_KEY`
+to use the concurrent API path; without one it falls back to an installed
+`claude` or `codex` CLI, which is free under a subscription but serial and slow
+— fine for working on a prompt, wrong for five hundred cases.
 
 ```bash
 .venv/bin/python -m pytest tests/ -q
 ```
-26 tests, all offline except the scrip-master download.
 
-## Outputs
+Leakage tests are part of the suite, not optional extras. Tests marked `network`
+hit live NSE and are deselected by default.
 
-```text
-data/
-  raw/         one parquet per API call, fields exactly as returned
-  normalized/  interval=<iv>/<code>__<call_id>.parquet
-  metadata/
-    api_calls.jsonl          append-only log of every call (the evidence base)
-    feasibility_report.json  the full probe matrix result
-    universe_summary.json    scrip-master stats
-    cost_estimate.json       extrapolation
+```bash
+./scripts/run_backend.sh
 ```
 
-Normalized schema: `security_id, symbol, timestamp, open, high, low, close, volume`.
+Starts the backend and web application at http://127.0.0.1:8080.
 
-Timestamps are stored **tz-naive IST wall-clock**. Breeze labels its stamps with
-a `Z` suffix but the values are IST; attaching UTC would shift every bar by
-5h30m. `validate_data` asserts intraday stamps land inside 09:15–15:30 to keep
-that assumption honest.
+---
 
-## Gotchas the spike proved the hard way
+## Research state
 
-These are measured behaviours, not warnings copied from docs. See
-[FINDINGS.md](FINDINGS.md) for the evidence.
+`HYPOTHESES.md` is the ledger — every hypothesis proposed, tested, supported or
+rejected, with a stable ID, and nothing is ever deleted. A result later found
+wrong is annotated and kept, because the next person with the same idea needs to
+know it was tried and why the answer did not count. `FINDINGS.md` is the
+chronological evidence.
 
-- **1,000-row hard cap per call, returning the *tail*.** A wide request gets
-  `Status: 200` and silently drops the *beginning* of the range. Always chunk
-  under 1,000 rows and assert the returned span.
-- **`stock_code` must be the ISEC short code.** `RELIANCE` returns 0 rows with
-  no error; `RELIND` works. `TCS` maps to itself, so a few large caps can make
-  broken code look fine.
-- **Daily data is unadjusted after ~2023.** A single series can contain an
-  artificial -50% or -90% step across a split/bonus ex-date.
-- **Silent archive gaps exist** (2026-08-05 is missing 15:16-15:30 across
-  symbols). Missing data arrives as HTTP 200 with fewer rows.
-- **1-second bars are sparse**, only seconds with trades. This loses no volume:
-  1s sums match 1-minute totals exactly.
-- **Use v2 for everything.** v1 cannot serve 1-second data and disagreed with v2
-  on row counts for the same daily window.
+Neither is superseded by any refactor, including this one.
 
-## Deliberately not here
-
-No dashboards, no database, no strategy engine, no order execution, no
-portfolio simulation, no optimiser, no agents. Phase 0 is a measurement
-exercise.
-
-## Known limitation carried forward: survivorship bias
-
-Retrieval of delisted history **works** — `ANDBAN` (Andhra Bank, merged 2020),
-`CENBN` (Centurion BoP, merged 2008) and `BHAFIN` all returned data for their
-trading years. The problem is **discovery**: the scrip master is a current-day
-snapshot carrying only ~57 inactive EQ stubs, with `DateOfDeListing` and
-`DeleteFlag` empty in all 5,729 rows.
-
-A point-in-time universe therefore needs NSE's bhavcopy archive, joined to ISEC
-codes via ISIN. See the `PLACEHOLDER` section in
-[FINDINGS.md](FINDINGS.md#placeholder-point-in-time-universe-future-work).
+The previous README, describing the project as a breakout screener, is at
+`archive/README_2026-08-22.md`.

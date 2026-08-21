@@ -1,20 +1,30 @@
 # brickbreak — agent notes
 
-**What this is:** an alpha research environment for NSE equities. Not a
-backtester, and no longer a single-strategy project. The unit of work is a
-*hypothesis*, investigated by an *exploration*, producing *signals* that
-accumulate *evidence*. See `PLAN.md` for how the lab is operated.
+**What this is:** an AI-driven trading research laboratory for NSE equities.
+`MISSION.md` is the authoritative statement of purpose and the question is:
+*can an AI, given rich point-in-time context, identify unusually attractive
+opportunities better than strong simple quantitative baselines?*
 
-**Read order for a fresh session:** `PLAN.md` (where this is going) →
-`FINDINGS.md` (what was measured) → `HYPOTHESES.md` (the ledger, H001-H038).
+The unit of work is a *hypothesis*, investigated either by an **exploration**
+producing a *signal* — a cross-sectional score over the panel — or by a
+**replay** producing *decisions* on individual cases. Both accumulate
+*evidence*, both spend the sample, and both are counted by the same
+multiplicity machinery. See `PLAN.md` for how the lab is operated.
 
-**Two plans, and which one a `§` points at.** `PLAN.md` is the *operating*
-plan: how throughput is rationed against a finite sample. The architecture it
-runs on was specified by the **refactor plan**, now complete and archived at
-`archive/plan/PLAN_2026-08-21.md`. Section references in source docstrings read
-"the refactor plan §5.7" and mean that document; they were written while it was
-still `PLAN.md` and were retargeted, not invalidated. Its non-negotiables table
-and its conventions remain in force.
+**Read order for a fresh session:** `MISSION.md` (what the project is for) →
+`PLAN.md` (where this is going) → `FINDINGS.md` (what was measured) →
+`HYPOTHESES.md` (the ledger, H001-H042).
+
+**Three plans, and which one a `§` points at.** `PLAN.md` is the *current*
+operating plan (2026-08-22), covering the discretionary loop. The plan it
+replaced — the throughput-and-sample-budget plan of 2026-08-21 — is archived at
+`archive/plan/PLAN_2026-08-22.md`, and **its dispatch pipeline, its label-free
+pre-flight, its long-history section and both its non-negotiables tables remain
+in force**; a `PLAN.md §5` or `§6` in a source docstring written before
+2026-08-22 means that document. The architecture underneath both was specified
+by the **refactor plan**, archived at `archive/plan/PLAN_2026-08-21.md`;
+docstrings citing "the refactor plan §5.7" mean that one. Nothing in the pivot
+relaxes anything in either.
 
 **The phase gate is retired.** The old rule — no strategy or backtest code until
 the current phase settles — served a single-strategy project and no longer
@@ -25,9 +35,12 @@ until it passes the leakage gate and the standard report.
 
 | path | what |
 | --- | --- |
-| `PLAN.md` | current operating plan — the dispatch budget and how it is spent |
+| `MISSION.md` | why this project exists; authoritative over every other document |
+| `PLAN.md` | current operating plan — the budgets and how they are spent |
 | `FINDINGS.md` | evidence, chronological |
 | `HYPOTHESES.md` | the research ledger, stable IDs, nothing deleted |
+| `src/discretionary/` | the discretionary loop — cases, decisions, baselines, replay |
+| `src/research/families/` | hypothesis families (opening-window, resilience). A **leaf**, never imported by the lab |
 | `src/` | current code |
 | `data/` | on-disk parquet store — **bytes only**, opened through the data module |
 | `tests/` | keep green |
@@ -80,6 +93,16 @@ from the canonical checkout, never from the worktree, so an agent cannot loosen
 the evaluation it is judged by. Claude remains the default. Install and log in
 to at least one supported CLI: `npm install -g @anthropic-ai/claude-code` then
 `claude`, or `npm install -g @openai/codex` then `codex login`.
+
+**The discretionary loop, end to end.** `python -m src.cli opportunity "<idea>"
+--hypothesis H0xx` freezes an experiment definition — generator, case budget,
+which judge, and the bar, all immutable from that moment. Then
+`replay <ID> --phase generate | build | decide | reveal | evaluate`, one phase
+at a time. `cases <ID>` prints a case exactly as the judge saw it and
+`decisions <ID> --full` prints what it decided and why. The phases are separate
+commands because `decide` and `reveal` sit on opposite sides of the seal, and a
+single command that ran both would make it easy to forget which side you were
+on.
 
 **Built so far:** `src/research_data/splits.py` — versioned, purged,
 quarter-level partitions, frozen as `data/metadata/split_v1_frozen.json`
@@ -354,6 +377,78 @@ project's research ledger and outlives any single refactor.
   news event, two-sided disagreement, chasers, or institutions unloading. The
   catalogue describes what is *measured*; mechanism belongs in the hypothesis.
 
+## Discretionary conventions
+
+The signal path's rules all still apply — a case is a bundle of features, so it
+inherits every lookahead rule above. These are the additional ones.
+
+- **The case is the dangerous object.** Everything downstream of it is
+  arithmetic. `tests/test_case_pit.py` builds a case against a panel truncated
+  at D and against the full panel and requires the bytes to be **identical**;
+  write that test before trusting any new block. `case.py` deliberately derives
+  almost nothing — it *selects* columns the pipelines already build under test,
+  because the denominator trap is how three of the four lookaheads got in.
+- **A decider is not frozen the way a function is.** A signal is code: run it
+  twice on the same frame and it is the same test. A decider is a *prompt
+  version, a model and a case set*. Changing the prompt while keeping the other
+  two asks a new question of the same finite history with nothing about it that
+  looks like a second dispatch. `identity_hash` is that triple and `burden`
+  counts it.
+- **Anonymise by default, and treat revealed identity as a paired control.** A
+  model may simply remember what a named NSE stock did in a named quarter, and
+  no frame hygiene closes a leak that lives in the weights. H042 is the control
+  that licenses reading an anonymised result as judgement; until it has been
+  run, every discretionary finding carries an asterisk.
+- **A judge gets the case and nothing else.** `runner.agent.run_agent` defaults
+  to Read/Write/Edit/Bash because it exists to author signals. The decision path
+  passes `allowed_tools=()` and an empty directory. A judge with Bash can open
+  the parquet holding the outcome it is scored on, and would not have to intend
+  anything for the result to be worthless.
+- **Never drop a failed call.** Baselines see every case; an arm missing its
+  failures is scored on an easier population, and the difference looks exactly
+  like skill. A failure is a recorded SKIP carrying its error.
+- **Baselines run at the AI's own take rate.** Selectivity and skill are
+  otherwise confounded — a 12%-selective arm beats a 100% arm on any pool that
+  is better than average, with no skill involved. `take_all` is the exception
+  and is not matched: it *is* the pool.
+- **A weak baseline flatters the selector, so the bias must run the other way.**
+  `rank_model` refits walk-forward rather than fitting once and going stale, and
+  it fits on the whole dataset version rather than the evaluation partition.
+- **Every contrast is paired within the session (H020).** A per-session
+  difference of means, on sessions carrying both arms. A session with only one
+  arm says nothing about their difference, and including its level smuggles the
+  session's own market move into the contrast.
+- **`resolved_by`, never the row's own date.** An analogue from three sessions
+  ago has not resolved at a ten-session horizon; filtering on its date hands the
+  judge a return from after its own decision. The same rule governs the
+  rank-model fit.
+- **The bar is in basis points, not in t.** Measured on 60 null selectors here:
+  the corrected |t| exceeds 1.96 **13.3%** of the time at this block count
+  (sd 1.40), while a bps-denominated bar rejected the same nulls 59 times in 60.
+  The report prints `independent_blocks` and says outright not to promote on a
+  t-statistic. This is the same lesson H039 taught the signal path — the lab is
+  short of magnitude, not of significance — arriving from a different direction.
+- **Generation is not selection.** A generator tuned until it looks profitable
+  has stolen the experiment, because the lift is then measured against a
+  baseline that already contains the answer. A narrow generator also flatters
+  the selector by hiding its hard cases. Prefer `liquid_universe`.
+- **The budget is spent at `reveal`, not at `freeze` or `decide`.** Everything
+  before the reveal is replaceable — tokens and compute. A replay abandoned
+  before it costs nothing, which is the same economics as label-free pre-flight.
+
+## Families are a leaf, not the architecture
+
+`src/research/families/` holds the opening-window and resilience research lines.
+Nothing in `src/discretionary`, `src/alpha_eval`, `src/research_data`,
+`src/persistence`, `src/runner` or `src/core` may import from it — the
+dependency runs one way and `tests/test_architecture.py` enforces it, including
+for dynamic imports. `src/interface` is exempt: the CLI and the screener API are
+exactly where a family gets bound to a command.
+
+Their commands live behind `python -m src.cli family opening-window <cmd>`.
+Nothing there is deprecated — a family's measurements must stay reproducible —
+but nothing new should be built in that shape.
+
 ## Opening-window specifics (still true, now one family among many)
 
 - **The entry time inside the window is a free variable.** For any `t`,
@@ -437,6 +532,6 @@ project's research ledger and outlives any single refactor.
 - Long pulls run on the server (`user@server`) under tmux via
   `scripts/run_pull.sh`; resumable from the manifest. Watch the **log timestamp**,
   not the process list — a hung pull never exits and the supervisor cannot see it.
-- `.venv/bin/python -m pytest tests/ -q` — keep green (403 tests). Tests marked
+- `.venv/bin/python -m pytest tests/ -q` — keep green (569 tests). Tests marked
   `network` hit live NSE and are deselected by default; run with `-m network`.
   Leakage tests are part of the suite, not optional extras.

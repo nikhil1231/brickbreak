@@ -2050,3 +2050,90 @@ formulation are not refinements of the drawdown score; they add a second,
 opposing sort on beta. Anyone wanting "resilience" as a distinct idea should
 rank on beta directly and stop calling it resilience — and should expect a
 rebound bet ([[H035]]), not alpha.
+
+---
+
+> **Ledger note, 2026-08-22.** `H039` and `H040` exist in the research store
+> (both `rejected`) but were never written up here. `H039` is cited in
+> `PLAN.md` — mean IC −0.0227 at t = −5.02 over 729 sessions, classified
+> `NO_SIGNAL` because its Q5–Q1 spread was 19.5 bps against a 40 bps round
+> trip — and that number is load-bearing for the argument that this lab is
+> short of magnitude rather than of significance. Recorded here as a known gap
+> rather than backfilled from memory: `python -m src.cli hypotheses --id H039`
+> reads the store, which is authoritative for both.
+
+---
+
+## H041 — AI discretionary selection adds value over the pool it is given
+
+Status: **PROPOSED.** Registered 2026-08-22 with the pivot to `MISSION.md`. No
+replay has been revealed against it yet.
+
+Family: `ai_discretionary`. **Kind of work: none yet.** This entry is the
+pre-registration, written before any case was judged.
+
+**The claim.** Given a rich point-in-time case — chart structure, location in
+the range, market and sector state, relative strength, volume and delivery
+behaviour, and comparable prior situations — an AI reasoning as a discretionary
+trader selects candidates whose forward excess return beats *both* the
+unfiltered candidate pool *and* a simple quantitative ranking on the same cases.
+
+**Why it is worth the sample.** Every negative result in this ledger that was
+close came down to magnitude, not significance: [[H039]] scored t = −5.02 and
+died on a 19.5 bps spread against a 40 bps round trip. A cross-sectional signal
+must commit to one functional form across every regime and every name. A
+discretionary judge can condition on context that no single column encodes,
+which is a claim about *effect size* — the thing the lab is actually short of.
+
+**The honest weak point, recorded rather than argued away.** The archived
+operating plan's highest-leverage demand is that a proposal name who is on the
+other side of the trade and why they keep taking it. For a judgement call the
+answer is genuinely unclear. If nobody is persistently on the other side, a
+measured edge is a data artefact — and it will not announce itself as one.
+
+**What would falsify it.** TAKE mean excess at or below the mean over all
+candidates, on a per-session paired basis. The frozen bar is +60 bps against the
+pool and +30 bps against the best quantitative baseline at a matched take rate.
+The first replay uses the broad `liquid_universe` generator precisely so that no
+screen does any of the work and every point of lift belongs to the judge.
+
+**What it must not be read as.** A replay spends `train` exactly as an
+exploration does. It is counted by `runner.burden` under
+`signal_id = "replay:<id>"`, and a re-run with a changed prompt or a changed
+model is a *new test of the same sample*, not a refinement of this one.
+
+---
+
+## H042 — Revealed identity beats anonymised identity, i.e. the model remembers
+
+Status: **PROPOSED.** Registered 2026-08-22. `conditions-on` [[H041]].
+
+Family: `ai_discretionary`. **Kind of work: none yet.** This is a control, and
+it is pre-registered as one.
+
+**The claim.** The same replay run with the symbol and calendar date revealed
+scores materially better than the anonymised arm, indicating the judgement is
+drawing on memorised price history rather than on the case in front of it.
+
+**Why this cannot be handled the way the other four lookaheads were.** Every
+lookahead this project has caught lived in a *frame* — the entry day's own close
+(H015), an unlagged denominator, a present-day snapshot attribute, an interval
+only knowable after the next observation printed. Each was closable by fixing
+the data. This one lives in the model's weights: a model asked about an Indian
+equity in a named quarter may simply recall what happened next, and no amount of
+frame hygiene touches that. A leak that cannot be closed has to be *measured*.
+
+**The design.** Two replays over one case set differing in exactly one field —
+`anonymise`. Cases are anonymised by default, so the revealed arm is the
+deliberate one. `case_hash` covers the rendered text, so the two arms hash
+apart and neither can serve the other's decisions from cache.
+
+**How to read the two outcomes.** A null result licenses reading every
+anonymised replay in this lab as judgement. A positive result voids every
+revealed-identity result and puts a floor under how much of any anonymised
+result is recall rather than reasoning — it does not, by itself, invalidate the
+anonymised arm.
+
+**Until this has been run, every discretionary finding in this lab carries an
+asterisk,** and `PLAN.md` §6 lists it as the stage that gates belief in the
+rest.
