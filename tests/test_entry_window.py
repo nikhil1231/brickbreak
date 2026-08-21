@@ -10,7 +10,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.research.opening_window.entry_window import (WindowConfig, add_setup_and_stop, check_invariant,
+from src.research.families.opening_window.entry_window import (WindowConfig, add_setup_and_stop, check_invariant,
                               profile, window_grid)
 
 

@@ -41,7 +41,7 @@ from dataclasses import dataclass, field, asdict
 import numpy as np
 import pandas as pd
 
-from ...research_data.pipelines.sector import UNCLASSIFIED
+from ....research_data.pipelines.sector import UNCLASSIFIED
 
 
 @dataclass

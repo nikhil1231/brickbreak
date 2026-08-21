@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.research.opening_window import archetypes, behaviour, explore
+from src.research.families.opening_window import archetypes, behaviour, explore
 
 
 def _ticks(symbol="AAA", day="2024-05-02", prices=None, vols=None, secs=None):

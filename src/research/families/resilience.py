@@ -79,8 +79,8 @@ from dataclasses import dataclass, asdict
 import numpy as np
 import pandas as pd
 
-from ..core import config
-from ..research_data import repository
+from ...core import config
+from ...research_data import repository
 
 RET_GUARD = 0.6          # daily moves beyond this are bad prints, not returns
 OUT_PATH = config.METADATA_DIR / "resilience.json"

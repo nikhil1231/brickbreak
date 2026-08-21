@@ -9,7 +9,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.research.opening_window.join import (
+from src.research.families.opening_window.join import (
     add_gap_fields, add_volume_context, build_panel, coverage,
 )
 

@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 from ..core import config
-from ..research.opening_window.screener import STAGES, ScreenConfig, run_screen, summarize
+from ..research.families.opening_window.screener import STAGES, ScreenConfig, run_screen, summarize
 from ..research_data.pipelines import daily_panel as build_screen
 
 FRONTEND = config.PROJECT_ROOT / "frontend"

@@ -64,8 +64,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from ...core import config
-from ...research_data import repository
+from ....core import config
+from ....research_data import repository
 
 LABELS_PATH = config.NORMALIZED_DIR / "candidate_labels.parquet"
 REPORT_PATH = config.METADATA_DIR / "labelling.json"

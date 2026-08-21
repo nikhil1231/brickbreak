@@ -1,4 +1,4 @@
-"""Tests for `src.research.opening_window.discovery`.
+"""Tests for `src.research.families.opening_window.discovery`.
 
 Three things are worth testing here and the rest is arithmetic:
 
@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.research.opening_window import discovery as dc
+from src.research.families.opening_window import discovery as dc
 
 
 # --------------------------------------------------------------------------
@@ -273,7 +273,7 @@ def test_permutation_null_is_beaten_by_a_real_signal():
 def test_load_frame_refuses_holdout_rows(monkeypatch):
     """The fence must raise, not filter. A silently dropped holdout row is an
     invisible breach and the split is the only out-of-sample test that exists."""
-    from src.research.opening_window import behaviour, explore
+    from src.research.families.opening_window import behaviour, explore
 
     fake = pd.DataFrame({
         "symbol": ["AAA"], "date": [pd.Timestamp("2021-06-01")],

@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.research.opening_window import payoff
+from src.research.families.opening_window import payoff
 
 
 def _bars(closes, opens=None, highs=None, lows=None, symbol="AAA"):
@@ -204,12 +204,9 @@ def test_benchmark_is_compounded_over_the_trade_s_own_holding_window():
         {"symbol": "AAA", "date": dates[0], "payoff_ret_pct": 5.0, "sessions_held": 2},
         {"symbol": "AAA", "date": dates[0], "payoff_ret_pct": 5.0, "sessions_held": 10},
     ])
-    monkey = payoff.daily_market_return
-    payoff.daily_market_return = lambda b, min_symbols=50: monkey(b, min_symbols=1)
-    try:
-        out = payoff.attach_benchmark(sim, bars)
-    finally:
-        payoff.daily_market_return = monkey
+    # Two symbols is below the real breadth floor, so the floor is lowered
+    # explicitly rather than by patching the module.
+    out = payoff.attach_benchmark(sim, bars, min_symbols=1)
     # The ten-session trade must be measured against ten sessions of market.
     assert out["bench_over_hold_pct"].iloc[1] > out["bench_over_hold_pct"].iloc[0]
     assert out["payoff_excess_pct"].iloc[1] < out["payoff_excess_pct"].iloc[0]

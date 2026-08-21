@@ -1,4 +1,4 @@
-"""Tests for `src.research.opening_window.family`.
+"""Tests for `src.research.families.opening_window.family`.
 
 This module decides what gets spent on the only clean out-of-sample window this
 project has, so the tests are aimed at the things that would corrupt that
@@ -30,8 +30,8 @@ import pandas as pd
 import pytest
 
 from src.research_data.pipelines import asof
-from src.research.opening_window import family, shotgun
-from src.research.opening_window.shotgun import ExitConfig
+from src.research.families.opening_window import family, shotgun
+from src.research.families.opening_window.shotgun import ExitConfig
 
 
 # --------------------------------------------------------------------------
@@ -242,7 +242,7 @@ def test_holdout_refuses_a_family_that_was_edited_after_freezing(tmp_path):
     # the guard fires on the *frozen* file, so point the loader at the fake one
     # rather than at the project's own — calling the real thing here would open
     # the holdout as a side effect of running the test suite.
-    from src.research.opening_window import family as fam
+    from src.research.families.opening_window import family as fam
     orig = fam.load_frozen
     fam.load_frozen = lambda path=p: json.loads(p.read_text())
     try:
@@ -260,7 +260,7 @@ def test_holdout_refuses_to_overwrite_a_result_from_another_family(tmp_path):
     fp, op = tmp_path / "frozen.json", tmp_path / "out.json"
     fp.write_text(json.dumps(frozen))
     op.write_text(json.dumps({"rules_hash": "0000000000000000"}))
-    from src.research.opening_window import family as fam
+    from src.research.families.opening_window import family as fam
     orig = fam.load_frozen
     fam.load_frozen = lambda path=fp: json.loads(fp.read_text())
     try:

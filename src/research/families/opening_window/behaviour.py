@@ -62,9 +62,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ...core import config
-from ...research_data import repository
-from ...research_data.pipelines import renames
+from ....core import config
+from ....research_data import repository
+from ....research_data.pipelines import renames
 
 TICKS_DIR = config.NORMALIZED_DIR / "opening_1s"
 BEHAVIOUR_PATH = config.NORMALIZED_DIR / "opening_behaviour.parquet"

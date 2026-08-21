@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.research.opening_window.labelling import (LabelConfig, attach_labels, by_bucket,
+from src.research.families.opening_window.labelling import (LabelConfig, attach_labels, by_bucket,
                            horizon_summary, report)
 
 
@@ -186,7 +186,7 @@ def test_summary_and_buckets_report_what_they_measured():
 
 def test_slippage_profile_splits_the_window_move_by_bucket():
     """The mechanism behind the headline result, so it gets pinned too."""
-    from src.research.opening_window.labelling import slippage_profile
+    from src.research.families.opening_window.labelling import slippage_profile
     b = _bars(("AAA",), n=20)
     p = _panel(b, [("AAA", i, 100.0, 1.0) for i in range(10)])
     p["open_raw"] = [100.0] * 5 + [50.0] * 5          # +0% then +100% slippage

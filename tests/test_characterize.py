@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.research.opening_window.characterize import censoring_check, describe, joint_mass, report
+from src.research.families.opening_window.characterize import censoring_check, describe, joint_mass, report
 
 
 def _panel(n=500, seed=0):

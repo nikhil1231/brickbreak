@@ -36,7 +36,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ...core import config
+from ....core import config
 
 REPORT_PATH = config.METADATA_DIR / "characterization.json"
 

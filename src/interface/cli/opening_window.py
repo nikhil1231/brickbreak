@@ -17,7 +17,7 @@ def cmd_serve(args) -> int:
 
 def cmd_screen(args) -> int:
     """Headless screen: print the funnel summary for the default/CLI config."""
-    from ...research.opening_window.screener import ScreenConfig, run_screen, summarize
+    from ...research.families.opening_window.screener import ScreenConfig, run_screen, summarize
     df = build_screen.load(asof_open=not args.unlagged)
     overrides = {}
     for kv in (args.set or []):
@@ -44,8 +44,8 @@ def cmd_screen(args) -> int:
 def cmd_candidate_panel(args) -> int:
     """Join opening-window features to daily screener candidates."""
     import json as _json
-    from ...research.opening_window import join as opening_join
-    from ...research.opening_window.screener import ScreenConfig
+    from ...research.families.opening_window import join as opening_join
+    from ...research.families.opening_window.screener import ScreenConfig
 
     panel, cov = opening_join.build(cfg=ScreenConfig())
     print(_json.dumps(cov, indent=2, default=str))
@@ -56,7 +56,7 @@ def cmd_candidate_panel(args) -> int:
 
 def cmd_characterize(args) -> int:
     """Distributions of the measures the entry rules are stated in."""
-    from ...research.opening_window import characterize, join as opening_join
+    from ...research.families.opening_window import characterize, join as opening_join
     panel = opening_join.load_panel()
     rep = characterize.report(panel)
     d = rep["distributions"]
@@ -84,7 +84,7 @@ def cmd_characterize(args) -> int:
 
 def cmd_label(args) -> int:
     """Forward returns for every candidate morning. The first evaluable output."""
-    from ...research.opening_window import labelling
+    from ...research.families.opening_window import labelling
     cfg = labelling.LabelConfig(entry_col=args.entry)
     labels, rep = labelling.build(cfg)
     print(f"\n{rep['rows']:,} mornings, {rep['symbols']:,} symbols, "
@@ -136,7 +136,7 @@ def cmd_entry_window(args) -> int:
 
     Deliberately a grid, not a rule: `t` is still a discovery problem.
     """
-    from ...research.opening_window import entry_window as ew
+    from ...research.families.opening_window import entry_window as ew
     cfg = ew.WindowConfig(stop_buffer_pct=args.stop_buffer)
     grid, rep = ew.build(cfg)
     inv = rep["invariant"]
@@ -164,7 +164,7 @@ def cmd_behaviour(args) -> int:
     building it here would put it one careless `groupby` away from being looked
     at, which is the whole thing the split exists to prevent.
     """
-    from ...research.opening_window import behaviour, explore
+    from ...research.families.opening_window import behaviour, explore
     cfg = behaviour.BehaviourConfig()
     lo = None if args.all_dates else explore.EXPLORE_START
     panel = behaviour.build(cfg, date_min=lo)
@@ -183,7 +183,7 @@ def cmd_explore(args) -> int:
     the same data that would confirm it, so it confirms nothing.
     """
     import pandas as pd
-    from ...research.opening_window import archetypes, explore
+    from ...research.families.opening_window import archetypes, explore
     d = explore.load_explore_frame()
     d["archetype"] = archetypes.assign(d)
     y = args.horizon
@@ -224,7 +224,7 @@ def cmd_discover(args) -> int:
     it is a shortlist of structures to freeze and test on the 2020-2023
     holdout, which this command is fenced away from by `explore.fence()`.
     """
-    from ...research.opening_window import discovery
+    from ...research.families.opening_window import discovery
     rep = discovery.report(t=args.t, n_perm=args.n_perm, cluster_k=args.k,
                            verbose=True)
     _dump(rep, discovery.REPORT_PATH)
@@ -237,7 +237,7 @@ def cmd_discover(args) -> int:
 
 def cmd_shotgun(args) -> int:
     """The H024 rule and every check that qualifies it. EXPLORATORY."""
-    from ...research.opening_window import shotgun
+    from ...research.families.opening_window import shotgun
     rep = shotgun.report(t=args.t, top_n=args.top_n, time_stop=args.hold,
                          cost_pct=args.cost, n_perm=args.n_perm, verbose=True)
     _dump(rep, shotgun.REPORT_PATH)
@@ -250,7 +250,7 @@ def cmd_shotgun(args) -> int:
 
 def cmd_family(args) -> int:
     """Search the axes, stress-test the winners, freeze the family. EXPLORATORY."""
-    from ...research.opening_window import family
+    from ...research.families.opening_window import family
     rep = family.report(n_perm=args.n_perm, do_freeze=not args.no_freeze,
                         verbose=True)
     _dump(rep, family.REPORT_PATH)
@@ -268,7 +268,7 @@ def cmd_holdout(args) -> int:
     the whole value of the arrangement is that the definitions are written down
     and *then* the window is opened.
     """
-    from ...research.opening_window import family
+    from ...research.families.opening_window import family
     out = family.holdout(verbose=True)
     return 0 if out["verdict"] in ("PASS", "PARTIAL") else 1
 
@@ -281,7 +281,7 @@ def cmd_work_list(args) -> int:
     re-running it after a screen change pulls only the difference.
     """
     import pandas as pd
-    from ...research.opening_window.screener import ScreenConfig, run_screen
+    from ...research.families.opening_window.screener import ScreenConfig, run_screen
     from ...research_data.pipelines import daily_panel as build_screen, opening as fo
 
     metrics = build_screen.load(asof_open=not args.unlagged)
@@ -312,8 +312,8 @@ def cmd_payoff(args) -> int:
     """
     import json as _json
     import pandas as pd
-    from ...research.opening_window import behaviour, explore, payoff
-    from ...research.opening_window.explore import cluster_stats
+    from ...research.families.opening_window import behaviour, explore, payoff
+    from ...research.families.opening_window.explore import cluster_stats
 
     d = explore.load_explore_frame(verbose=False)
     s = d[d["t_offset_s"] == args.t].copy()

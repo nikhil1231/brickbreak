@@ -61,8 +61,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from ...core import config
-from ...research_data import repository
+from ....core import config
+from ....research_data import repository
 from . import labelling
 
 # The fence. 2023-08-21 is the first session of the original pull; everything

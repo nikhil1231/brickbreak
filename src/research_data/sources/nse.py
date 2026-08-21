@@ -33,6 +33,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import requests
 
@@ -50,6 +51,11 @@ INDEX_URL = "https://nsearchives.nseindia.com/content/indices/{name}.csv"
 ETF_LIST_URL = "https://nsearchives.nseindia.com/content/equities/eq_etfseclist.csv"
 
 BHAV_DIR = config.RAW_DIR / "bhavcopy"
+# The legacy era lands in its own tree, not merged into BHAV_DIR. Two reasons:
+# the delivery columns are NaN throughout, so a family with a delivery floor
+# must be able to ask for the modern archive alone; and a re-pull of one era
+# must never be able to truncate the other.
+LEGACY_BHAV_DIR = config.RAW_DIR / "bhavcopy_legacy"
 INDEX_DIR = config.METADATA_DIR / "index_lists"
 DAILY_BARS = config.NORMALIZED_DIR / "daily_bars.parquet"
 
@@ -89,7 +95,7 @@ LEGACY_COLUMN_MAP = {
     "SYMBOL": "symbol", "SERIES": "series", "TIMESTAMP": "date",
     "OPEN": "open", "HIGH": "high", "LOW": "low", "CLOSE": "close",
     "LAST": "last", "PREVCLOSE": "prev_close", "TOTTRDQTY": "volume",
-    "TOTTRDVAL": "turnover", "TOTALTRADES": "trades",
+    "TOTTRDVAL": "turnover", "TOTALTRADES": "trades", "ISIN": "isin",
 }
 
 
@@ -105,8 +111,9 @@ def legacy_bhav_url(d: date) -> str:
     )
 
 
-def _day_path(d: date) -> Path:
-    return BHAV_DIR / f"{d.year}" / f"{d.strftime('%Y-%m-%d')}.parquet"
+def _day_path(d: date, root: Path | None = None) -> Path:
+    base = root or BHAV_DIR
+    return base / f"{d.year}" / f"{d.strftime('%Y-%m-%d')}.parquet"
 
 
 def _read_table(content: bytes) -> pd.DataFrame:
@@ -126,7 +133,24 @@ def _read_table(content: bytes) -> pd.DataFrame:
 
 
 def parse_legacy_bhavcopy(text: str | bytes, d: date | None = None) -> pd.DataFrame:
-    """Parse legacy pre-2020 bhavcopy (cmDDMMMYYYYbhav.csv) without delivery columns."""
+    """Parse a legacy pre-2020 bhavcopy (cmDDMMMYYYYbhav.csv.zip).
+
+    Same contract as `parse_bhavcopy` — same column names, same units — so the
+    two eras concatenate without a reconciliation step. Three differences are
+    intrinsic to the format rather than choices made here:
+
+      * no DELIV_QTY/DELIV_PER, so delivery is NaN rather than absent. A column
+        that vanishes changes the panel's schema by date; one that goes NaN
+        does not, and NaN is the honest answer to "what was delivery in 2007".
+      * no AVG_PRICE, so `vwap` is NaN for the same reason.
+      * TOTTRDVAL is already rupees, where the modern file gives lakhs. It is
+        stored as rupees in both, because a unit that changes at a date
+        boundary is a silent factor-of-100,000 break in every turnover-based
+        feature.
+
+    ISIN is carried through. Over thirty years symbols are renamed and reused,
+    and the ticker alone does not identify a security across that span.
+    """
     content = text if isinstance(text, bytes) else text.encode("utf-8", "replace")
     df = _read_table(content)
     df.columns = [str(c).strip().upper() for c in df.columns]
@@ -136,30 +160,55 @@ def parse_legacy_bhavcopy(text: str | bytes, d: date | None = None) -> pd.DataFr
     for c in df.select_dtypes(include="object").columns:
         df[c] = df[c].astype(str).str.strip()
     df = df[df["series"].isin(["EQ", "BE"])].copy()
-    num = ["open", "high", "low", "close", "prev_close", "last", "volume", "turnover", "trades"]
+    num = ["open", "high", "low", "close", "prev_close", "last",
+           "volume", "turnover", "trades"]
     for c in num:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
-    if "turnover" in df.columns:
-        df["turnover_lacs"] = df["turnover"] / 100000.0
 
+    # TIMESTAMP is "15-MAR-2021"; trust the file's own date, as the modern
+    # parser does, so a URL serving a neighbouring session still files right.
     parsed = pd.to_datetime(df["date"], format="%d-%b-%Y", errors="coerce")
     miss = parsed.isna()
     if miss.any():
-        parsed[miss] = pd.to_datetime(df.loc[miss, "date"], errors="coerce")
-    df["date"] = parsed.dt.normalize()
-    df = df.dropna(subset=["date"])
+        parsed[miss] = pd.to_datetime(df.loc[miss, "date"], errors="coerce",
+                                      dayfirst=True)
+    df["date"] = parsed
+    df = df[df["date"].notna()]
 
-    # Legacy bhavcopy lacks delivery data
-    df["deliv_qty"] = np.nan
-    df["deliv_pct"] = np.nan
-
+    # The archive gained columns over thirty years: TOTALTRADES appears in the
+    # 2000s, ISIN around 2003, and AVG_PRICE/delivery never. Rather than track
+    # which era has which, every column in the contract is materialised, NaN
+    # where the source has nothing to say. A column that appears partway
+    # through the history would otherwise change the panel's schema by date,
+    # and a feature computed across that boundary would silently change
+    # meaning rather than fail.
     order = ["date", "symbol", "series", "open", "high", "low", "close",
-             "prev_close", "last", "volume", "turnover_lacs", "trades",
-             "deliv_qty", "deliv_pct"]
-    present = [c for c in order if c in df.columns]
-    return df[present].sort_values(["symbol"]).reset_index(drop=True)
+             "prev_close", "last", "vwap", "volume", "turnover", "trades",
+             "deliv_qty", "deliv_pct", "isin"]
+    for c in order:
+        if c not in df.columns:
+            df[c] = pd.NA if c == "isin" else np.nan
+    return df[order].reset_index(drop=True)
 
+
+def fetch_legacy_day(d: date, session: requests.Session | None = None,
+                     timeout: int = 60) -> tuple[date, pd.DataFrame] | None:
+    """Fetch the legacy bhavcopy at `d`'s URL; return (session_date, frame)."""
+    s = session or requests.Session()
+    try:
+        r = s.get(legacy_bhav_url(d), headers=HEADERS, timeout=timeout)
+    except requests.RequestException:
+        return None
+    if r.status_code != 200 or len(r.content) < 500:
+        return None
+    try:
+        df = parse_legacy_bhavcopy(r.content, d)
+    except Exception:
+        return None
+    if df.empty:
+        return None
+    return df["date"].iloc[0].date(), df
 
 
 def parse_bhavcopy(text: str | bytes, d: date | None = None) -> pd.DataFrame:
@@ -235,7 +284,7 @@ def fetch_day(d: date, session: requests.Session | None = None,
 
 def sync(start: date, end: date, throttle: float = 0.25, workers: int = 4,
          verbose: bool = True, weekends: bool = True,
-         recheck_empty: bool = False) -> dict:
+         recheck_empty: bool = False, fetch=None, root: Path | None = None) -> dict:
     """Download every missing trading day in [start, end] into data/raw/bhavcopy.
 
     Every calendar day is requested, weekends included: NSE runs real sessions
@@ -249,7 +298,9 @@ def sync(start: date, end: date, throttle: float = 0.25, workers: int = 4,
     days currently held as markers, which is how an already-populated archive
     picks up sessions that an earlier, weekday-only sync never asked for.
     """
-    BHAV_DIR.mkdir(parents=True, exist_ok=True)
+    root = root or BHAV_DIR
+    fetch = fetch or fetch_day
+    root.mkdir(parents=True, exist_ok=True)
 
     def _is_marker(p: Path) -> bool:
         try:
@@ -261,7 +312,7 @@ def sync(start: date, end: date, throttle: float = 0.25, workers: int = 4,
     d = start
     while d <= end:
         if weekends or d.weekday() < 5:
-            p = _day_path(d)
+            p = _day_path(d, root)
             if not p.exists() or (recheck_empty and _is_marker(p)):
                 days.append(d)
         d += timedelta(days=1)
@@ -278,17 +329,17 @@ def sync(start: date, end: date, throttle: float = 0.25, workers: int = 4,
         if gap < throttle:
             time.sleep(throttle - gap)
         lock_state["last"] = time.monotonic()
-        return day, fetch_day(day)
+        return day, fetch(day)
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
         for i, (day, got) in enumerate(ex.map(one, days), 1):
             actual, df = got if got else (None, None)
             if df is None or df.empty:
                 # Empty marker = known non-trading day, so we never re-request it.
-                _write_marker(day)
+                _write_marker(day, root)
                 stats["missing"] += 1
             elif actual == day:
-                p = _day_path(day)
+                p = _day_path(day, root)
                 p.parent.mkdir(parents=True, exist_ok=True)
                 df.to_parquet(p, index=False)
                 stats["downloaded"] += 1
@@ -296,9 +347,9 @@ def sync(start: date, end: date, throttle: float = 0.25, workers: int = 4,
             else:
                 # This URL served a different session. `day` did not trade; the
                 # session it did serve is stored where it belongs, if new.
-                _write_marker(day)
+                _write_marker(day, root)
                 stats["missing"] += 1
-                tgt = _day_path(actual)
+                tgt = _day_path(actual, root)
                 if not tgt.exists() or _is_marker(tgt):
                     tgt.parent.mkdir(parents=True, exist_ok=True)
                     df.to_parquet(tgt, index=False)
@@ -311,17 +362,25 @@ def sync(start: date, end: date, throttle: float = 0.25, workers: int = 4,
     return stats
 
 
-def _write_marker(d: date) -> None:
+def _write_marker(d: date, root: Path | None = None) -> None:
     """Record a known non-trading day so it is never re-requested."""
-    p = _day_path(d)
+    p = _day_path(d, root)
     p.parent.mkdir(parents=True, exist_ok=True)
     if p.exists():
         return
     pd.DataFrame(columns=["symbol"]).to_parquet(p, index=False)
 
 
-def load_range(start: date | None = None, end: date | None = None) -> pd.DataFrame:
-    files = sorted(BHAV_DIR.glob("*/*.parquet"))
+def sync_legacy(start: date, end: date, **kw) -> dict:
+    """Sync the legacy (pre-delivery) archive into its own tree."""
+    kw.setdefault("fetch", fetch_legacy_day)
+    kw.setdefault("root", LEGACY_BHAV_DIR)
+    return sync(start, end, **kw)
+
+
+def load_range(start: date | None = None, end: date | None = None,
+               root: Path | None = None) -> pd.DataFrame:
+    files = sorted((root or BHAV_DIR).glob("*/*.parquet"))
     frames = []
     for f in files:
         d = date.fromisoformat(f.stem)

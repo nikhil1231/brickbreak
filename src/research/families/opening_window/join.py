@@ -56,9 +56,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from ...core import config
-from ...research_data import repository
-from ...research_data.pipelines import renames
+from ....core import config
+from ....research_data import repository
+from ....research_data.pipelines import renames
 
 FEATURES_PATH = config.NORMALIZED_DIR / "opening_features.parquet"
 PANEL_PATH = config.NORMALIZED_DIR / "candidate_panel.parquet"
@@ -194,7 +194,7 @@ def coverage(candidates: pd.DataFrame, features: pd.DataFrame,
 
 def build(cfg=None, save: bool = True, verbose: bool = True) -> tuple[pd.DataFrame, dict]:
     """Screen, join, report. Returns (panel, coverage)."""
-    from ...research_data.pipelines import daily_panel as build_screen
+    from ....research_data.pipelines import daily_panel as build_screen
     from .screener import ScreenConfig, run_screen
 
     # Screen on the as-of-open panel: the selection for date D must not read

@@ -55,8 +55,8 @@ from dataclasses import dataclass, asdict
 import numpy as np
 import pandas as pd
 
-from ...core import config
-from ...research_data import repository
+from ....core import config
+from ....research_data import repository
 from . import discovery, explore
 
 MAX_H = 30
@@ -294,7 +294,7 @@ def simulate(paths: dict, cfg: ExitConfig) -> dict:
 
 def market_curve() -> pd.Series:
     """Cumulative log return of the equal-weighted market, indexed by session."""
-    from ...research_data.pipelines import context
+    from ....research_data.pipelines import context
     _, mkt = context.load()
     m = mkt.set_index("date")["mkt_index"]
     return np.log(m)

@@ -72,8 +72,8 @@ from dataclasses import dataclass, field, asdict
 import numpy as np
 import pandas as pd
 
-from ...core import config
-from ...research_data import repository
+from ....core import config
+from ....research_data import repository
 from . import explore
 
 REPORT_PATH = config.METADATA_DIR / "discovery.json"
@@ -724,7 +724,7 @@ def market_offset(df: pd.DataFrame, pairs: pd.DataFrame) -> dict:
     a perfectly good reason, the number stops being zero and the inflated
     contrasts that follow are labelled rather than believed.
     """
-    from ...research_data.pipelines import context
+    from ....research_data.pipelines import context
     try:
         _, mkt = context.load()
     except RuntimeError:
@@ -1440,7 +1440,7 @@ def load_frame(t: int = 180, verbose: bool = True) -> pd.DataFrame:
     applied first and again after every join, because a join is exactly where a
     holdout row would get in.
     """
-    from ...research_data.pipelines import context
+    from ....research_data.pipelines import context
     from . import behaviour
 
     panel = behaviour.load()

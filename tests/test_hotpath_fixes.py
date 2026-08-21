@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.research.opening_window import explore
+from src.research.families.opening_window import explore
 from src.alpha_eval import backtest as B
 from src.alpha_eval import diagnostics as D
 from src.alpha_eval import report as R
