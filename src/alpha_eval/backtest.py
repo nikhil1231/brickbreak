@@ -1,4 +1,4 @@
-"""Canonical alpha backtest (PLAN.md §5.10).
+"""Canonical alpha backtest (the refactor plan §5.10).
 
 Deliberately simple, non-optimised standard portfolio simulation:
 - Daily ranking by signal.

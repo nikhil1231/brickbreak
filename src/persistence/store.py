@@ -1,4 +1,4 @@
-"""Atomic file-backed persistence store for research objects (PLAN.md §3).
+"""Atomic file-backed persistence store for research objects (the refactor plan §3).
 
 Stores hypotheses, explorations, signals, and evidence as structured JSON
 records under `data/metadata/research_store/`.

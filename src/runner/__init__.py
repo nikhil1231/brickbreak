@@ -1,4 +1,4 @@
-"""`runner` — Research exploration runner and experiment automation (PLAN.md §5.5, §5.7, §5.11, §5.12).
+"""`runner` — Research exploration runner and experiment automation (the refactor plan §5.5, §5.7, §5.11, §5.12).
 
 Exports:
 - `spec`: `ExperimentSpec`, `validate_spec`, `SpecValidationError`

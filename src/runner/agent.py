@@ -1,4 +1,4 @@
-"""CLI-backed LLM providers for the research worker (PLAN.md §5.7).
+"""CLI-backed LLM providers for the research worker (the refactor plan §5.7).
 
 The dashboard never executes generated shell text. It creates a job; this
 module runs the selected coding agent headless inside that job's worktree,

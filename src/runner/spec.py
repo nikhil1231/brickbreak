@@ -1,4 +1,4 @@
-"""Experiment Specification and Pre-Dispatch Validation (PLAN.md §5.5).
+"""Experiment Specification and Pre-Dispatch Validation (the refactor plan §5.5).
 
 Every exploration is defined by an immutable spec before it runs.
 The spec names the question, dataset partition, signal, outcomes, pass criterion,

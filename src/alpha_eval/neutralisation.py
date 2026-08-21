@@ -1,4 +1,4 @@
-"""Factor neutralisation and projection diagnostics (PLAN.md §5.9).
+"""Factor neutralisation and projection diagnostics (the refactor plan §5.9).
 
 MANDATORY INVARIANT:
 For every candidate signal: does predictive power survive after controlling

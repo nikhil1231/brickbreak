@@ -1,4 +1,4 @@
-"""End-to-End Research Runner (PLAN.md §5.7).
+"""End-to-End Research Runner (the refactor plan §5.7).
 
 Executes an exploration from a specification:
 1. Validates spec and checks data budget permissions.
@@ -100,7 +100,7 @@ def run_exploration(
 
     # Where this sits among everything else asked of the same partition. Not a
     # veto — a label, so "significant" cannot quietly mean "significant among
-    # the fifty things we tried" (PLAN.md §9).
+    # the fifty things we tried" (the refactor plan §9).
     primary_t = (eval_report.get("predictive_content", {})
                  .get("primary_ic", {}).get("t_stat"))
     h_for_burden = store.get_hypothesis(spec.hypothesis_id)
@@ -180,6 +180,12 @@ def run_exploration(
         partition=spec.partition,
         metrics={
             "mean_ic": eval_report.get("predictive_content", {}).get("primary_ic", {}).get("mean_ic"),
+            # The same number the multiplicity assessment above was given, on
+            # purpose. Without it `burden.partition_summary` reads None for
+            # every exploratory result, scores it p=1.0, and reports that
+            # nothing survives the false-discovery step — not as a finding,
+            # but because the finding never reached it.
+            "t_stat": primary_t,
             "spread_bps": eval_report.get("quantiles", {}).get("q5_spread_bps"),
             "monotonicity": eval_report.get("quantiles", {}).get("q5_monotonicity"),
             "failure_class": failure_class,

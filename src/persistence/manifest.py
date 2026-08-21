@@ -1,4 +1,4 @@
-"""Immutable experiment manifests and cryptographic lineage (PLAN.md §5.6).
+"""Immutable experiment manifests and cryptographic lineage (the refactor plan §5.6).
 
 Every experiment emits an immutable manifest recording:
 code hash · dataset version & hash · split version · catalogue version ·

@@ -1,4 +1,4 @@
-"""The forward lane: evidence that accrues one session a day (PLAN.md §5.2).
+"""The forward lane: evidence that accrues one session a day (the refactor plan §5.2).
 
 A shuffled test set is interleaved with training in time, so it can answer
 "does this work across regimes?" and cannot answer "does it still work?".

@@ -1,4 +1,4 @@
-"""Signal comparison, novelty objective, and multi-signal ensemble (PLAN.md §5.12).
+"""Signal comparison, novelty objective, and multi-signal ensemble (the refactor plan §5.12).
 
 Compares 2–10 signals across:
 - Cross-sectional score correlation

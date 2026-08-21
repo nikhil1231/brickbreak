@@ -1,4 +1,4 @@
-"""Primary brickbreak backend and web application server (PLAN.md §6, §7).
+"""Primary brickbreak backend and web application server (the refactor plan §6, §7).
 
 Provides REST API endpoints and an interactive single-page web console for:
 - Explore Console (submit ideas, launch explorations, review findings)

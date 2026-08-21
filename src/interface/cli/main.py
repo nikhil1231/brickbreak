@@ -231,7 +231,7 @@ def main(argv=None) -> int:
     e.set_defaults(fn=data.cmd_estimate)
 
     # -----------------------------------------------------------------------
-    # Research Lab Subcommands (PLAN.md §7)
+    # Research Lab Subcommands (the refactor plan §7)
     # -----------------------------------------------------------------------
     cat_p = sub.add_parser("catalogue", help="browse registered features in the catalogue")
     cat_p.add_argument("--owner", default=None, help="filter by feature owner")

@@ -1,4 +1,4 @@
-"""Sample Budget Ledger — First-class tracking of data exposure (PLAN.md §2.1).
+"""Sample Budget Ledger — First-class tracking of data exposure (the refactor plan §2.1).
 
 THE DATA BUDGET IS PART OF THE ARCHITECTURE:
 2020-2023 has been read twice (H033 and H037) and is spent for those hypothesis

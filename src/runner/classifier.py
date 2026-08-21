@@ -1,4 +1,4 @@
-"""Automated failure taxonomy classifier and natural language interpretation (PLAN.md §5.11).
+"""Automated failure taxonomy classifier and natural language interpretation (the refactor plan §5.11).
 
 Failure is classified, never just 'FAILED':
 `NO_SIGNAL` · `SIGNAL_BUT_BETA` · `SIGNAL_ONLY_ONE_REGIME` · `SIGNAL_TOO_SMALL` ·

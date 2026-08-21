@@ -511,7 +511,7 @@ def save(manifest: dict, overwrite: bool = False) -> Path:
     if p.exists() and not overwrite:
         raise SplitError(
             f"{p.name} already exists. A split is frozen once — create a new "
-            "version rather than redrawing this one (PLAN.md §5.2).")
+            "version rather than redrawing this one (the refactor plan §5.2).")
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(manifest, indent=2) + "\n")
     return p

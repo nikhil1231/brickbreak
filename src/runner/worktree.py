@@ -1,4 +1,4 @@
-"""Isolated git worktrees for research jobs (PLAN.md §5.7).
+"""Isolated git worktrees for research jobs (the refactor plan §5.7).
 
 One exploration must not be able to trash another, or mutate the canonical
 data pipeline. Each job gets its own worktree from the current commit, its own

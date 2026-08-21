@@ -1,4 +1,4 @@
-"""Migration tool to parse and ingest HYPOTHESES.md into the research store (PLAN.md line 677).
+"""Migration tool to parse and ingest HYPOTHESES.md into the research store (the refactor plan, line 677).
 
 Migrates H001–H038 into first-class Hypothesis and Evidence records, maps
 lineage edges, and records historical partition exposure into the SampleBudgetLedger.

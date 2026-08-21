@@ -1,4 +1,4 @@
-"""Idea -> experiment spec (PLAN.md §5.5, v1 item 1).
+"""Idea -> experiment spec (the refactor plan §5.5, v1 item 1).
 
 You type a vague sentence:
 

@@ -1,4 +1,4 @@
-"""`interface` — Research backend, web application, and CLI (PLAN.md §6, §7).
+"""`interface` — Research backend, web application, and CLI (the refactor plan §6, §7).
 
 Exports:
 - `backend`: Primary web application and REST API server

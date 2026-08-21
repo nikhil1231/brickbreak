@@ -3,10 +3,18 @@
 **What this is:** an alpha research environment for NSE equities. Not a
 backtester, and no longer a single-strategy project. The unit of work is a
 *hypothesis*, investigated by an *exploration*, producing *signals* that
-accumulate *evidence*. See `PLAN.md` for the architecture and the build order.
+accumulate *evidence*. See `PLAN.md` for how the lab is operated.
 
 **Read order for a fresh session:** `PLAN.md` (where this is going) →
 `FINDINGS.md` (what was measured) → `HYPOTHESES.md` (the ledger, H001-H038).
+
+**Two plans, and which one a `§` points at.** `PLAN.md` is the *operating*
+plan: how throughput is rationed against a finite sample. The architecture it
+runs on was specified by the **refactor plan**, now complete and archived at
+`archive/plan/PLAN_2026-08-21.md`. Section references in source docstrings read
+"the refactor plan §5.7" and mean that document; they were written while it was
+still `PLAN.md` and were retargeted, not invalidated. Its non-negotiables table
+and its conventions remain in force.
 
 **The phase gate is retired.** The old rule — no strategy or backtest code until
 the current phase settles — served a single-strategy project and no longer
@@ -17,7 +25,7 @@ until it passes the leakage gate and the standard report.
 
 | path | what |
 | --- | --- |
-| `PLAN.md` | current architecture and plan |
+| `PLAN.md` | current operating plan — the dispatch budget and how it is spent |
 | `FINDINGS.md` | evidence, chronological |
 | `HYPOTHESES.md` | the research ledger, stable IDs, nothing deleted |
 | `src/` | current code |
@@ -44,7 +52,7 @@ until it passes the leakage gate and the standard report.
 
 ## The data module is the only door
 
-**Target state (see `PLAN.md` §5.1-5.2):** all market data reaches experiments
+**Target state (see the refactor plan §5.1-5.2):** all market data reaches experiments
 through one module, `research_data`. Nothing else opens a parquet file. It owns
 point-in-time features, universes, adjusted/raw prices, benchmarks, forward
 labels, the feature catalogue, and the versioned dataset splits.

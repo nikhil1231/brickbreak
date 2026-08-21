@@ -1,4 +1,4 @@
-"""`alpha_eval` — Standard alpha evaluation suite and canonical backtest (PLAN.md §5.8–§5.10).
+"""`alpha_eval` — Standard alpha evaluation suite and canonical backtest (the refactor plan §5.8–§5.10).
 
 The battery applied identically to every candidate signal:
 - `diagnostics`: Rank IC, quantile profiles, monotonicity, turnover, persistence, session-clustered inference.

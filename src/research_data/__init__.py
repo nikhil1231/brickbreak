@@ -12,7 +12,7 @@ raw prices, benchmarks, forward labels, the feature catalogue and the dataset
 splits all live behind it, and nothing outside it opens a data file. If
 something is missing, it is added here rather than worked around.
 
-See `PLAN.md` §5.1-5.4 for the architecture this implements and `AGENTS.md`
+See the refactor plan §5.1-5.4 for the architecture this implements and `AGENTS.md`
 for the rules that survive from the single-strategy era.
 
 Built so far:

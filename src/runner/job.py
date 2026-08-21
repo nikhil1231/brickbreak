@@ -1,4 +1,4 @@
-"""Research jobs: dashboard -> spec -> worktree -> LLM worker -> result (PLAN.md §5.7).
+"""Research jobs: dashboard -> spec -> worktree -> LLM worker -> result (the refactor plan §5.7).
 
     job spec -> isolated worktree -> selected coding CLI -> job/signal.py
              -> trusted harness -> experiment_result.json -> store

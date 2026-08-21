@@ -1,4 +1,4 @@
-"""CLI handlers for the research suite (PLAN.md §7).
+"""CLI handlers for the research suite (the refactor plan §7).
 
 Subcommands:
 - `catalogue`: Browse features in the catalogue

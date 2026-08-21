@@ -1,4 +1,4 @@
-"""Lab-level multiple comparisons (PLAN.md §9).
+"""Lab-level multiple comparisons (the refactor plan §9).
 
 THE PROBLEM THIS EXISTS FOR
 `discovery.permutation_null` already handles the maximum *within* one scan:
@@ -150,20 +150,45 @@ def assess(t_stat: float | None, partition: str, alpha: float = 0.05,
 
 
 def partition_summary(partition: str, q: float = 0.10) -> dict:
-    """Everything tested against a partition, with FDR applied across the set."""
-    rows = []
+    """Everything tested against a partition, with FDR applied across the set.
+
+    Counted on the same key as `count_tests`, and that is the whole point of
+    the deduplication here. These two functions answer the same question —
+    how much has this partition already absorbed — and a report where they
+    disagree states a bar that nothing in the ledger ever had to clear. The
+    store makes the failure concrete: eighteen re-runs of one development
+    fixture read as eighteen tests, pushing the quoted Šidák bar to 3.02 when
+    three distinct signals have actually been scored.
+
+    Evidence is matched on its own partition as well as its exploration's.
+    Forward-lane evidence points back at the *train* exploration that
+    registered the signal and accrues a fresh row every time the lane is
+    advanced, so without that second check a signal running forward would
+    quietly inflate the burden on the partition it has already left.
+    """
+    by_exploration: dict[str, list] = {}
+    for ev in store.list_evidence():
+        by_exploration.setdefault(ev.exploration_id, []).append(ev)
+
+    # Explorations arrive in id order, which is chronological, so re-running a
+    # signal supersedes the earlier reading rather than joining it.
+    latest: dict[tuple[str, str | None], dict] = {}
     for exp in store.list_explorations():
         spec = exp.spec or {}
         if spec.get("partition") != partition:
             continue
-        for ev in store.list_evidence():
-            if ev.exploration_id != exp.id:
+        for ev in by_exploration.get(exp.id, []):
+            if ev.partition != partition:
                 continue
             t = (ev.metrics or {}).get("ic_t_stat") or (ev.metrics or {}).get("t_stat")
-            rows.append({"exploration_id": exp.id,
-                         "hypothesis_id": exp.hypothesis_id,
-                         "signal": spec.get("signal_name"),
-                         "t_stat": t, "p_value": two_sided_p(t)})
+            signal = spec.get("signal_name")
+            latest[(exp.hypothesis_id, signal)] = {
+                "exploration_id": exp.id,
+                "hypothesis_id": exp.hypothesis_id,
+                "signal": signal,
+                "t_stat": t, "p_value": two_sided_p(t)}
+
+    rows = list(latest.values())
     keep = benjamini_hochberg([r["p_value"] for r in rows], q=q)
     for r, k in zip(rows, keep):
         r["survives_fdr"] = bool(k)

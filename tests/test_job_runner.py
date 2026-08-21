@@ -8,6 +8,7 @@ live install.
 """
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import stat
@@ -16,6 +17,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from src.persistence import store
+from src.persistence.models import Evidence, Exploration
 from src.runner import agent, burden, forward, interpret, job, planner, worktree
 from src.runner.spec import (
     ExperimentSpec,
@@ -321,6 +324,31 @@ class TestPassCriterion:
 # multiplicity
 # ---------------------------------------------------------------------------
 
+_SEQ = itertools.count()
+
+
+def _record_test(hypothesis: str, signal: str, partition: str, t_stat: float,
+                 exploration_id: str | None = None) -> str:
+    """One scored result, shaped the way `run_exploration` writes them.
+
+    Passing `exploration_id` attaches evidence to an exploration that already
+    exists, which is what the forward lane does when it accrues.
+    """
+    n = next(_SEQ)
+    exp_id = exploration_id or f"EXP_20260101_{n:06d}"
+    if exploration_id is None:
+        store.save_exploration(Exploration(
+            id=exp_id, hypothesis_id=hypothesis,
+            spec={"partition": partition, "signal_name": signal},
+            verdict="", failure_class="NO_SIGNAL", signals_produced=[signal]))
+    store.add_evidence(Evidence(
+        id=f"EV_{exp_id}_{n:06d}", hypothesis_id=hypothesis, signal_id=signal,
+        exploration_id=exp_id, role="exploratory", dataset_version="v1",
+        partition=partition, metrics={"t_stat": t_stat},
+        verdict_statement=""))
+    return exp_id
+
+
 class TestBurden:
 
     def test_the_bar_rises_with_the_number_of_tests(self):
@@ -344,6 +372,46 @@ class TestBurden:
                                "n_including_this": 40,
                                "adjusted_bar": burden.required_t(40)})
         assert abs(b40.t_stat) < b40.adjusted_bar
+
+    def test_a_re_run_signal_is_one_test_in_both_counters(self, research_store):
+        """`count_tests` and `partition_summary` must not disagree.
+
+        They answer the same question, and a report where they differ quotes
+        a bar that nothing in the ledger ever had to clear. The real store hit
+        this: one development fixture re-run eighteen times read as eighteen
+        tests and pushed the quoted bar from 2.39 to 3.02.
+        """
+        for _ in range(3):
+            _record_test(hypothesis="H001", signal="same_signal",
+                         partition="train", t_stat=1.1)
+
+        summary = burden.partition_summary("train")
+        assert burden.count_tests("train") == 1
+        assert summary["n_tests"] == 1
+        assert summary["sidak_bar"] == pytest.approx(burden.required_t(1), abs=0.01)
+
+    def test_forward_accrual_does_not_raise_the_train_bar(self, research_store):
+        """Forward evidence hangs off the train exploration that spawned it."""
+        exp_id = _record_test(hypothesis="H001", signal="s", partition="train",
+                              t_stat=1.1)
+        for _ in range(5):                      # the lane advancing day by day
+            _record_test(hypothesis="H001", signal="s", partition="forward",
+                         t_stat=2.0, exploration_id=exp_id)
+
+        assert burden.partition_summary("train")["n_tests"] == 1
+
+    def test_a_strong_result_survives_the_false_discovery_step(self, research_store):
+        """The BH half has to be reachable, not just present."""
+        _record_test(hypothesis="H001", signal="strong", partition="train",
+                     t_stat=6.0)
+        _record_test(hypothesis="H001", signal="weak", partition="train",
+                     t_stat=0.3)
+
+        summary = burden.partition_summary("train")
+        by_signal = {r["signal"]: r for r in summary["results"]}
+        assert summary["n_surviving_fdr"] == 1
+        assert by_signal["strong"]["survives_fdr"]
+        assert not by_signal["weak"]["survives_fdr"]
 
     def test_void_results_do_not_raise_the_bar(self):
         """A voided exploration was never evidence."""

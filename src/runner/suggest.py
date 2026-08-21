@@ -16,7 +16,7 @@ THREE THINGS THIS MUST NOT BECOME
    reasons, and every measured result — and is required to say, per
    suggestion, why it is not a restatement of one.
 3. **A momentum factory.** The objective is several weakly-correlated alphas,
-   not the strongest single one (PLAN.md §5.12), so a proposal states which
+   not the strongest single one (the refactor plan §5.12), so a proposal states which
    existing signal it expects to correlate with. An idea that would land on
    top of `rs_60d_vs_mkt` is worth less than a weaker independent one, and the
    generator is told so.
@@ -578,7 +578,7 @@ def promote(suggestion_id: str) -> tuple[Suggestion, Hypothesis]:
 # the offline path
 # ---------------------------------------------------------------------------
 
-# The class-to-next-move table of PLAN.md §5.11, written as whole proposals
+# The class-to-next-move table of the refactor plan §5.11, written as whole proposals
 # rather than as verbs. This is mechanical follow-up, not insight, and it says
 # so — but a mechanical follow-up of a real measured failure is still grounded
 # in something, which is more than a generic idea would be.

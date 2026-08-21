@@ -1,4 +1,4 @@
-"""Fingerprint verification tests for H026 and H024 (PLAN.md Stage B target, line 676).
+"""Fingerprint verification tests for H026 and H024 (the refactor plan, Stage B target, line 676).
 
 Verifies that H024 and H026 both produce full alpha evaluation fingerprints
 matching their established properties.

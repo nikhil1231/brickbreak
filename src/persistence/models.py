@@ -1,4 +1,4 @@
-"""The four core research objects and the idea graph (PLAN.md §3).
+"""The four core research objects and the idea graph (the refactor plan §3).
 
 THE FOUR OBJECTS:
 Hypothesis  ->  Exploration  ->  Signal  ->  Evidence
@@ -269,7 +269,7 @@ class IdeaGraph:
 
 
 # ---------------------------------------------------------------------------
-# Suggestions — the research inbox (PLAN.md §6)
+# Suggestions — the research inbox (the refactor plan §6)
 # ---------------------------------------------------------------------------
 
 SUGGESTION_STATUSES = (

@@ -1,4 +1,4 @@
-"""Unit tests for alpha evaluation suite (PLAN.md §5.8–§5.10)."""
+"""Unit tests for alpha evaluation suite (the refactor plan §5.8–§5.10)."""
 from __future__ import annotations
 
 import numpy as np

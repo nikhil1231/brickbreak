@@ -1,4 +1,4 @@
-"""Unified alpha evaluation suite and report generator (PLAN.md §5.8).
+"""Unified alpha evaluation suite and report generator (the refactor plan §5.8).
 
 Runs the standard battery across:
 1. Predictive Content (Rank IC, IC decay, Clustered t-stats)

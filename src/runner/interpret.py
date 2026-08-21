@@ -1,4 +1,4 @@
-"""Turn a fingerprint into a paragraph a human can act on (PLAN.md §5.11).
+"""Turn a fingerprint into a paragraph a human can act on (the refactor plan §5.11).
 
 The deliverable of an exploration is not a table and not a transcript. It is
 something like:

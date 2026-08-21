@@ -1,4 +1,4 @@
-"""Unit and integration tests for research runner, spec validation, classifier, and signal comparison (PLAN.md §5.5, §5.7, §5.11, §5.12)."""
+"""Unit and integration tests for research runner, spec validation, classifier, and signal comparison (the refactor plan §5.5, §5.7, §5.11, §5.12)."""
 from __future__ import annotations
 
 import numpy as np
@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from src.persistence import store
+from src.persistence.models import Hypothesis
 from src.runner import (
     ExperimentSpec,
     SpecValidationError,
@@ -117,7 +118,27 @@ class TestSignalComparison:
     reason="requires built normalized data files on disk"
 )
 class TestEndToEndRunner:
-    def test_run_exploration_end_to_end(self):
+    def test_run_exploration_end_to_end(self, research_store):
+        """End to end against the real panel, into a store of its own.
+
+        The data has to be real — that is what this test is for. The *records*
+        must not be: running with `save_results=True` against the live store
+        deposited a fixture exploration into the lab's ledger on every suite
+        run, where it was indistinguishable from a research result and counted
+        as one.
+        """
+        # The spec validator refuses to dispatch against a hypothesis it
+        # cannot find, so the store has to hold one. Registering it here
+        # rather than borrowing the real H026 is the point: this test asserts
+        # that the pipeline runs, not that the live ledger has a given shape.
+        store.save_hypothesis(Hypothesis(
+            id="H026",
+            title=("Relative strength against the market and the sector is a "
+                   "better ranking than price location"),
+            statement=("Relative strength against the market and the sector is "
+                       "a better ranking than price location"),
+            rationale="", status="promising", family="discovery"))
+
         # Exploration on H026
         spec = ExperimentSpec(
             hypothesis_id="H026",
@@ -152,3 +173,11 @@ class TestEndToEndRunner:
         loaded_exp = store.get_exploration(exp_id)
         assert loaded_exp is not None
         assert loaded_exp.hypothesis_id == "H026"
+
+        # The t-statistic has to survive into the record, not just the report.
+        # `burden.partition_summary` scores every result from this field; when
+        # it was missing, each one read as p=1.0 and the false-discovery step
+        # could never flag anything, whatever the exploration actually found.
+        ev = [e for e in store.list_evidence() if e.exploration_id == exp_id]
+        assert ev, "the exploration saved no evidence"
+        assert "t_stat" in ev[0].metrics

@@ -5,7 +5,7 @@ They do not test that the data is correct in general; they test that the
 specific failure modes this project has already seen are structurally blocked
 by the catalogue, the frame API and the split module.
 
-The four known lookaheads (PLAN.md §2):
+The four known lookaheads (the refactor plan §2):
 1. H015 — selecting on the entry day's own close
 2. Denominator lookahead — median_vol_20 including date D's volume
 3. Snapshot attribute scoring — size_tier_rank used as a ranking (H030)

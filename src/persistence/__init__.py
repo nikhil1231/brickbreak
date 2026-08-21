@@ -1,4 +1,4 @@
-"""`persistence` — Research state, object store, immutable manifests, and data budget ledger (PLAN.md §3, §5.6, §2.1).
+"""`persistence` — Research state, object store, immutable manifests, and data budget ledger (the refactor plan §3, §5.6, §2.1).
 
 The four core objects:
 Hypothesis -> Exploration -> Signal -> Evidence

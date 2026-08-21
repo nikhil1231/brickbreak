@@ -1,4 +1,4 @@
-"""Tests for the research inbox (PLAN.md §6, "Research inbox").
+"""Tests for the research inbox (the refactor plan §6, "Research inbox").
 
 The thing worth testing here is not that a model returns text. It is that the
 lab's own rules survive contact with what a model returns: a bar that cannot
@@ -19,19 +19,13 @@ from src.runner import agent, suggest
 
 
 @pytest.fixture
-def isolated_store(tmp_path, monkeypatch):
-    """Point the whole store at a tmp dir so tests never touch real records."""
-    for name, sub in (("HYPOTHESES_DIR", "hypotheses"),
-                      ("EXPLORATIONS_DIR", "explorations"),
-                      ("SIGNALS_DIR", "signals"),
-                      ("EVIDENCE_DIR", "evidence"),
-                      ("SUGGESTIONS_DIR", "suggestions")):
-        monkeypatch.setattr(store, name, tmp_path / sub)
+def isolated_store(research_store):
+    """The shared tmp store, seeded with the hypothesis these tests assume."""
     store.save_hypothesis(Hypothesis(
         id="H001", title="Enter at 09:20 at the close of the opening window",
         statement="Buying candidates at 09:20 beats the market",
         rationale="", status="rejected", family="opening_window"))
-    return tmp_path
+    return research_store
 
 
 def _reply(payload) -> agent.AgentResult:

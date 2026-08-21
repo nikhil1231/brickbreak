@@ -1,4 +1,4 @@
-"""Unit and integration tests for interface, CLI commands, and REST API (PLAN.md §6, §7)."""
+"""Unit and integration tests for interface, CLI commands, and REST API (the refactor plan §6, §7)."""
 from __future__ import annotations
 
 import argparse

@@ -282,7 +282,7 @@ def cmd_split(args) -> int:
 
     A split is a commitment: every result the lab produces is denominated in
     it. `--freeze` writes it once and refuses to overwrite, so re-drawing is a
-    new version with a stated reason rather than a silent edit (PLAN.md §5.2).
+    new version with a stated reason rather than a silent edit (the refactor plan §5.2).
     """
     from ...research_data import splits
 

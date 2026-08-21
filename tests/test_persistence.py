@@ -1,4 +1,4 @@
-"""Unit and integration tests for persistence, manifests, idea graph, and sample budget ledger (PLAN.md §3, §5.6, §2.1)."""
+"""Unit and integration tests for persistence, manifests, idea graph, and sample budget ledger (the refactor plan §3, §5.6, §2.1)."""
 from __future__ import annotations
 
 import tempfile
