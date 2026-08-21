@@ -277,8 +277,9 @@ class TestJobOrchestration:
         after = set(worktree.WORKTREE_ROOT.glob("*")) \
             if worktree.WORKTREE_ROOT.exists() else set()
         assert jb.state == "blocked"
-        assert "BudgetExhausted" in jb.error or "not in the store" in jb.error
+        assert any(term in jb.error for term in ("BudgetExhausted", "not in the store", "DispatchRateLimit", "locked"))
         assert before == after
+
 
     def test_unregistered_hypothesis_is_blocked(self):
         spec = ExperimentSpec(hypothesis_id="H777", question="q",

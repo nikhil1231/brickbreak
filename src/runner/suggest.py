@@ -162,36 +162,133 @@ in `lineage` — being a descendant is not disqualifying, hiding it is."""
 # what the generator is shown
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# what the generator is shown (Prompt Compaction — PLAN.md §7, Stage J)
+# ---------------------------------------------------------------------------
+
 def _ledger_context() -> tuple[str, str]:
-    """The ledger and the graveyard, as the generator sees them."""
-    live, dead = [], []
-    for h in store.list_hypotheses():
-        live.append(f"{h.id} [{h.family}/{h.status}] {h.title}")
-        if h.status in ("rejected", "decayed", "superseded"):
+    """The ledger and the graveyard, with bounded compaction past scale thresholds."""
+    all_hyps = store.list_hypotheses()
+    live_hyps = [h for h in all_hyps if h.status not in ("rejected", "decayed", "superseded")]
+    dead_hyps = [h for h in all_hyps if h.status in ("rejected", "decayed", "superseded")]
+
+    # 1. Live hypotheses context
+    live_lines = []
+    if len(live_hyps) > 20:
+        # Summarize older live hypotheses, keep recent 15
+        by_fam: dict[str, int] = {}
+        for h in live_hyps[:-15]:
+            by_fam[h.family] = by_fam.get(h.family, 0) + 1
+        fam_str = ", ".join(f"{k} ({v})" for k, v in sorted(by_fam.items()))
+        live_lines.append(f"[{len(live_hyps) - 15} earlier active/exploring hypotheses in families: {fam_str}]")
+        for h in live_hyps[-15:]:
+            live_lines.append(f"{h.id} [{h.family}/{h.status}] {h.title}")
+    else:
+        for h in live_hyps:
+            live_lines.append(f"{h.id} [{h.family}/{h.status}] {h.title}")
+
+    # 2. Graveyard context with compaction past 15 items
+    dead_lines = []
+    if len(dead_hyps) > 15:
+        # Group dead hypotheses by family and failure mode
+        by_fam_dead: dict[str, list[Hypothesis]] = {}
+        for h in dead_hyps:
+            by_fam_dead.setdefault(h.family, []).append(h)
+
+        dead_lines.append(f"[Graveyard Summary: {len(dead_hyps)} dead hypotheses across {len(by_fam_dead)} families]")
+        for fam, f_hyps in sorted(by_fam_dead.items()):
+            reasons = [h.rationale or h.statement for h in f_hyps if h.rationale or h.statement]
+            sample_reason = reasons[-1][:120] if reasons else "No edge found"
+            dead_lines.append(f"• Family '{fam}' ({len(f_hyps)} dead): e.g. {f_hyps[-1].id} ({f_hyps[-1].title}) — {sample_reason}")
+
+        dead_lines.append("\nMost recent dead hypotheses (individual details):")
+        for h in dead_hyps[-5:]:
+            why = (h.rationale or h.statement or "")[:150]
+            dead_lines.append(f"{h.id} [{h.family}]: {h.title}" + (f" — {why}" if why else ""))
+    else:
+        for h in dead_hyps:
             why = (h.rationale or h.statement or "")[:200]
-            dead.append(f"{h.id}: {h.title}" + (f" — {why}" if why else ""))
-    return "\n".join(live) or "(none)", "\n".join(dead) or "(none)"
+            dead_lines.append(f"{h.id}: {h.title}" + (f" — {why}" if why else ""))
+
+    return "\n".join(live_lines) or "(none)", "\n".join(dead_lines) or "(none)"
 
 
 def _evidence_context(limit: int = 40) -> str:
-    """Measured results, most recent last. Voided results are excluded."""
-    lines = []
-    for ev in store.list_evidence()[-limit:]:
-        metrics = ev.metrics or {}
-        keys = ("mean_ic", "t_stat", "q5_spread_bps", "ic_retention_pct")
-        nums = ", ".join(f"{k}={metrics[k]}" for k in keys if k in metrics)
-        lines.append(f"{ev.hypothesis_id} [{ev.role}/{ev.partition}] "
-                     f"{ev.signal_id}: {ev.verdict_statement}"
-                     + (f" ({nums})" if nums else ""))
-    for exp in store.list_explorations()[-limit:]:
-        lines.append(f"{exp.hypothesis_id} {exp.failure_class}: {exp.verdict}")
-    return "\n".join(lines) or "(nothing measured yet)"
+    """Measured results compacted into family rollups with extremes retained (Stage J)."""
+    ev_list = [ev for ev in store.list_evidence() if not ev.is_void]
+    if not ev_list:
+        return "(nothing measured yet)"
+
+    if len(ev_list) <= 15:
+        lines = []
+        for ev in ev_list[-limit:]:
+            metrics = ev.metrics or {}
+            keys = ("mean_ic", "t_stat", "q5_spread_bps", "ic_retention_pct")
+            nums = ", ".join(f"{k}={metrics[k]}" for k in keys if k in metrics)
+            lines.append(f"{ev.hypothesis_id} [{ev.role}/{ev.partition}] "
+                         f"{ev.signal_id}: {ev.verdict_statement}"
+                         + (f" ({nums})" if nums else ""))
+        return "\n".join(lines)
+
+    # Past 15 evidence records: compact by family, retain top/bottom 3 extremes per family
+    hyps_map = {h.id: h for h in store.list_hypotheses()}
+    by_family: dict[str, list] = {}
+    for ev in ev_list:
+        h = hyps_map.get(ev.hypothesis_id)
+        fam = h.family if h else "general"
+        by_family.setdefault(fam, []).append(ev)
+
+    lines = [f"[Evidence Compacted: {len(ev_list)} evidence records rolled up by family]"]
+    for fam, f_evs in sorted(by_family.items()):
+        ics = []
+        t_stats = []
+        for ev in f_evs:
+            m = ev.metrics or {}
+            if "mean_ic" in m and m["mean_ic"] is not None:
+                ics.append(float(m["mean_ic"]))
+            t = m.get("ic_t_stat") or m.get("t_stat")
+            if t is not None:
+                t_stats.append(float(t))
+
+        ic_str = f"IC range: [{min(ics):+.3f}, {max(ics):+.3f}]" if ics else "no ICs"
+        max_abs_t = max(t_stats, key=abs) if t_stats else 0.0
+        lines.append(f"\n• Family '{fam}' ({len(f_evs)} tests | {ic_str} | peak t={max_abs_t:+.2f}):")
+
+        # Retain top 3 positive and top 3 negative extremes
+        sorted_by_t = sorted(f_evs, key=lambda ev: (ev.metrics or {}).get("ic_t_stat") or (ev.metrics or {}).get("t_stat") or 0.0)
+        extremes = []
+        if len(sorted_by_t) <= 6:
+            extremes = sorted_by_t
+        else:
+            extremes = sorted_by_t[:3] + sorted_by_t[-3:]
+
+        for ev in extremes:
+            metrics = ev.metrics or {}
+            t = metrics.get("ic_t_stat") or metrics.get("t_stat")
+            t_str = f"t={t:+.2f}" if t is not None else ""
+            ic = metrics.get("mean_ic")
+            ic_str = f"IC={ic:+.3f}" if ic is not None else ""
+            metrics_str = f" ({', '.join(filter(None, [ic_str, t_str]))})" if (t_str or ic_str) else ""
+            lines.append(f"   - {ev.hypothesis_id} [{ev.partition}] {ev.signal_id}: {ev.verdict_statement}{metrics_str}")
+
+    return "\n".join(lines)
 
 
 def _signal_context() -> str:
-    lines = [f"{s.name} (owner {s.owner_hypothesis_id}): {s.definition}"
-             for s in store.list_signals()]
-    return "\n".join(lines) or "(none)"
+    signals = store.list_signals()
+    if len(signals) <= 20:
+        lines = [f"{s.name} (owner {s.owner_hypothesis_id}): {s.definition}"
+                 for s in signals]
+        return "\n".join(lines) or "(none)"
+
+    # Compact signals if > 20
+    by_owner: dict[str, list[str]] = {}
+    for s in signals:
+        by_owner.setdefault(s.owner_hypothesis_id, []).append(s.name)
+    lines = [f"[Signals: {len(signals)} registered signals]"]
+    for owner, sig_names in sorted(by_owner.items()):
+        lines.append(f"• {owner}: {', '.join(sig_names)}")
+    return "\n".join(lines)
 
 
 def _column_context() -> str:
@@ -215,6 +312,7 @@ def build_prompt(n: int) -> str:
         columns=_column_context(),
         relations="|".join(RELATION_TYPES),
     )
+
 
 
 # ---------------------------------------------------------------------------
