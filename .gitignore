@@ -27,3 +27,8 @@ data/metadata/*
 logs/
 .pytest_cache/
 data/whatsapp_gc/
+
+# frontend
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
