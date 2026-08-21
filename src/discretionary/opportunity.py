@@ -126,7 +126,8 @@ CONTEXT_BLOCKS = (
     "analogues",
 )
 
-DEFAULT_BASELINES = ("take_all", "random_matched", "top_n_by_score", "market")
+DEFAULT_BASELINES = ("take_all", "random_matched", "top_n_by_score",
+                     "rank_model")
 
 
 @dataclass(frozen=True)
