@@ -213,11 +213,14 @@ def main(argv=None) -> int:
     fw.add_argument("--accrue", action="store_true")
     fw.set_defaults(fn=iface_cli.cmd_forward)
 
-    bd = sub.add_parser("burden", help="multiple-comparisons load on a partition")
+    bd = sub.add_parser("burden", help="multiple-comparisons load on a partition or pre-registered batch")
     bd.add_argument("--partition", default="train")
+    bd.add_argument("--batch", default=None, help="assess a pre-registered batch (batch_id)")
     bd.add_argument("--fdr", type=float, default=0.10)
     bd.add_argument("--limit", type=int, default=25)
+    bd.add_argument("--json", action="store_true")
     bd.set_defaults(fn=iface_cli.cmd_burden)
+
 
     pf_p = sub.add_parser("preflight", help="run label-free pre-flight screening on a signal")
     pf_p.add_argument("--signal", required=True, help="signal column name")

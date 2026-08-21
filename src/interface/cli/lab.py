@@ -310,9 +310,41 @@ def cmd_forward(args) -> int:
 
 
 def cmd_burden(args) -> int:
-    """How many questions this partition has already been asked."""
+    """How many questions this partition has already been asked, or batch multiplicity assessment."""
     from ...runner import burden
+
+    if getattr(args, "batch", None):
+        try:
+            b_res = burden.assess_batch(args.batch, q=args.fdr)
+        except KeyError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+
+        if getattr(args, "json", False):
+            print(json.dumps(b_res, indent=2))
+            return 0
+
+        print(f"\nBatch Multiplicity Assessment: {b_res['batch_id']} on {b_res['partition']}")
+        print(f"  Batch Size:     {b_res['batch_size']}")
+        print(f"  Batch Hash:     {b_res['batch_hash']}")
+        print(f"  Batch Šidák:    |t| >= {b_res['batch_sidak_bar']}")
+        print(f"  Surviving FDR:  {b_res['n_surviving_fdr']} at q={b_res['fdr_q']}\n")
+        print(f"{'Hypothesis':<12} {'Signal':<24} {'t-stat':<10} {'p-val':<10} {'FDR':<8} {'Šidák'}")
+        print("-" * 75)
+        for r in b_res["results"]:
+            t_str = f"{r['t_stat']:+.2f}" if r['t_stat'] is not None else "N/A"
+            p_str = f"{r['p_value']:.4f}" if r['p_value'] is not None else "N/A"
+            fdr_str = "KEEP" if r.get("survives_fdr") else "-"
+            sidak_str = "PASS" if r.get("clears_batch_sidak") else "-"
+            print(f"{r['hypothesis_id']:<12} {str(r['signal']):<24} {t_str:<10} {p_str:<10} {fdr_str:<8} {sidak_str}")
+        print()
+        return 0
+
     s = burden.partition_summary(args.partition, q=args.fdr)
+    if getattr(args, "json", False):
+        print(json.dumps(s, indent=2))
+        return 0
+
     print(f"{args.partition}: {s['n_tests']} recorded test(s); "
           f"a maximum over that many needs |t| > {s['sidak_bar']}")
     print(f"surviving BH at q={s['fdr_q']}: {s['n_surviving_fdr']}")
@@ -321,6 +353,7 @@ def cmd_burden(args) -> int:
         print(f"  {mark}  {r['hypothesis_id']:<8} {str(r['signal']):<24} "
               f"t={r['t_stat']}")
     return 0
+
 
 
 def cmd_preflight(args: argparse.Namespace) -> int:

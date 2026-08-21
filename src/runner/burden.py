@@ -1,41 +1,36 @@
-"""Lab-level multiple comparisons (the refactor plan §9).
+"""Lab-level multiple comparisons and batch correction (PLAN.md §5, §9, Stage H).
 
 THE PROBLEM THIS EXISTS FOR
-`discovery.permutation_null` already handles the maximum *within* one scan:
+discovery.permutation_null already handles the maximum within one scan:
 over 68 features the 95th percentile of max |t| under the null is ~3.4, not
 1.96. But a lab that asks hundreds of cheap questions of 27 quarters is the
-same machine running slowly. The 40th independent experiment against `train`
+same machine running slowly. The 40th independent experiment against train
 has roughly a 87% chance of producing at least one |t| > 1.96 by luck, and
 nothing in the per-experiment report knows the other 39 happened.
 
-So the count is kept, and the bar moves with it. This is not a veto — a result
-below the adjusted bar is still recorded, still visible, still worth a
-follow-up. It is a label, so that "significant" cannot silently mean
-"significant among the fifty things we tried".
+NON-NEGOTIABLE INVARIANT (PLAN.md §4):
+Two counters of the same quantity will drift apart. Any second count of
+"tests absorbed" derives directly from the first, or does not exist.
+`count_tests` and `partition_summary` derive from `_collect_partition_tests`
+and can never disagree.
 
-TWO NUMBERS ARE REPORTED, DELIBERATELY
-- **Šidák** on the running count: the bar a *maximum* over n tests has to clear.
-  Conservative, and correct if you are cherry-picking the best of n.
-- **Benjamini-Hochberg**: what survives at a 10% false-discovery rate across
-  everything tested on that partition. Less brutal, and the right frame when
-  the question is "which of these are worth following up" rather than "is this
-  one real".
-
-The count is of *distinct signals scored against a partition*, taken from the
-store. Voided explorations do not count — they were not evidence.
+TWO MULTIPLICITY REGIMES:
+1. Pre-registered batches: Benjamini-Hochberg applied across a frozen batch (Stage 3).
+2. Partition burden: Šidák on the running count of distinct signals scored.
 """
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
 from statistics import NormalDist
+from typing import Any
 
 from ..persistence import store
 
 _N = NormalDist()
 
 
-def two_sided_p(t: float) -> float:
+def two_sided_p(t: float | None) -> float:
     """p-value for a t-statistic, using the normal approximation."""
     if t is None or not math.isfinite(t):
         return 1.0
@@ -71,14 +66,22 @@ def benjamini_hochberg(pvals: list[float], q: float = 0.10) -> list[bool]:
     return keep
 
 
-def count_tests(partition: str, family: str | None = None) -> int:
-    """Distinct signals already scored against this partition.
+def _collect_partition_tests(partition: str, family: str | None = None) -> list[dict[str, Any]]:
+    """Collect latest non-void test records for a partition.
 
-    Counted from non-void explorations, because a voided result was never
-    evidence and should not raise the bar for anything else.
+    This is the single canonical counting and extraction function for
+    partition-level multiplicity. Both `count_tests` and `partition_summary`
+    derive from this, ensuring they cannot disagree.
     """
-    seen = set()
+    by_exploration: dict[str, list] = {}
+    for ev in store.list_evidence():
+        if not ev.is_void:
+            by_exploration.setdefault(ev.exploration_id, []).append(ev)
+
+    latest: dict[tuple[str, str | None], dict[str, Any]] = {}
     for exp in store.list_explorations():
+        if exp.is_void:
+            continue
         spec = exp.spec or {}
         if spec.get("partition") != partition:
             continue
@@ -86,8 +89,34 @@ def count_tests(partition: str, family: str | None = None) -> int:
             h = store.get_hypothesis(exp.hypothesis_id)
             if not h or h.family != family:
                 continue
-        seen.add((exp.hypothesis_id, spec.get("signal_name")))
-    return len(seen)
+
+        signal = spec.get("signal_name")
+        ev_list = by_exploration.get(exp.id, [])
+
+        t_val = None
+        for ev in ev_list:
+            if ev.partition == partition:
+                t_val = (ev.metrics or {}).get("ic_t_stat") or (ev.metrics or {}).get("t_stat")
+                break
+
+        latest[(exp.hypothesis_id, signal)] = {
+            "exploration_id": exp.id,
+            "hypothesis_id": exp.hypothesis_id,
+            "signal": signal,
+            "t_stat": t_val,
+            "p_value": two_sided_p(t_val),
+        }
+
+    return list(latest.values())
+
+
+def count_tests(partition: str, family: str | None = None) -> int:
+    """Distinct signals already scored against this partition.
+
+    Derives strictly from `_collect_partition_tests` so it can never disagree
+    with `partition_summary`.
+    """
+    return len(_collect_partition_tests(partition, family=family))
 
 
 @dataclass
@@ -149,46 +178,9 @@ def assess(t_stat: float | None, partition: str, alpha: float = 0.05,
     )
 
 
-def partition_summary(partition: str, q: float = 0.10) -> dict:
-    """Everything tested against a partition, with FDR applied across the set.
-
-    Counted on the same key as `count_tests`, and that is the whole point of
-    the deduplication here. These two functions answer the same question —
-    how much has this partition already absorbed — and a report where they
-    disagree states a bar that nothing in the ledger ever had to clear. The
-    store makes the failure concrete: eighteen re-runs of one development
-    fixture read as eighteen tests, pushing the quoted Šidák bar to 3.02 when
-    three distinct signals have actually been scored.
-
-    Evidence is matched on its own partition as well as its exploration's.
-    Forward-lane evidence points back at the *train* exploration that
-    registered the signal and accrues a fresh row every time the lane is
-    advanced, so without that second check a signal running forward would
-    quietly inflate the burden on the partition it has already left.
-    """
-    by_exploration: dict[str, list] = {}
-    for ev in store.list_evidence():
-        by_exploration.setdefault(ev.exploration_id, []).append(ev)
-
-    # Explorations arrive in id order, which is chronological, so re-running a
-    # signal supersedes the earlier reading rather than joining it.
-    latest: dict[tuple[str, str | None], dict] = {}
-    for exp in store.list_explorations():
-        spec = exp.spec or {}
-        if spec.get("partition") != partition:
-            continue
-        for ev in by_exploration.get(exp.id, []):
-            if ev.partition != partition:
-                continue
-            t = (ev.metrics or {}).get("ic_t_stat") or (ev.metrics or {}).get("t_stat")
-            signal = spec.get("signal_name")
-            latest[(exp.hypothesis_id, signal)] = {
-                "exploration_id": exp.id,
-                "hypothesis_id": exp.hypothesis_id,
-                "signal": signal,
-                "t_stat": t, "p_value": two_sided_p(t)}
-
-    rows = list(latest.values())
+def partition_summary(partition: str, q: float = 0.10) -> dict[str, Any]:
+    """Everything tested against a partition, with FDR applied across the set."""
+    rows = _collect_partition_tests(partition)
     keep = benjamini_hochberg([r["p_value"] for r in rows], q=q)
     for r, k in zip(rows, keep):
         r["survives_fdr"] = bool(k)
@@ -199,4 +191,67 @@ def partition_summary(partition: str, q: float = 0.10) -> dict:
         "n_surviving_fdr": sum(keep),
         "sidak_bar": round(required_t(max(1, len(rows))), 3),
         "results": rows,
+    }
+
+
+def assess_batch(batch_id: str, q: float = 0.10, alpha: float = 0.05) -> dict[str, Any]:
+    """Evaluate Benjamini-Hochberg and Šidák corrections across a pre-registered batch (Stage H)."""
+    batch = store.get_batch(batch_id)
+    if not batch:
+        raise KeyError(f"Batch {batch_id!r} not found in store.")
+
+    by_exploration: dict[str, list] = {}
+    for ev in store.list_evidence():
+        if not ev.is_void:
+            by_exploration.setdefault(ev.exploration_id, []).append(ev)
+
+    results = []
+    for spec_dict in batch.specs:
+        hyp_id = spec_dict.get("hypothesis_id")
+        sig_name = spec_dict.get("signal_name")
+        part = spec_dict.get("partition", batch.partition)
+
+        t_val = None
+        exp_id = None
+        for exp in store.list_explorations(hypothesis_id=hyp_id):
+            if exp.is_void:
+                continue
+            e_spec = exp.spec or {}
+            if e_spec.get("signal_name") == sig_name and e_spec.get("partition") == part:
+                exp_id = exp.id
+                for ev in by_exploration.get(exp.id, []):
+                    if ev.partition == part:
+                        t_val = (ev.metrics or {}).get("ic_t_stat") or (ev.metrics or {}).get("t_stat")
+                        break
+                if exp_id:
+                    break
+
+        p_val = two_sided_p(t_val)
+        results.append({
+            "hypothesis_id": hyp_id,
+            "signal": sig_name,
+            "exploration_id": exp_id,
+            "t_stat": t_val,
+            "p_value": p_val,
+        })
+
+    n = len(results)
+    batch_sidak = round(required_t(max(1, n), alpha=alpha), 3)
+    pvals = [r["p_value"] for r in results]
+    keep = benjamini_hochberg(pvals, q=q)
+
+    for r, k in zip(results, keep):
+        r["survives_fdr"] = bool(k)
+        t = r["t_stat"]
+        r["clears_batch_sidak"] = bool(t is not None and abs(t) >= batch_sidak)
+
+    return {
+        "batch_id": batch.batch_id,
+        "batch_hash": batch.batch_hash,
+        "partition": batch.partition,
+        "batch_size": n,
+        "fdr_q": q,
+        "batch_sidak_bar": batch_sidak,
+        "n_surviving_fdr": sum(keep),
+        "results": results,
     }

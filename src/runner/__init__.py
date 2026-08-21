@@ -8,7 +8,8 @@ Exports:
 """
 from __future__ import annotations
 
-from . import classifier, compare, gate, preflight, preregistration, queue, runner, spec
+from . import burden, classifier, compare, gate, preflight, preregistration, queue, runner, spec
+from .burden import assess, assess_batch, count_tests, partition_summary
 from .classifier import classify_result
 from .compare import compare_signals
 from .gate import (DispatchGateRefusalError, DispatchRateLimitExceededError,
@@ -28,6 +29,9 @@ __all__ = [
     "PreFlightResult",
     "RateLimitPolicy",
     "SpecValidationError",
+    "assess",
+    "assess_batch",
+    "burden",
     "check_dispatch_allowance",
     "classifier",
     "classify_result",
@@ -35,11 +39,13 @@ __all__ = [
     "compare_signals",
     "compute_batch_hash",
     "compute_priority_score",
+    "count_tests",
     "enforce_dispatch_gate",
     "enqueue_proposal",
     "gate",
     "gate_status",
     "list_queue",
+    "partition_summary",
     "preflight",
     "preregister_batch",
     "preregistration",
@@ -51,4 +57,5 @@ __all__ = [
     "spec",
     "validate_spec",
 ]
+
 
