@@ -100,6 +100,54 @@ def test_the_lab_never_imports_a_hypothesis_family():
         "the lab imports a hypothesis family: " + ", ".join(violations))
 
 
+# A dynamic import is still an import. `generators.contraction_breakout` binds
+# the opening-window screen as one candidate generator among several, by name
+# and inside the function, so a definition has to ask for it. That is a
+# deliberate exception and it is listed here rather than being invisible to the
+# static check above.
+ALLOWED_DYNAMIC_FAMILY_IMPORTS = {
+    ("discretionary/generators.py",
+     "src.research.families.opening_window.screener"),
+}
+
+
+def test_dynamic_imports_of_a_family_are_declared():
+    """importlib.import_module with a string literal bypasses the check above.
+
+    Without this the previous test reads as "the lab never touches a family"
+    while the lab touches a family, which is worse than no test at all.
+    """
+    undeclared = []
+    for package in LAB_PACKAGES:
+        root = SRC / package
+        if not root.exists():
+            continue
+        for path in _python_files(root):
+            tree = ast.parse(path.read_text(), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                fn = node.func
+                name = fn.attr if isinstance(fn, ast.Attribute) else getattr(
+                    fn, "id", "")
+                if name not in ("import_module", "__import__"):
+                    continue
+                for arg in node.args:
+                    if not (isinstance(arg, ast.Constant)
+                            and isinstance(arg.value, str)):
+                        continue
+                    if not arg.value.startswith("src.research"):
+                        continue
+                    key = (str(path.relative_to(SRC)), arg.value)
+                    if key not in ALLOWED_DYNAMIC_FAMILY_IMPORTS:
+                        undeclared.append(f"{key[0]} -> {key[1]}")
+    assert undeclared == [], (
+        "undeclared dynamic import of a hypothesis family: "
+        + ", ".join(undeclared)
+        + ". Add it to ALLOWED_DYNAMIC_FAMILY_IMPORTS with a reason, or "
+          "remove the coupling.")
+
+
 def test_families_live_under_research_families():
     """No family may sit at the root of `src/research` again."""
     stray = {path.name for path in (SRC / "research").glob("*.py")
