@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Iterator
 
 from ..core import config
-from .models import (Evidence, Exploration, Hypothesis, IdeaGraph,
-                     PreFlightResult, Signal, Suggestion)
+from .models import (BatchManifest, Evidence, Exploration, Hypothesis, IdeaGraph,
+                     PreFlightResult, QueueProposal, Signal, Suggestion)
 
 
 STORE_DIR = config.METADATA_DIR / "research_store"
@@ -22,11 +22,13 @@ SIGNALS_DIR = STORE_DIR / "signals"
 EVIDENCE_DIR = STORE_DIR / "evidence"
 SUGGESTIONS_DIR = STORE_DIR / "suggestions"
 PREFLIGHTS_DIR = STORE_DIR / "preflights"
+QUEUE_DIR = STORE_DIR / "queue"
+BATCHES_DIR = STORE_DIR / "batches"
 
 
 def _ensure_dirs() -> None:
     for d in (HYPOTHESES_DIR, EXPLORATIONS_DIR, SIGNALS_DIR, EVIDENCE_DIR,
-              SUGGESTIONS_DIR, PREFLIGHTS_DIR):
+              SUGGESTIONS_DIR, PREFLIGHTS_DIR, QUEUE_DIR, BATCHES_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 
@@ -296,3 +298,72 @@ def list_preflights(
             continue
         out.append(res)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Deep Queue Proposals (PLAN.md §5)
+# ---------------------------------------------------------------------------
+
+def save_proposal(prop: QueueProposal) -> Path:
+    _ensure_dirs()
+    p = QUEUE_DIR / f"{prop.id}.json"
+    p.write_text(json.dumps(prop.to_dict(), indent=2) + "\n")
+    return p
+
+
+def get_proposal(id: str) -> QueueProposal | None:
+    p = QUEUE_DIR / f"{id}.json"
+    if not p.exists():
+        return None
+    return QueueProposal.from_dict(json.loads(p.read_text()))
+
+
+def list_proposals(status: str | None = None) -> list[QueueProposal]:
+    _ensure_dirs()
+    out = []
+    for p in sorted(QUEUE_DIR.glob("*.json")):
+        prop = QueueProposal.from_dict(json.loads(p.read_text()))
+        if status and prop.status != status:
+            continue
+        out.append(prop)
+    return out
+
+
+def next_proposal_id() -> str:
+    _ensure_dirs()
+    highest = 0
+    for p in QUEUE_DIR.glob("*.json"):
+        m = re.fullmatch(r"P(\d+)", p.stem)
+        if m:
+            highest = max(highest, int(m.group(1)))
+    return f"P{highest + 1:03d}"
+
+
+# ---------------------------------------------------------------------------
+# Batch Pre-registration (PLAN.md §5, Stage 3)
+# ---------------------------------------------------------------------------
+
+def save_batch(batch: BatchManifest) -> Path:
+    _ensure_dirs()
+    p = BATCHES_DIR / f"{batch.batch_id}.json"
+    p.write_text(json.dumps(batch.to_dict(), indent=2) + "\n")
+    return p
+
+
+def get_batch(id: str) -> BatchManifest | None:
+    p = BATCHES_DIR / f"{id}.json"
+    if not p.exists():
+        return None
+    return BatchManifest.from_dict(json.loads(p.read_text()))
+
+
+def list_batches(partition: str | None = None) -> list[BatchManifest]:
+    _ensure_dirs()
+    out = []
+    for p in sorted(BATCHES_DIR.glob("*.json")):
+        batch = BatchManifest.from_dict(json.loads(p.read_text()))
+        if partition and batch.partition != partition:
+            continue
+        out.append(batch)
+    return out
+

@@ -37,7 +37,7 @@ from ..persistence import (
 from ..research_data import frame, splits
 from .classifier import classify_result
 from .interpret import write_interpretation
-from . import burden as burden_mod
+from . import burden as burden_mod, gate
 from .spec import ExperimentSpec, validate_spec
 
 
@@ -48,6 +48,10 @@ def run_exploration(
     bars: pd.DataFrame | None = None,
     provider_used: str = "none",
     model_used: str = "none",
+    enforce_gate: bool = True,
+    gate_policy: gate.RateLimitPolicy | None = None,
+    batch_id: str = "",
+    batch_hash: str = "",
 ) -> dict[str, Any]:
     """Executes one complete, clean exploration end-to-end."""
     t0 = time.time()
@@ -55,6 +59,8 @@ def run_exploration(
     # 1. Pre-dispatch validation & sample budget permission check
     ledger = SampleBudgetLedger.load()
     validate_spec(spec, budget_ledger=ledger)
+    if enforce_gate:
+        gate.enforce_dispatch_gate(spec, custom_policy=gate_policy)
 
     # 2. Safe data loading through research_data
     df = frame.load_daily_panel(
@@ -121,7 +127,10 @@ def run_exploration(
         model_used=model_used,
         runtime_seconds=runtime,
         universe_name=spec.universe_name,
+        batch_id=batch_id,
+        batch_hash=batch_hash,
     )
+
 
     result_summary = {
         "exploration_id": exp_id,

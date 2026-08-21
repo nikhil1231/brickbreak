@@ -372,3 +372,90 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     print()
     return 0 if res.passed else 1
 
+
+def cmd_gate(args: argparse.Namespace) -> int:
+    """View dispatch rate limit status and budget allowance."""
+    from ...runner import gate
+
+    if getattr(args, "partition", None):
+        allowed, recent, max_allowed, reason = gate.check_dispatch_allowance(args.partition)
+        if getattr(args, "json", False):
+            print(json.dumps({
+                "partition": args.partition,
+                "allowed": allowed,
+                "dispatches_in_period": recent,
+                "max_dispatches": max_allowed,
+                "reason": reason,
+            }, indent=2))
+            return 0
+        print(f"\nDispatch Gate — {args.partition}:")
+        print(f"  {reason}\n")
+        return 0
+
+    st = gate.gate_status()
+    if getattr(args, "json", False):
+        print(json.dumps(st, indent=2))
+        return 0
+
+    print(f"\nDispatch Gate Status (7-Day Rolling Windows):\n")
+    print(f"{'Partition':<14} {'Used':<8} {'Limit':<8} {'Allowed':<10} {'Details'}")
+    print("-" * 75)
+    for part, info in st.items():
+        lim_str = str(info['max_dispatches']) if info['max_dispatches'] is not None else "unlimited"
+        allow_str = "YES" if info['allowed'] else "NO"
+        print(f"{part:<14} {info['dispatches_in_period']:<8} {lim_str:<8} {allow_str:<10} {info['status_text']}")
+    print()
+    return 0
+
+
+def cmd_queue(args: argparse.Namespace) -> int:
+    """Browse or rank candidates in the deep research queue."""
+    from ...runner import queue
+
+    if getattr(args, "rank", False):
+        proposals = queue.rank_queue()
+    else:
+        proposals = queue.list_queue(status=getattr(args, "status", None))
+
+    if getattr(args, "json", False):
+        print(json.dumps([p.to_dict() for p in proposals], indent=2))
+        return 0
+
+    print(f"\nDeep Candidate Queue ({len(proposals)} proposals):\n")
+    print(f"{'ID':<6} {'Status':<16} {'Score':<8} {'Hypothesis':<12} {'Signal':<22} {'Title'}")
+    print("-" * 80)
+    for p in proposals:
+        title = p.title[:25] + "..." if len(p.title) > 28 else p.title
+        print(f"{p.id:<6} {p.status:<16} {p.priority_score:<8.1f} {p.hypothesis_id:<12} {p.signal_name:<22} {title}")
+    print()
+    return 0
+
+
+def cmd_preregister(args: argparse.Namespace) -> int:
+    """Pre-register and freeze a batch of candidate proposals."""
+    from ...runner import preregistration
+
+    p_ids = [p.strip() for p in args.proposals.split(",") if p.strip()]
+    if not p_ids:
+        print("No proposal IDs provided.", file=sys.stderr)
+        return 1
+
+    try:
+        batch = preregistration.preregister_batch(p_ids, partition=args.partition)
+    except Exception as exc:
+        print(f"Error pre-registering batch: {exc}", file=sys.stderr)
+        return 1
+
+    if getattr(args, "json", False):
+        print(json.dumps(batch.to_dict(), indent=2))
+        return 0
+
+    print(f"\nBatch Pre-Registered Successfully!")
+    print(f"  Batch ID:   {batch.batch_id}")
+    print(f"  Partition:  {batch.partition}")
+    print(f"  Candidates: {len(batch.proposal_ids)} ({', '.join(batch.proposal_ids)})")
+    print(f"  Batch Hash: {batch.batch_hash}")
+    print(f"  Status:     {batch.status}\n")
+    return 0
+
+

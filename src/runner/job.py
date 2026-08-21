@@ -32,7 +32,7 @@ from typing import Any, Callable
 import pandas as pd
 
 from ..core import config
-from . import agent, preflight, worktree
+from . import agent, gate, preflight, worktree
 from .spec import ExperimentSpec, SpecValidationError, validate_spec
 
 JOBS_DIR = config.METADATA_DIR / "research_store" / "jobs"
@@ -441,12 +441,14 @@ def run_job(
     jb.enter("checking budget")
     try:
         validate_spec(spec)
+        gate.enforce_dispatch_gate(spec)
     except Exception as exc:
         jb.state = "blocked"
         jb.error = f"{type(exc).__name__}: {exc}"
         jb.finished_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         jb.save()
         return jb
+
 
     jb.state = "running"
     jb.enter("loading data")

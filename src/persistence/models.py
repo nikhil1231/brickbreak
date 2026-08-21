@@ -360,3 +360,67 @@ class Suggestion:
         d = dict(data)
         d["horizons"] = [int(h) for h in d.get("horizons", [5, 10, 20])]
         return cls(**d)
+
+
+# ---------------------------------------------------------------------------
+# Deep Queue & Batch Pre-registration (PLAN.md §5)
+# ---------------------------------------------------------------------------
+
+PROPOSAL_STATUSES = (
+    "queued",
+    "preflight_passed",
+    "preflight_failed",
+    "preregistered",
+    "dispatched",
+    "rejected",
+    "expired",
+)
+
+
+@dataclass
+class QueueProposal:
+    """A candidate proposal in the research queue (PLAN.md §5)."""
+    id: str
+    title: str
+    question: str
+    signal_name: str
+    hypothesis_id: str
+    family: str = "general"
+    rationale: str = ""
+    expected_spread_bps: float = 0.0
+    priority_score: float = 0.0
+    status: str = "queued"
+    preflight_id: str = ""
+    batch_id: str = ""
+    created_at: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+    def __post_init__(self) -> None:
+        if self.status not in PROPOSAL_STATUSES:
+            raise ValueError(f"invalid proposal status {self.status!r}; must be one of {PROPOSAL_STATUSES}")
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> QueueProposal:
+        return cls(**data)
+
+
+@dataclass
+class BatchManifest:
+    """A pre-registered batch of candidates frozen before scoring (PLAN.md §5, Stage 3)."""
+    batch_id: str
+    partition: str
+    proposal_ids: list[str]
+    specs: list[dict[str, Any]]
+    batch_hash: str
+    status: str = "preregistered"
+    created_at: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> BatchManifest:
+        return cls(**data)
+

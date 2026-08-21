@@ -56,6 +56,8 @@ def build_manifest(
     model_used: str = "none",
     runtime_seconds: float = 0.0,
     universe_name: str = "liquid_universe",
+    batch_id: str = "",
+    batch_hash: str = "",
 ) -> dict:
     """Constructs a cryptographic experiment manifest."""
     # Split hash
@@ -84,8 +86,13 @@ def build_manifest(
         "runtime_seconds": round(runtime_seconds, 2),
         "result_hash": result_hash,
     }
+    if batch_id:
+        manifest["batch_id"] = batch_id
+        manifest["batch_hash"] = batch_hash
+
     manifest["hash"] = compute_payload_hash(manifest)
     return manifest
+
 
 
 def verify_manifest(manifest: dict) -> bool:

@@ -226,6 +226,24 @@ def main(argv=None) -> int:
     pf_p.add_argument("--json", action="store_true")
     pf_p.set_defaults(fn=iface_cli.cmd_preflight)
 
+    gate_p = sub.add_parser("gate", help="view dispatch rate limits and partition budget usage")
+    gate_p.add_argument("--partition", default=None, help="specific partition to inspect")
+    gate_p.add_argument("--json", action="store_true")
+    gate_p.set_defaults(fn=iface_cli.cmd_gate)
+
+    q_p = sub.add_parser("queue", help="manage and browse the deep candidate queue")
+    q_p.add_argument("--status", default=None, help="filter by status")
+    q_p.add_argument("--rank", action="store_true", help="re-rank queue by economic prior")
+    q_p.add_argument("--json", action="store_true")
+    q_p.set_defaults(fn=iface_cli.cmd_queue)
+
+    pr_p = sub.add_parser("preregister", help="pre-register and freeze a batch of candidates before scoring")
+    pr_p.add_argument("--proposals", required=True, help="comma-separated proposal IDs (e.g. P001,P002)")
+    pr_p.add_argument("--partition", default="train", help="target partition (default: train)")
+    pr_p.add_argument("--json", action="store_true")
+    pr_p.set_defaults(fn=iface_cli.cmd_preregister)
+
+
     orp = sub.add_parser("opening-report", help="quality report for fetched opening data")
     orp.set_defaults(fn=opening_window.cmd_opening_report)
 
