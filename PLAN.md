@@ -154,7 +154,7 @@ same idea under a new name — a rule `AGENTS.md` already imposes on humans.
     ↓
   research job runner            → git worktree, isolated, manifest-stamped
     ↓
-  Claude Code CLI worker         → writes experiment code against the data module
+  selected coding CLI worker     → Claude Code or OpenAI Codex writes signal code
     ↓
   research_data                  → THE ONLY DOOR: point-in-time features,
                                    universes, benchmarks, forward labels,
@@ -430,20 +430,20 @@ also what makes two runs comparable.
 Every experiment emits a manifest it cannot edit:
 
 code hash · dataset version and hash · **split version** · catalogue version ·
-hypothesis ID · spec · parameters · universe · partition · model used · prompt ·
-runtime · environment · result hash.
+hypothesis ID · spec · parameters · universe · partition · provider and model
+used · prompt · runtime · environment · result hash.
 
 This is what lets the dashboard answer **"why did this result change?"** instead
 of the answer arriving six hours later as "the parquet was stale". Dataset
 hashing is the cheap part and pays for itself the first time it fires.
 
-### 5.7 The Claude Code job runner
+### 5.7 The provider-selectable coding-agent job runner
 
 The web layer never executes generated shell text. It creates a **job**, and a
 worker consumes it:
 
 ```
-dashboard → job spec → queue → worker → Claude Code CLI (headless, JSON output)
+dashboard → job spec → queue → worker → Claude Code or Codex CLI (headless)
           → isolated git worktree → research_data → leakage tests
           → experiment runner → experiment_result.json → ingest → dashboard
 ```
@@ -453,9 +453,10 @@ Design points:
 - **Isolated git worktree per job.** One exploration cannot trash another or
   mutate the canonical data pipeline. Data is mounted read-only; only the job's
   own output directory is writable.
-- **Claude Code CLI in headless mode**, so the existing subscription is the
-  billing path. No API keys, no separate metering. *(Prerequisite: the CLI is not
-  currently installed on this machine.)*
+- **Claude Code and OpenAI Codex are provider options**, both in non-interactive
+  mode and both reusing the CLI's existing login. Claude remains the default;
+  the CLI, API and dashboard may select a provider and model per run. Codex runs
+  ephemerally in a workspace-write sandbox with approval prompts disabled.
 - **The worker gets a scoped toolkit**: `research_data`, the catalogue, the
   standard report, the canonical backtest, and the repo's test runner. It writes
   the experiment-specific code — the part that genuinely needs intelligence — and
@@ -655,7 +656,8 @@ Build only these ten. Everything else in this document is v2+.
 
 1. Explore / new-hypothesis interface
 2. Standard experiment specification
-3. Claude Code job runner (worktree-isolated, schema-conformant output)
+3. Provider-selectable coding-agent job runner (worktree-isolated,
+   schema-conformant output)
 4. `research_data` — the single data module, with versioned purged splits
 5. Standard cross-sectional alpha report
 6. Canonical backtest
@@ -664,9 +666,18 @@ Build only these ten. Everything else in this document is v2+.
 9. Failure classification and suggested follow-ups
 10. Signal comparison and correlation
 
-Deferred by design: idea-graph visualisation, leaderboard scoring, research
-inbox automation, combination/portfolio construction across alphas, strategy
-research of any kind, execution.
+Deferred by design: idea-graph visualisation, leaderboard scoring,
+combination/portfolio construction across alphas, strategy research of any
+kind, execution.
+
+**Research inbox, added 2026-08-21.** The Explore tab now carries three stored
+proposals under the console, each with a play button that registers it as a
+hypothesis and dispatches it, and a refresh button that replaces that one slot.
+The generator is shown the ledger, the graveyard, every measured result and the
+feature catalogue, and must state per proposal why it is not a restatement and
+which existing signal it expects to correlate with. Suggestions are stored, not
+regenerated on page load. What stays deferred is the *automation*: nothing
+populates the inbox on its own.
 
 ### Suggested build order
 
@@ -675,16 +686,17 @@ research of any kind, execution.
 | **A. Foundations** | `research_data`: catalogue, PIT API, split v1, leakage gate | ~~split manifest frozen and hashed~~ **done 2026-08-20** (`split_v1_frozen.json`, hash `657db79f7d380880`); H026 (the surviving finding) reproduces through the module; each of the four known lookaheads is caught by a test |
 | **B. Evaluation** | standard alpha report + canonical backtest + neutralisation | H024 and H026 both produce full fingerprints that match what is already known about them |
 | **C. Persistence** | hypothesis/evidence/signal store, manifests, sample-budget ledger | `HYPOTHESES.md` H001–H038 are migrated as real records, each mapped onto the partitions it actually read, so prior exposure is machine-readable |
-| **D. Automation** | experiment spec, job runner, Claude Code worker, result schema | a job dispatched from a spec runs end-to-end unattended and ingests cleanly |
+| **D. Automation** | experiment spec, job runner, Claude/Codex workers, result schema | a job dispatched from a spec runs end-to-end unattended and ingests cleanly |
 | **E. Interface** | Explore console, hypothesis pages, signal compare | a vague sentence becomes a plan, a run, and an interpretation without touching a terminal |
 
 **Status 2026-08-20.** All five stages are built and the v1 list is complete.
 Stage A-E shipped, then six hot-path defects were found on review and fixed
 (commit `3a10a40`); the nine explorations produced before that fix are voided
-rather than deleted. The Claude Code job runner, the planner, written
+rather than deleted. The provider-selectable job runner, the planner, written
 interpretation, lab-level multiplicity accounting and the forward-lane accrual
-followed. What remains is not construction: install the CLI
-(`npm install -g @anthropic-ai/claude-code`), and wait for forward sessions.
+followed. On 2026-08-21 the refactored dashboard added provider/model selection
+and OpenAI Codex support alongside the default Claude Code path. Both CLIs are
+installed locally. What remains is to wait for forward sessions.
 
 Stage A is the one that must not be rushed. Everything downstream inherits its
 guarantees, and this project's entire failure history is a history of Stage A
@@ -761,9 +773,10 @@ evaluate as a signal in one afternoon. Same for the WhatsApp group data.
   nobody records the edge, the ledger will let it score on quarters it should not
   touch. Default to blocking when lineage is ambiguous, and make "unlinked
   hypothesis" a thing the planner must justify rather than the easy path.
-- **Claude Code CLI is not installed here.** Installing it and confirming the
-  headless/JSON-output mode works under the subscription is a Stage D
-  prerequisite worth verifying early, since it gates automation entirely.
+- **Provider availability is local state.** The dashboard reports whether each
+  CLI is installed and obtains Codex model choices from the installed CLI's
+  bundled catalogue. A missing provider is unavailable rather than silently
+  falling back to a different model.
 - **Cost of the agent loop.** Worktree isolation plus full data means each job
   has real setup cost. Job granularity — one hypothesis or one whole exploration
   family — is an open design question.

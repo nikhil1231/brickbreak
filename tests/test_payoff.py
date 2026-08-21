@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src import payoff
+from src.research.opening_window import payoff
 
 
 def _bars(closes, opens=None, highs=None, lows=None, symbol="AAA"):

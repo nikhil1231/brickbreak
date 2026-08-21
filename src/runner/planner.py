@@ -18,8 +18,8 @@ TWO THINGS THE PLANNER MUST GET RIGHT, NOT ONE
    as a sign test. `spec.validate_pass_criterion` enforces the shape; the
    planner has to propose something that survives it.
 
-Without the CLI installed the planner still works: `offline_plan` builds the
-same object from the graveyard and the defaults, and says it did.
+Without the selected CLI installed the planner still works: `offline_plan`
+builds the same object from the graveyard and the defaults, and says it did.
 """
 from __future__ import annotations
 
@@ -142,7 +142,8 @@ def _extract_json(text: str) -> dict:
     return json.loads(m.group(0))
 
 
-def offline_plan(idea: str, columns: list[str] | None = None) -> Plan:
+def offline_plan(idea: str, columns: list[str] | None = None,
+                 provider: str = agent.DEFAULT_PROVIDER) -> Plan:
     """A usable plan without the CLI, honest about being a stub.
 
     It cannot invent a rationale or a signal, so it says so and leaves the
@@ -152,7 +153,7 @@ def offline_plan(idea: str, columns: list[str] | None = None) -> Plan:
     return Plan(
         idea=idea,
         question=idea.strip().rstrip("?") + "?",
-        rationale="(not generated — Claude Code CLI unavailable)",
+        rationale=f"(not generated — {provider} CLI unavailable)",
         what_it_measures="(fill in before running)",
         signal_name="candidate_signal",
         pass_criterion={"min_mean_ic": 0.015, "min_spread_bps": 30.0,
@@ -161,7 +162,7 @@ def offline_plan(idea: str, columns: list[str] | None = None) -> Plan:
                                 "the overlap correction, or a non-monotonic "
                                 "quantile profile",
         source="offline",
-        warnings=["Claude Code CLI not installed; lineage was not checked "
+        warnings=[f"{provider} CLI not installed; lineage was not checked "
                   "against existing hypotheses, so this plan may restate "
                   "something already tested. Link it by hand."],
     )
@@ -169,10 +170,12 @@ def offline_plan(idea: str, columns: list[str] | None = None) -> Plan:
 
 def propose(idea: str, columns: list[str] | None = None,
             cli: str | None = None, timeout_s: int = 300,
-            agent_fn=None) -> Plan:
+            agent_fn=None, provider: str = agent.DEFAULT_PROVIDER,
+            model: str | None = None) -> Plan:
     """Turn a typed idea into a plan. Falls back to `offline_plan`."""
-    if agent_fn is None and not agent.available(cli):
-        return offline_plan(idea, columns)
+    provider = agent.validate_provider(provider)
+    if agent_fn is None and not agent.available(cli, provider=provider):
+        return offline_plan(idea, columns, provider=provider)
 
     hyps, dead = _context()
     prompt = PLANNER_PROMPT.format(
@@ -182,9 +185,10 @@ def propose(idea: str, columns: list[str] | None = None,
     import pathlib
     res = (agent_fn(prompt) if agent_fn else
            agent.run_agent(prompt, cwd=pathlib.Path.cwd(), timeout_s=timeout_s,
-                           max_turns=3, allowed_tools=(), cli=cli))
+                           max_turns=3, allowed_tools=(), cli=cli,
+                           provider=provider, model=model, sandbox="read-only"))
     if not res.ok:
-        p = offline_plan(idea, columns)
+        p = offline_plan(idea, columns, provider=provider)
         p.warnings.append(f"planner failed ({res.stderr or 'no output'}); "
                           f"fell back to the offline plan")
         return p
@@ -192,7 +196,7 @@ def propose(idea: str, columns: list[str] | None = None,
     try:
         data = _extract_json(res.text)
     except (ValueError, json.JSONDecodeError) as exc:
-        p = offline_plan(idea, columns)
+        p = offline_plan(idea, columns, provider=provider)
         p.warnings.append(f"planner returned unparseable output ({exc})")
         return p
 
@@ -211,6 +215,7 @@ def propose(idea: str, columns: list[str] | None = None,
         pass_criterion=data.get("pass_criterion", {}) or {},
         falsification_condition=data.get("falsification_condition", ""),
         novelty_note=data.get("novelty_note", ""),
+        source=provider,
     )
     plan.warnings.extend(review(plan))
     return plan

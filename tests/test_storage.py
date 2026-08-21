@@ -2,8 +2,8 @@
 import pandas as pd
 import pytest
 
-from src.storage import NORMALIZED_COLUMNS, normalize
-from src.validate_data import check
+from src.research_data.pipelines.storage import NORMALIZED_COLUMNS, normalize
+from src.research_data.pipelines.validation import check
 
 
 def test_normalize_empty_payload():

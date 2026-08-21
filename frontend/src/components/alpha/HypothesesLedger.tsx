@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { fetchHypotheses, fetchHypothesisDetail } from '../../services/api';
+import { fetchHypotheses } from '../../services/api';
 import { Hypothesis } from '../../types';
 import { Badge } from '../common/Badge';
+import { HypothesisModal } from './HypothesisModal';
 import {
   Paper,
   Text,
@@ -9,20 +10,15 @@ import {
   TextInput,
   Select,
   Group,
-  Stack,
   Loader,
   Alert,
-  Modal,
-  Code,
   Box,
-  Divider,
   ScrollArea,
 } from '@mantine/core';
 import {
   IconSearch,
   IconBook,
   IconAlertCircle,
-  IconArrowRight,
   IconChevronUp,
   IconChevronDown,
   IconSelector,
@@ -58,14 +54,9 @@ export const HypothesesLedger: React.FC = () => {
       });
   }, []);
 
-  const handleSelectHypothesis = async (id: string) => {
-    try {
-      const detail = await fetchHypothesisDetail(id);
-      setSelectedHyp(detail);
-    } catch (err: any) {
-      const fallback = hypotheses.find((h) => h.id === id);
-      if (fallback) setSelectedHyp(fallback);
-    }
+  const handleSelectHypothesis = (id: string) => {
+    // The modal loads the full record; the row is what to show meanwhile.
+    setSelectedHyp(hypotheses.find((h) => h.id === id) || null);
   };
 
   const handleSort = (col: SortColumn) => {
@@ -270,99 +261,11 @@ export const HypothesesLedger: React.FC = () => {
         </ScrollArea>
       </Paper>
 
-      {/* Hypothesis Detail Modal */}
-      <Modal
-        opened={!!selectedHyp}
+      <HypothesisModal
+        id={selectedHyp?.id || null}
+        fallback={selectedHyp}
         onClose={() => setSelectedHyp(null)}
-        title={
-          selectedHyp && (
-            <Group gap="sm">
-              <Text fw={700} c="blue.4">
-                {selectedHyp.id}
-              </Text>
-              <Text fw={600} c="white">
-                {selectedHyp.title}
-              </Text>
-              <Badge status={selectedHyp.status} size="sm" />
-            </Group>
-          )
-        }
-        size="lg"
-        radius="md"
-      >
-        {selectedHyp && (
-          <Stack gap="md">
-            <div>
-              <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={4}>
-                Statement
-              </Text>
-              <Text size="sm" c="gray.2">
-                {selectedHyp.statement || 'No statement registered.'}
-              </Text>
-            </div>
-
-            <div>
-              <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={4}>
-                Economic / Behavioural Rationale
-              </Text>
-              <Text size="sm" c="gray.4">
-                {selectedHyp.rationale || 'No rationale registered.'}
-              </Text>
-            </div>
-
-            {selectedHyp.edges && selectedHyp.edges.length > 0 && (
-              <div>
-                <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={6}>
-                  Idea Graph Lineage / Edges
-                </Text>
-                <Stack gap={4}>
-                  {selectedHyp.edges.map((e, idx) => (
-                    <Group key={idx} gap={6}>
-                      <IconArrowRight size={14} color="var(--mantine-color-blue-4)" />
-                      <Code color="blue">{e.relation}</Code>
-                      <Text size="xs" fw={600} c="white">
-                        {e.target_id}
-                      </Text>
-                    </Group>
-                  ))}
-                </Stack>
-              </div>
-            )}
-
-            {selectedHyp.evidence && selectedHyp.evidence.length > 0 && (
-              <div>
-                <Divider color="var(--border)" mb="xs" />
-                <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={6}>
-                  Recorded Evidence ({selectedHyp.evidence.length})
-                </Text>
-                <Stack gap="xs">
-                  {selectedHyp.evidence.map((ev, idx) => (
-                    <Paper key={idx} p="xs" bg="#0d1117" radius="sm">
-                      <Group justify="space-between" mb={4}>
-                        <Group gap={6}>
-                          <Badge status={ev.role} size="xs" />
-                          <Text size="xs" c="dimmed">
-                            Partition: <strong>{ev.partition}</strong>
-                          </Text>
-                        </Group>
-                        <Badge status={ev.verdict} size="xs" />
-                      </Group>
-                      <Text size="xs" c="white" mb={4}>
-                        {ev.verdict_statement}
-                      </Text>
-                      {ev.metrics && (
-                        <Code block style={{ fontSize: '10px' }}>
-                          {JSON.stringify(ev.metrics, null, 2)}
-                        </Code>
-                      )}
-                    </Paper>
-                  ))}
-                </Stack>
-              </div>
-            )}
-          </Stack>
-        )}
-      </Modal>
+      />
     </Box>
   );
 };

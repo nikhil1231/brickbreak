@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .. import config
+from ..core import config
 from . import ledger, models, store
 
 

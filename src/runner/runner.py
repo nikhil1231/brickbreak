@@ -46,6 +46,8 @@ def run_exploration(
     compute_signal_fn: Callable[[pd.DataFrame], pd.DataFrame | pd.Series],
     save_results: bool = True,
     bars: pd.DataFrame | None = None,
+    provider_used: str = "none",
+    model_used: str = "none",
 ) -> dict[str, Any]:
     """Executes one complete, clean exploration end-to-end."""
     t0 = time.time()
@@ -115,6 +117,8 @@ def run_exploration(
         partition=spec.partition,
         result_metrics=eval_report.get("predictive_content", {}),
         dataset_version=spec.dataset_version,
+        provider_used=provider_used,
+        model_used=model_used,
         runtime_seconds=runtime,
         universe_name=spec.universe_name,
     )

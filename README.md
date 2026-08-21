@@ -96,7 +96,7 @@ smaller names, so sector trend is derived from the bars themselves:
 
 The description ("volatility contraction, small-range or doji-like candles")
 maps onto several measurable things that don't always agree, so
-[src/indicators.py](src/indicators.py) computes all of them and lets the screen
+[src/research_data/pipelines/indicators.py](src/research_data/pipelines/indicators.py) computes all of them and lets the screen
 decide: `atr_ratio` (ATR5/ATR20), `base_depth` (k-day high-low as % of price),
 `bb_width_pctile` (percentile-ranked, since 3% is tight for a smallcap and loose
 for a large cap), `range_pct_ma`, `nr_k` (NR7), `body_ratio`/`doji_like`,
@@ -137,11 +137,15 @@ Computes the indicator panel once into `data/normalized/screen_metrics.parquet`,
 using the adjusted bars when they exist (and warning loudly when they do not).
 
 ```bash
-.venv/bin/python -m src.cli serve
+./scripts/run_backend.sh
 ```
-Opens the interactive screener at http://127.0.0.1:8765 — move thresholds and
-watch the funnel and candidates/day respond. Filtering runs server-side in
-pandas over the full panel, so the whole history stays explorable.
+Starts the primary alpha-lab backend and built web application at
+http://127.0.0.1:8080. It also mounts the opening-window screener API, so the
+screener is a feature of the application rather than a separate core service.
+Pass a different port with `./scripts/run_backend.sh --port 9000`.
+
+For focused legacy screener debugging only, `python -m src.cli serve-screener`
+still starts its standalone server on port 8765.
 
 ```bash
 .venv/bin/python -m src.cli screen --set min_size_rank=500 --set min_median_tv_cr=2
@@ -164,14 +168,14 @@ There is no strategy code here, and there should not be until
 
 | Module | Purpose |
 | --- | --- |
-| [src/config.py](src/config.py) | Env/credential loading, paths |
-| [src/security_master.py](src/security_master.py) | Downloads + parses ICICI's public NSE scrip master; maps NSE symbol → ISEC `stock_code` |
-| [src/breeze_client.py](src/breeze_client.py) | Thin instrumented wrapper; times and logs **every** call to `data/metadata/api_calls.jsonl` |
-| [src/universe.py](src/universe.py) | The 10-security test universe (liquid / thin / delisted) |
-| [src/fetch_sample.py](src/fetch_sample.py) | The probe matrix — depth, limits, stability, corporate actions, indices |
-| [src/validate_data.py](src/validate_data.py) | Data-quality checks → machine-readable JSON |
-| [src/storage.py](src/storage.py) | Parquet raw + normalized storage |
-| [src/estimate.py](src/estimate.py) | Extrapolates full-download cost from measurements |
+| [src/core/config.py](src/core/config.py) | Env/credential loading, paths |
+| [src/research_data/sources/security_master.py](src/research_data/sources/security_master.py) | Downloads + parses ICICI's public NSE scrip master; maps NSE symbol → ISEC `stock_code` |
+| [src/research_data/sources/breeze.py](src/research_data/sources/breeze.py) | Thin instrumented wrapper; times and logs **every** call to `data/metadata/api_calls.jsonl` |
+| [src/research_data/feasibility/universe.py](src/research_data/feasibility/universe.py) | The 10-security test universe (liquid / thin / delisted) |
+| [src/research_data/feasibility/probes.py](src/research_data/feasibility/probes.py) | The probe matrix — depth, limits, stability, corporate actions, indices |
+| [src/research_data/pipelines/validation.py](src/research_data/pipelines/validation.py) | Data-quality checks → machine-readable JSON |
+| [src/research_data/pipelines/storage.py](src/research_data/pipelines/storage.py) | Parquet raw + normalized storage |
+| [src/research_data/feasibility/estimate.py](src/research_data/feasibility/estimate.py) | Extrapolates full-download cost from measurements |
 | [src/cli.py](src/cli.py) | Entry point |
 
 ## Setup

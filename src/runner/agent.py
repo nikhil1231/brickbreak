@@ -1,8 +1,8 @@
-"""Claude Code CLI adapter — the research worker (PLAN.md §5.7).
+"""CLI-backed LLM providers for the research worker (PLAN.md §5.7).
 
 The dashboard never executes generated shell text. It creates a job; this
-module runs Claude Code headless inside that job's worktree, bounded by a
-wall-clock timeout and a turn limit, and hands back a structured result.
+module runs the selected coding agent headless inside that job's worktree,
+bounded by a wall-clock timeout, and hands back a common structured result.
 
 WHAT THE WORKER IS ALLOWED TO DO
 Write one file: `job/signal.py`, exposing `compute(df) -> pd.Series`. That is
@@ -12,9 +12,10 @@ backtest, the leakage gate — is the harness, and the harness is not
 negotiable. An agent that could rewrite the evaluation could talk itself into
 any answer.
 
-BILLING
-Headless `claude` uses whatever subscription the CLI is logged into, which is
-the point: no API key, no separate metering.
+AUTH AND BILLING
+Both providers reuse the authentication already held by their CLI. This keeps
+credentials out of the lab and lets a local ChatGPT or Claude subscription be
+the billing path.
 """
 from __future__ import annotations
 
@@ -25,19 +26,54 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-INSTALL_HINT = (
+DEFAULT_PROVIDER = "claude"
+PROVIDERS = ("claude", "codex")
+
+CLAUDE_INSTALL_HINT = (
     "Claude Code CLI not found. Install it with:\n"
     "    npm install -g @anthropic-ai/claude-code\n"
     "then run `claude` once to log in. Set CLAUDE_CLI to an explicit path if "
     "it lives somewhere unusual."
 )
+CODEX_INSTALL_HINT = (
+    "Codex CLI not found. Install it with:\n"
+    "    npm install -g @openai/codex\n"
+    "then run `codex login`. Set CODEX_CLI to an explicit path if it lives "
+    "somewhere unusual."
+)
+
+# Backward-compatible name used by the existing CLI and tests.
+INSTALL_HINT = CLAUDE_INSTALL_HINT
 
 # Places the CLI turns up when it is not on PATH.
-_CANDIDATES = (
+_CLAUDE_CANDIDATES = (
     "~/.claude/local/claude",
     "~/.local/bin/claude",
     "/usr/local/bin/claude",
     "/opt/homebrew/bin/claude",
+)
+_CODEX_CANDIDATES = (
+    "/Applications/ChatGPT.app/Contents/Resources/codex",
+    "~/.local/bin/codex",
+    "/usr/local/bin/codex",
+    "/opt/homebrew/bin/codex",
+)
+
+# Backward-compatible alias for callers that patch the old constant.
+_CANDIDATES = _CLAUDE_CANDIDATES
+
+_CLAUDE_MODELS = (
+    ("", "CLI default"),
+    ("sonnet", "Sonnet"),
+    ("opus", "Opus"),
+    ("fable", "Fable"),
+)
+_CODEX_FALLBACK_MODELS = (
+    ("", "CLI default"),
+    ("gpt-5.6-sol", "GPT-5.6-Sol"),
+    ("gpt-5.6-terra", "GPT-5.6-Terra"),
+    ("gpt-5.6-luna", "GPT-5.6-Luna"),
+    ("gpt-5.5", "GPT-5.5"),
 )
 
 
@@ -49,31 +85,136 @@ class AgentNotInstalled(AgentError):
     pass
 
 
-def find_cli(explicit: str | None = None) -> str:
-    """Locate the Claude Code executable, or say how to get one."""
-    for cand in (explicit, os.environ.get("CLAUDE_CLI")):
+def _error_detail(value: object) -> str:
+    """Flatten a provider's structured error without losing its explanation.
+
+    Codex emits JSONL events whose ``error`` value is sometimes a nested
+    object (rather than a string).  ``str(event["error"])`` hid the useful
+    message behind a Python dictionary representation and, for aborted turns,
+    often left the UI with only the generic abort text.
+    """
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        parts: list[str] = []
+        for key in ("message", "detail", "reason", "error", "code"):
+            if key not in value:
+                continue
+            detail = _error_detail(value[key])
+            if detail and detail not in parts:
+                parts.append(detail)
+        if parts:
+            return "; ".join(parts)
+        return json.dumps(value, default=str, sort_keys=True)
+    if isinstance(value, (list, tuple)):
+        parts = [_error_detail(item) for item in value]
+        return "; ".join(part for part in parts if part)
+    return str(value).strip() if value is not None else ""
+
+
+def _event_error_detail(event: dict) -> str:
+    """Extract a human-readable diagnostic from one Codex JSONL event."""
+    details = []
+    for key in ("message", "error", "detail", "reason"):
+        detail = _error_detail(event.get(key))
+        if detail and detail not in details:
+            details.append(detail)
+    item = event.get("item")
+    if isinstance(item, dict):
+        for key in ("message", "error", "detail", "reason"):
+            detail = _error_detail(item.get(key))
+            if detail and detail not in details:
+                details.append(detail)
+    return "; ".join(details)
+
+
+def validate_provider(provider: str) -> str:
+    provider = (provider or DEFAULT_PROVIDER).lower()
+    if provider not in PROVIDERS:
+        raise AgentError(
+            f"unknown LLM provider {provider!r}; choose one of {', '.join(PROVIDERS)}")
+    return provider
+
+
+def install_hint(provider: str = DEFAULT_PROVIDER) -> str:
+    return CODEX_INSTALL_HINT if validate_provider(provider) == "codex" \
+        else CLAUDE_INSTALL_HINT
+
+
+def find_cli(explicit: str | None = None,
+             provider: str = DEFAULT_PROVIDER) -> str:
+    """Locate one provider's CLI, or say how to install it."""
+    provider = validate_provider(provider)
+    env_name = "CODEX_CLI" if provider == "codex" else "CLAUDE_CLI"
+    command = provider
+    candidates = _CODEX_CANDIDATES if provider == "codex" else _CANDIDATES
+    hint = install_hint(provider)
+
+    for cand in (explicit, os.environ.get(env_name)):
         if cand:
             p = Path(cand).expanduser()
             if p.exists():
                 return str(p)
-            raise AgentNotInstalled(f"{cand} does not exist.\n{INSTALL_HINT}")
+            raise AgentNotInstalled(f"{cand} does not exist.\n{hint}")
 
-    found = shutil.which("claude")
+    found = shutil.which(command)
     if found:
         return found
-    for cand in _CANDIDATES:
+    for cand in candidates:
         p = Path(cand).expanduser()
         if p.exists():
             return str(p)
-    raise AgentNotInstalled(INSTALL_HINT)
+    raise AgentNotInstalled(hint)
 
 
-def available(explicit: str | None = None) -> bool:
+def available(explicit: str | None = None,
+              provider: str = DEFAULT_PROVIDER) -> bool:
     try:
-        find_cli(explicit)
+        find_cli(explicit, provider=provider)
         return True
     except AgentNotInstalled:
         return False
+
+
+def _codex_models(exe: str) -> tuple[tuple[str, str], ...]:
+    """Read the bundled catalog shipped by the installed CLI, without network."""
+    try:
+        proc = subprocess.run(
+            [exe, "debug", "models", "--bundled"], capture_output=True,
+            text=True, timeout=5)
+        payload = json.loads(proc.stdout)
+        visible = [
+            (str(m["slug"]), str(m.get("display_name") or m["slug"]))
+            for m in payload.get("models", []) if m.get("visibility") == "list"
+        ]
+        if visible:
+            return (("", "CLI default"), *visible)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, KeyError,
+            TypeError):
+        pass
+    return _CODEX_FALLBACK_MODELS
+
+
+def provider_catalog() -> dict:
+    """Provider/model choices for CLI and UI surfaces."""
+    out = []
+    for provider, label in (("claude", "Claude Code"),
+                            ("codex", "OpenAI Codex")):
+        is_available = available(provider=provider)
+        exe = find_cli(provider=provider) if is_available else None
+        models = (_codex_models(exe) if provider == "codex" and exe
+                  else _CLAUDE_MODELS if provider == "claude"
+                  else _CODEX_FALLBACK_MODELS)
+        out.append({
+            "id": provider,
+            "label": label,
+            "available": is_available,
+            "default_model": "",
+            "models": [{"id": model, "label": model_label}
+                       for model, model_label in models],
+            "install_hint": install_hint(provider),
+        })
+    return {"default_provider": DEFAULT_PROVIDER, "providers": out}
 
 
 @dataclass
@@ -97,52 +238,120 @@ def run_agent(
     allowed_tools: tuple[str, ...] = ("Read", "Write", "Edit", "Bash", "Glob", "Grep"),
     model: str | None = None,
     cli: str | None = None,
+    provider: str = DEFAULT_PROVIDER,
+    sandbox: str = "workspace-write",
 ) -> AgentResult:
-    """Run Claude Code headless in `cwd` and return what it reported.
+    """Run the selected coding agent headless and normalize its result.
 
     Bounded on purpose: a job that hangs is a job that never releases its
     worktree, and a killed job is a recorded outcome rather than a silence.
     """
-    exe = find_cli(cli)
-    cmd = [
-        exe, "-p", prompt,
-        "--output-format", "json",
-        "--max-turns", str(max_turns),
-        "--permission-mode", "acceptEdits",
-        "--allowedTools", ",".join(allowed_tools),
-    ]
-    if model:
-        cmd += ["--model", model]
+    provider = validate_provider(provider)
+    exe = find_cli(cli, provider=provider)
+    if provider == "claude":
+        cmd = [
+            exe, "-p", prompt,
+            "--output-format", "json",
+            "--max-turns", str(max_turns),
+            "--permission-mode", "acceptEdits",
+            "--allowedTools", ",".join(allowed_tools),
+        ]
+        if model:
+            cmd += ["--model", model]
+    else:
+        cmd = [
+            exe, "exec", "--json", "--ephemeral",
+            "--ignore-user-config",
+            "--sandbox", sandbox,
+            "-c", 'approval_policy="never"',
+        ]
+        if model:
+            cmd += ["--model", model]
+        cmd.append(prompt)
 
     import time
     t0 = time.time()
     try:
+        # Both CLIs read stdin when it is a terminal or an inherited pipe:
+        # they stall three seconds waiting for input that is never coming and
+        # then warn about it on stderr, which buries the message that matters
+        # ("Not logged in") under one that does not.
         proc = subprocess.run(cmd, cwd=str(cwd), capture_output=True,
-                              text=True, timeout=timeout_s)
+                              text=True, timeout=timeout_s,
+                              stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return AgentResult(ok=False, text="", returncode=-1,
                            duration_s=time.time() - t0,
                            stderr=f"timed out after {timeout_s}s")
     dur = time.time() - t0
 
-    payload: dict = {}
-    text = proc.stdout.strip()
-    if text:
-        try:
-            payload = json.loads(text)
-            if isinstance(payload, dict):
-                text = str(payload.get("result", text))
-        except json.JSONDecodeError:
-            pass          # older CLIs, or a plain-text fallback
+    if provider == "claude":
+        payload: dict = {}
+        output_text = proc.stdout.strip()
+        if output_text:
+            try:
+                payload = json.loads(output_text)
+                if isinstance(payload, dict):
+                    output_text = str(payload.get("result", output_text))
+            except json.JSONDecodeError:
+                pass          # older CLIs, or a plain-text fallback
+        return AgentResult(
+            ok=proc.returncode == 0 and not payload.get("is_error", False),
+            text=output_text,
+            returncode=proc.returncode,
+            duration_s=dur,
+            num_turns=int(payload.get("num_turns", 0) or 0),
+            cost_usd=payload.get("total_cost_usd"),
+            session_id=str(payload.get("session_id", "")),
+            raw=payload if isinstance(payload, dict) else {},
+            stderr=proc.stderr.strip(),
+        )
 
+    events, parse_errors = [], []
+    for line in proc.stdout.splitlines():
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+            if isinstance(event, dict):
+                events.append(event)
+        except json.JSONDecodeError:
+            parse_errors.append(line)
+
+    messages = [
+        str(e.get("item", {}).get("text", ""))
+        for e in events
+        if e.get("type") == "item.completed"
+        and e.get("item", {}).get("type") == "agent_message"
+    ]
+    session_id = next((str(e.get("thread_id", "")) for e in events
+                       if e.get("type") == "thread.started"), "")
+    turns = sum(e.get("type") == "turn.completed" for e in events)
+    failures = [
+        event for event in events
+        if str(event.get("type", "")).endswith((".failed", ".error", ".aborted"))
+        or event.get("type") == "error"
+        or (
+            isinstance(event.get("item"), dict)
+            and str(event["item"].get("type", "")).endswith((".failed", ".error"))
+        )
+    ]
+    fallback_text = "\n".join(parse_errors).strip() or proc.stdout.strip()
+    output_text = messages[-1] if messages else fallback_text
+    error_text = proc.stderr.strip()
+    if failures and not error_text:
+        error_text = "; ".join(
+            detail for detail in (_event_error_detail(event) for event in failures)
+            if detail)
+    if not error_text and proc.returncode != 0:
+        error_text = f"Codex exited with status {proc.returncode}"
     return AgentResult(
-        ok=proc.returncode == 0 and not payload.get("is_error", False),
-        text=text,
+        ok=proc.returncode == 0 and not failures,
+        text=output_text,
         returncode=proc.returncode,
         duration_s=dur,
-        num_turns=int(payload.get("num_turns", 0) or 0),
-        cost_usd=payload.get("total_cost_usd"),
-        session_id=str(payload.get("session_id", "")),
-        raw=payload if isinstance(payload, dict) else {},
-        stderr=proc.stderr.strip(),
+        num_turns=turns,
+        session_id=session_id,
+        raw={"events": events},
+        stderr=error_text,
     )

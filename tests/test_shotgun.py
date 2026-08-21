@@ -1,4 +1,4 @@
-"""Tests for `src/shotgun.py`.
+"""Tests for `src.research.opening_window.shotgun`.
 
 This module became load-bearing the moment it produced a positive result, so the
 things that would make that result fake are tested directly:
@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src import shotgun as sg
+from src.research.opening_window import shotgun as sg
 
 
 def _frame(closes, opens=None, highs=None, lows=None, entry=100.0):

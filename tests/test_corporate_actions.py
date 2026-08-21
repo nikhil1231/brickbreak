@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.corporate_actions import (
+from src.research_data.pipelines.corporate_actions import (
     adjust_bars, build_factors, find_renamed_symbol, group_events,
     measure_steps, parse_subject, reconcile, rights_factor,
 )

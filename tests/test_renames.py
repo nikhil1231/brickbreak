@@ -9,7 +9,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from src.renames import (
+from src.research_data.pipelines.renames import (
     APPLIED, apply_renames, build_rename_map, canonical_map, fetch_symbol_changes,
 )
 

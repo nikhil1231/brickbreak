@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .. import config
+from ..core import config
 from ..research_data import catalogue, splits
 
 
@@ -52,6 +52,7 @@ def build_manifest(
     partition: str,
     result_metrics: dict[str, Any],
     dataset_version: str = "v1",
+    provider_used: str = "none",
     model_used: str = "none",
     runtime_seconds: float = 0.0,
     universe_name: str = "liquid_universe",
@@ -78,6 +79,7 @@ def build_manifest(
         "partition": partition,
         "universe": universe_name,
         "spec": spec,
+        "provider_used": provider_used,
         "model_used": model_used,
         "runtime_seconds": round(runtime_seconds, 2),
         "result_hash": result_hash,

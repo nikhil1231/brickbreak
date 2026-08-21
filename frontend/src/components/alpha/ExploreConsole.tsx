@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { fetchHypotheses, fetchProviders, runExploration } from '../../services/api';
-import { ExplorationResult, Hypothesis, ProviderCatalogue } from '../../types';
+import { ExplorationResult, Hypothesis, ProviderCatalogue, Suggestion } from '../../types';
+import { SuggestionDeck } from './SuggestionDeck';
+import { ExplorationStatus } from './ExplorationStatus';
 import { Badge } from '../common/Badge';
 import { MetricBox } from '../common/MetricBox';
 import {
@@ -19,6 +21,7 @@ import {
   ThemeIcon,
   Box,
   Badge as MantineBadge,
+  SegmentedControl,
 } from '@mantine/core';
 import {
   IconPlayerPlay,
@@ -28,25 +31,12 @@ import {
   IconSparkles,
 } from '@tabler/icons-react';
 
-function getNextHypothesisId(hypList: Hypothesis[]): string {
-  let maxNum = 0;
-  for (const h of hypList) {
-    const match = h.id.match(/^H(\d+)$/i);
-    if (match) {
-      const num = parseInt(match[1], 10);
-      if (num > maxNum) maxNum = num;
-    }
-  }
-  const nextNum = maxNum > 0 ? maxNum + 1 : 1;
-  return `H${nextNum.toString().padStart(3, '0')}`;
-}
-
 export const ExploreConsole: React.FC = () => {
-  const [hypId, setHypId] = useState<string>('H039');
-  const [question, setQuestion] = useState<string>(
-    'Does relative strength against market and sector breadth predict 10-session forward returns?'
-  );
-  const [signalName, setSignalName] = useState<string>('custom_composite_rs');
+  const [mode, setMode] = useState<'new' | 'continue'>('new');
+  const [hypId, setHypId] = useState<string>('');
+  const [hypotheses, setHypotheses] = useState<Hypothesis[]>([]);
+  const [question, setQuestion] = useState<string>('');
+  const [signalName, setSignalName] = useState<string>('');
   const [partition, setPartition] = useState<string>('train');
   const [provider, setProvider] = useState<string>('claude');
   const [model, setModel] = useState<string>('');
@@ -55,20 +45,26 @@ export const ExploreConsole: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [result, setResult] = useState<ExplorationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [launchingIds, setLaunchingIds] = useState<string[]>([]);
+  const [inboxReload, setInboxReload] = useState<number>(0);
 
   useEffect(() => {
     const controller = new AbortController();
 
-    // Fetch existing hypotheses to auto-increment the ID
+    // Existing hypotheses are available as lineage parents and for the
+    // explicit "continue existing" workflow. New ideas remain the default.
     fetchHypotheses(controller.signal)
       .then((hyps) => {
-        const nextId = getNextHypothesisId(hyps);
-        setHypId(nextId);
-        setSignalName(`${nextId.toLowerCase()}_signal`);
+        setHypotheses(hyps);
+        const preferred = hyps.find((item) => item.id === 'H026') || hyps[0];
+        if (preferred) {
+          setHypId(preferred.id);
+        }
       })
-      .catch(() => {
-        // Fallback default
-        setHypId('H039');
+      .catch((err: Error) => {
+        if (err.name !== 'AbortError') {
+          setError(`Could not load the hypothesis ledger: ${err.message}`);
+        }
       });
 
     // Fetch LLM providers
@@ -83,12 +79,23 @@ export const ExploreConsole: React.FC = () => {
           setModel(preferred.default_model || '');
         }
       })
-      .catch((err: Error) => setProviderError(err.message));
+      .catch((err: Error) => {
+        // Unmounting aborts these fetches. Reporting that as a provider
+        // failure put "signal is aborted without reason" under the picker.
+        if (err.name !== 'AbortError') {
+          setProviderError(err.message);
+        }
+      });
 
     return () => controller.abort();
   }, []);
 
   const selectedProvider = providers?.providers.find((item) => item.id === provider);
+  const selectedHypothesis = hypotheses.find((item) => item.id === hypId);
+  const hypothesisChoices = hypotheses.map((item) => ({
+    value: item.id,
+    label: `${item.id} — ${item.title}`,
+  }));
   const providerChoices = (providers?.providers || []).map((item) => ({
     value: item.id,
     label: `${item.label}${item.available ? '' : ' (not installed)'}`,
@@ -100,26 +107,97 @@ export const ExploreConsole: React.FC = () => {
   }));
 
   const handleLaunch = async () => {
+    if (mode === 'continue' && !selectedHypothesis) {
+      setError('Choose a registered hypothesis before launching an exploration.');
+      return;
+    }
     if (!question.trim()) {
-      setError('Please provide a research question.');
+      setError(mode === 'new' ? 'Write a testable hypothesis.' : 'Provide an exploration question.');
       return;
     }
     setLoading(true);
     setError(null);
+    setInboxReload((n) => n + 1);
+    try {
+      if (mode === 'new') {
+        const res = await runExploration({
+          idea: question.trim(),
+          hypothesis_id: '',
+          question: '',
+          signal_name: '',
+          partition: 'train',
+          provider,
+          model: model || undefined,
+        });
+        setResult(res);
+        setHypId(res.hypothesis_id);
+        setMode('continue');
+        setSignalName(res.signal_name);
+        try {
+          setHypotheses(await fetchHypotheses());
+        } catch {
+          /* the new entry is durable; refresh on next mount */
+        }
+      } else {
+        const res = await runExploration({
+          hypothesis_id: hypId,
+          question,
+          signal_name: signalName || `${hypId.toLowerCase()}_signal`,
+          partition,
+          provider,
+          model: model || undefined,
+        });
+        setResult(res);
+      }
+    } catch (err: any) {
+      if (mode === 'new' && err.hypothesisId) {
+        setHypId(err.hypothesisId);
+        setMode('continue');
+        try {
+          setHypotheses(await fetchHypotheses());
+        } catch {
+          /* the registered entry appears on the next refresh */
+        }
+        setError(`${err.hypothesisId} was registered, but its first exploration failed: ${err.message}`);
+      } else {
+        setError(err.message || 'Exploration failed');
+      }
+    } finally {
+      setLoading(false);
+      setInboxReload((n) => n + 1);
+    }
+  };
+
+  // Playing a suggestion dispatches it and then leaves it alone. The form is
+  // deliberately untouched: the run is already under way, so pre-filling the
+  // box with its question invites launching the same thing twice, and the
+  // Explorations list is where its progress belongs. Several can be in
+  // flight at once — the server runs each in its own thread.
+  const handlePlaySuggestion = async (suggestion: Suggestion) => {
+    setLaunchingIds((ids) => [...ids, suggestion.id]);
+    setError(null);
+    setInboxReload((n) => n + 1);
     try {
       const res = await runExploration({
-        hypothesis_id: hypId,
-        question,
-        signal_name: signalName || `${hypId.toLowerCase()}_signal`,
+        hypothesis_id: suggestion.hypothesis_id || '',
+        suggestion_id: suggestion.id,
+        question: suggestion.question,
+        signal_name: suggestion.signal_name,
         partition,
         provider,
         model: model || undefined,
       });
       setResult(res);
+      try {
+        setHypotheses(await fetchHypotheses());
+      } catch {
+        /* the exploration still ran; the picker refreshes on next mount */
+      }
     } catch (err: any) {
       setError(err.message || 'Exploration failed');
     } finally {
-      setLoading(false);
+      setLaunchingIds((ids) => ids.filter((id) => id !== suggestion.id));
+      setInboxReload((n) => n + 1);
     }
   };
 
@@ -146,29 +224,83 @@ export const ExploreConsole: React.FC = () => {
             </ThemeIcon>
             <div>
               <Text size="lg" fw={700} c="white" style={{ letterSpacing: '-0.02em' }}>
-                Formulate an Alpha Hypothesis
+                {mode === 'new' ? 'Explore a New Hypothesis' : 'Continue Existing Research'}
               </Text>
               <Text size="xs" c="dimmed">
-                Describe a market anomaly or price action hypothesis in natural language.
+                {mode === 'new'
+                  ? 'Describe the idea; planning infers the research design and registers it.'
+                  : 'Keep the durable hypothesis unchanged and ask a narrower follow-up question.'}
               </Text>
             </div>
           </Group>
 
-          <Group gap="xs">
-            <Text size="xs" c="dimmed" fw={600} tt="uppercase" style={{ letterSpacing: '0.05em' }}>
-              Auto-Assigned ID:
-            </Text>
-            <MantineBadge color="blue" variant="filled" size="lg" radius="sm" style={{ fontFamily: 'monospace' }}>
-              {hypId}
-            </MantineBadge>
-          </Group>
+          <SegmentedControl
+            size="xs"
+            value={mode}
+            data={[
+              { label: 'New hypothesis', value: 'new' },
+              { label: 'Continue existing', value: 'continue' },
+            ]}
+            onChange={(value) => {
+              const nextMode = value as 'new' | 'continue';
+              setMode(nextMode);
+              setError(null);
+              setResult(null);
+              if (nextMode === 'new') {
+                setQuestion('');
+                setSignalName('');
+              } else if (selectedHypothesis) {
+                setQuestion(selectedHypothesis.statement);
+                setSignalName(`${selectedHypothesis.id.toLowerCase()}_signal`);
+              }
+            }}
+          />
         </Group>
 
         {/* Hero Input Element */}
         <Stack gap="md">
+          {mode === 'continue' && (
+            <>
+              <Select
+                label="Registered hypothesis"
+                description="Selecting an entry does not edit its durable statement."
+                placeholder="Choose a registered hypothesis"
+                searchable
+                value={hypId || null}
+                data={hypothesisChoices}
+                onChange={(value) => {
+                  const next = hypotheses.find((item) => item.id === value);
+                  if (!next) return;
+                  setHypId(next.id);
+                  setQuestion(next.statement);
+                  setSignalName(`${next.id.toLowerCase()}_signal`);
+                }}
+              />
+              {selectedHypothesis && (
+                <Paper p="md" radius="md" bg="#0d1117" style={{ border: '1px solid var(--border)' }}>
+                  <Group justify="space-between" mb="xs">
+                    <Text size="xs" fw={700} tt="uppercase" c="dimmed">Durable hypothesis — read only</Text>
+                    <Group gap="xs">
+                      <MantineBadge color="gray" variant="light">{selectedHypothesis.family}</MantineBadge>
+                      <MantineBadge color="blue" variant="light">{selectedHypothesis.status}</MantineBadge>
+                    </Group>
+                  </Group>
+                  <Text size="sm" c="white">{selectedHypothesis.statement}</Text>
+                  <Text size="xs" c="dimmed" mt="xs">{selectedHypothesis.rationale}</Text>
+                </Paper>
+              )}
+            </>
+          )}
+
           <Textarea
-            placeholder="Type your hypothesis question here... e.g. Do stocks with volume dry-up during consolidation breakout with higher expectancy across small-cap regimes?"
-            minRows={4}
+            label={mode === 'continue' ? 'Exploration question' : undefined}
+            description={mode === 'continue'
+              ? 'You may narrow the experiment here; the hypothesis above remains unchanged.'
+              : undefined}
+            placeholder={mode === 'new'
+              ? 'e.g. Does volume dry-up during consolidation predict stronger breakouts?'
+              : 'What additional aspect of this hypothesis should this run test?'}
+            minRows={mode === 'new' ? 7 : 4}
             autosize
             maxRows={10}
             value={question}
@@ -188,25 +320,29 @@ export const ExploreConsole: React.FC = () => {
           />
 
           {/* Secondary Controls Grid */}
-          <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md" mt="xs">
-            <TextInput
-              label="Signal Name"
-              size="xs"
-              value={signalName}
-              onChange={(e) => setSignalName(e.currentTarget.value)}
-            />
-            <Select
-              label="Data Partition"
-              size="xs"
-              value={partition}
-              onChange={(v) => setPartition(v || 'train')}
-              data={[
-                { label: 'train (exploration)', value: 'train' },
-                { label: 'validation (intermediate tune)', value: 'validation' },
-                { label: 'test (shuffled holdout)', value: 'test' },
-                { label: 'forward (chronological live lane)', value: 'forward' },
-              ]}
-            />
+          <SimpleGrid cols={{ base: 1, sm: 2, md: mode === 'new' ? 2 : 4 }} spacing="md" mt="xs">
+            {mode === 'continue' && (
+              <TextInput
+                label="Signal Name"
+                size="xs"
+                value={signalName}
+                onChange={(e) => setSignalName(e.currentTarget.value)}
+              />
+            )}
+            {mode === 'continue' && (
+              <Select
+                label="Data Partition"
+                size="xs"
+                value={partition}
+                onChange={(v) => setPartition(v || 'train')}
+                data={[
+                  { label: 'train (exploration)', value: 'train' },
+                  { label: 'validation (intermediate tune)', value: 'validation' },
+                  { label: 'test (shuffled holdout)', value: 'test' },
+                  { label: 'forward (chronological live lane)', value: 'forward' },
+                ]}
+              />
+            )}
             <Select
               label="LLM Provider"
               size="xs"
@@ -240,7 +376,11 @@ export const ExploreConsole: React.FC = () => {
             mt="sm"
             fullWidth
             loading={loading}
-            disabled={!selectedProvider?.available}
+            disabled={
+              !selectedProvider?.available ||
+              !question.trim() ||
+              (mode === 'continue' && !selectedHypothesis)
+            }
             onClick={handleLaunch}
             style={{
               fontWeight: 650,
@@ -249,10 +389,23 @@ export const ExploreConsole: React.FC = () => {
               boxShadow: '0 4px 14px rgba(88, 166, 255, 0.25)',
             }}
           >
-            Launch Autonomous Exploration
+            {mode === 'new' ? 'Plan & Launch Exploration' : 'Launch Follow-up Exploration'}
           </Button>
         </Stack>
       </Paper>
+
+      <ExplorationStatus reloadToken={inboxReload + launchingIds.length} />
+
+      {/* The inbox proposes *new* hypotheses, so it belongs under the console
+          in both modes — gating it behind "continue existing" hides it in the
+          very view where a fresh idea is being chosen. */}
+      <SuggestionDeck
+        provider={provider}
+        model={model}
+        providerAvailable={!!selectedProvider?.available}
+        reloadToken={inboxReload}
+        onPlay={handlePlaySuggestion}
+      />
 
       {error && (
         <Alert icon={<IconAlertCircle size={16} />} title="Exploration Failed" color="red" mb="lg" radius="md">

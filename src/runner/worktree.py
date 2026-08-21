@@ -23,7 +23,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import config
+from ..core import config
 
 
 class WorktreeError(RuntimeError):

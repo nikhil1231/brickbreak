@@ -7,6 +7,11 @@ failed is a result; a hypothesis invalidated by a modelling bug is marked
 the same idea needs to know it was already tried and why the answer did not
 count.
 
+**Source relocation (2026-08-21).** Historical `src/<module>.py` references
+below identify the code paths used at the time. Their current homes are under
+`src/research_data/` and `src/research/`; hypothesis text and evidence remain
+unchanged.
+
 Statuses: `PROPOSED` · `TESTING` · `SUPPORTED` · `REJECTED` · `INCONCLUSIVE` ·
 `SUPERSEDED`
 

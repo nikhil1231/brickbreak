@@ -266,3 +266,73 @@ class IdeaGraph:
         n_nodes = len(self._nodes)
         n_edges = sum(len(edges) for edges in self._adjacency.values())
         return f"IdeaGraph: {n_nodes} hypotheses, {n_edges} typed edges"
+
+
+# ---------------------------------------------------------------------------
+# Suggestions — the research inbox (PLAN.md §6)
+# ---------------------------------------------------------------------------
+
+SUGGESTION_STATUSES = (
+    "open",        # sitting in the inbox, nobody has agreed to it
+    "launched",    # promoted to a Hypothesis and dispatched
+    "replaced",    # refreshed away; kept so it is never proposed again
+    "dismissed",
+)
+
+
+@dataclass
+class Suggestion:
+    """A proposed hypothesis that nothing has been spent on yet.
+
+    A Suggestion is deliberately not a Hypothesis. A Hypothesis is a durable
+    record with a stable ID that the sample-budget ledger reasons about, and
+    minting one for every idea a model has overnight would fill the ledger
+    with entries no experiment ever ran against. So an idea lives here until
+    someone presses play, at which point `suggest.promote` turns it into a
+    real H0xx and this record keeps the pointer.
+
+    Nothing is deleted: a refreshed-away suggestion becomes `replaced` rather
+    than disappearing, because the list of things already proposed is exactly
+    what stops the next generation proposing them again.
+    """
+    id: str
+    title: str
+    question: str
+    rationale: str = ""
+    what_it_measures: str = ""
+    signal_name: str = "candidate_signal"
+    signal_sketch: str = ""
+    family: str = "general"
+    lineage: list[dict] = field(default_factory=list)
+    novelty_note: str = ""
+    evidence_basis: str = ""
+    expected_correlation: str = ""
+    horizons: list[int] = field(default_factory=lambda: [5, 10, 20])
+    primary_horizon: int = 10
+    pass_criterion: dict[str, float] = field(default_factory=dict)
+    falsification_condition: str = ""
+    status: str = "open"
+    slot: int = 0
+    source: str = "offline"
+    model: str = ""
+    cost_usd: float | None = None
+    turns: int = 0
+    warnings: list[str] = field(default_factory=list)
+    hypothesis_id: str = ""
+    replaces: str = ""
+    created_at: str = field(
+        default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+    def __post_init__(self) -> None:
+        if self.status not in SUGGESTION_STATUSES:
+            raise ValueError(
+                f"invalid status {self.status!r}; must be one of {SUGGESTION_STATUSES}")
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Suggestion:
+        d = dict(data)
+        d["horizons"] = [int(h) for h in d.get("horizons", [5, 10, 20])]
+        return cls(**d)

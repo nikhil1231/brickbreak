@@ -110,9 +110,13 @@ class TestManifest:
             partition="train",
             result_metrics=metrics,
             dataset_version="v1",
+            provider_used="codex",
+            model_used="gpt-test",
         )
 
         assert "hash" in m
+        assert m["provider_used"] == "codex"
+        assert m["model_used"] == "gpt-test"
         assert verify_manifest(m) is True
 
         # Tampering with metric changes hash and fails verification

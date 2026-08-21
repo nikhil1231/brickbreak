@@ -45,5 +45,24 @@ export const theme = createTheme({
         striped: false,
       },
     },
+    // Mantine paints a modal with `--mantine-color-body`, which this dark
+    // theme never sets — so every modal rendered transparent and the page
+    // showed straight through its text. Painted explicitly, once, here.
+    Modal: {
+      defaultProps: {
+        overlayProps: { backgroundOpacity: 0.75, blur: 3 },
+        centered: true,
+      },
+      styles: {
+        content: {
+          background: 'var(--bg-panel)',
+          border: '1px solid var(--border)',
+        },
+        header: {
+          background: 'var(--bg-panel)',
+          borderBottom: '1px solid var(--border)',
+        },
+      },
+    },
   },
 });

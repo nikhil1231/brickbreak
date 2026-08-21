@@ -1,4 +1,4 @@
-"""Causality tests for `src/context.py`.
+"""Causality tests for `src.research_data.pipelines.context`.
 
 The point of every test here is the same one: a feature dated D must not change
 when sessions after D are appended. That bug has shipped twice in this project
@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src import context
+from src.research_data.pipelines import context
 
 
 def _bars(n: int = 120, seed: int = 0, symbols=("AAA", "BBB")) -> pd.DataFrame:

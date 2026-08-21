@@ -6,11 +6,13 @@ records under `data/metadata/research_store/`.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Iterator
 
-from .. import config
-from .models import Evidence, Exploration, Hypothesis, IdeaGraph, Signal
+from ..core import config
+from .models import (Evidence, Exploration, Hypothesis, IdeaGraph, Signal,
+                     Suggestion)
 
 
 STORE_DIR = config.METADATA_DIR / "research_store"
@@ -18,10 +20,12 @@ HYPOTHESES_DIR = STORE_DIR / "hypotheses"
 EXPLORATIONS_DIR = STORE_DIR / "explorations"
 SIGNALS_DIR = STORE_DIR / "signals"
 EVIDENCE_DIR = STORE_DIR / "evidence"
+SUGGESTIONS_DIR = STORE_DIR / "suggestions"
 
 
 def _ensure_dirs() -> None:
-    for d in (HYPOTHESES_DIR, EXPLORATIONS_DIR, SIGNALS_DIR, EVIDENCE_DIR):
+    for d in (HYPOTHESES_DIR, EXPLORATIONS_DIR, SIGNALS_DIR, EVIDENCE_DIR,
+              SUGGESTIONS_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 
@@ -60,6 +64,22 @@ def list_hypotheses(
             continue
         out.append(h)
     return out
+
+
+def next_hypothesis_id() -> str:
+    """The next free H0xx.
+
+    Taken over the whole ledger rather than over a count, because H0xx ids are
+    permanent and a reused one would silently attach new evidence to an old
+    hypothesis.
+    """
+    _ensure_dirs()
+    highest = 0
+    for p in HYPOTHESES_DIR.glob("*.json"):
+        m = re.fullmatch(r"H(\d+)", p.stem)
+        if m:
+            highest = max(highest, int(m.group(1)))
+    return f"H{highest + 1:03d}"
 
 
 # ---------------------------------------------------------------------------
@@ -193,3 +213,48 @@ def get_idea_graph() -> IdeaGraph:
     """Builds and returns the IdeaGraph across all stored hypotheses."""
     hyps = list_hypotheses()
     return IdeaGraph(hyps)
+
+
+# ---------------------------------------------------------------------------
+# Suggestions
+# ---------------------------------------------------------------------------
+
+def save_suggestion(sug: Suggestion) -> Path:
+    _ensure_dirs()
+    p = SUGGESTIONS_DIR / f"{sug.id}.json"
+    p.write_text(json.dumps(sug.to_dict(), indent=2) + "\n")
+    return p
+
+
+def get_suggestion(id: str) -> Suggestion | None:
+    p = SUGGESTIONS_DIR / f"{id}.json"
+    if not p.exists():
+        return None
+    return Suggestion.from_dict(json.loads(p.read_text()))
+
+
+def list_suggestions(status: str | None = None) -> list[Suggestion]:
+    """Every suggestion ever made, newest id last.
+
+    The default is deliberately unfiltered: the generator needs the dead ones
+    too, since a proposal already refreshed away is exactly the proposal it
+    must not make again.
+    """
+    _ensure_dirs()
+    out = []
+    for p in sorted(SUGGESTIONS_DIR.glob("*.json")):
+        sug = Suggestion.from_dict(json.loads(p.read_text()))
+        if status and sug.status != status:
+            continue
+        out.append(sug)
+    return out
+
+
+def next_suggestion_id() -> str:
+    _ensure_dirs()
+    highest = 0
+    for p in SUGGESTIONS_DIR.glob("*.json"):
+        m = re.fullmatch(r"S(\d+)", p.stem)
+        if m:
+            highest = max(highest, int(m.group(1)))
+    return f"S{highest + 1:03d}"

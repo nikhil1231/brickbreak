@@ -263,7 +263,7 @@ class TestH026NumericalRegression:
     def test_frame_api_matches_the_legacy_path_exactly(self, scored):
         """The finding was computed off `context.load()`. If the module serves
         different numbers, nothing downstream inherits the old evidence."""
-        from src import context
+        from src.research_data.pipelines import context
         _, d = scored
         ctx, _ = context.load()
         ctx["date"] = pd.to_datetime(ctx["date"])

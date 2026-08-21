@@ -1,16 +1,16 @@
-"""`interface` — Interactive research dashboard and CLI (PLAN.md §6, §7).
+"""`interface` — Research backend, web application, and CLI (PLAN.md §6, §7).
 
 Exports:
-- `app`: Web dashboard application and REST API server
+- `backend`: Primary web application and REST API server
 - `cli`: CLI command handlers for catalogue, hypotheses, ledger, explore, compare, serve
 """
 from __future__ import annotations
 
-from . import app, cli
-from .app import serve_dashboard
+from . import backend, cli
+from .backend import serve_backend
 
 __all__ = [
-    "app",
+    "backend",
     "cli",
-    "serve_dashboard",
+    "serve_backend",
 ]

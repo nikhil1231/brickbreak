@@ -148,6 +148,7 @@ export interface IdeaGraphNode {
   family: string;
   status: string;
   tags: string[];
+  placeholder?: boolean;
 }
 
 export interface IdeaGraphEdge {
@@ -207,6 +208,80 @@ export interface ProviderOption {
 export interface ProviderCatalogue {
   default_provider: string;
   providers: ProviderOption[];
+}
+
+export interface JobRow {
+  job_id: string;
+  state: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'timeout' | string;
+  phase: string;
+  phases: string[];
+  hypothesis_id: string;
+  signal_name: string;
+  title: string;
+  question: string;
+  partition: string;
+  provider: string;
+  model: string;
+  created_at: string;
+  finished_at: string;
+  runtime_s: number;
+  timeout_s: number;
+  phase_started_at: string;
+  cost_usd: number | null;
+  turns: number;
+  error: string;
+  failure_class: string;
+  interpretation: string;
+  worker?: {
+    signal_written: boolean;
+    signal_bytes: number;
+    seconds_since_change: number | null;
+  };
+}
+
+export interface JobsResponse {
+  jobs: JobRow[];
+}
+
+export interface SuggestionLineage {
+  target_id: string;
+  relation: string;
+}
+
+export interface Suggestion {
+  id: string;
+  title: string;
+  question: string;
+  rationale: string;
+  what_it_measures: string;
+  signal_name: string;
+  signal_sketch: string;
+  family: string;
+  lineage: SuggestionLineage[];
+  novelty_note: string;
+  evidence_basis: string;
+  expected_correlation: string;
+  horizons: number[];
+  primary_horizon: number;
+  pass_criterion: Record<string, number>;
+  falsification_condition: string;
+  status: string;
+  slot: number;
+  source: string;
+  model: string;
+  cost_usd: number | null;
+  turns: number;
+  warnings: string[];
+  hypothesis_id: string;
+  replaces: string;
+  created_at: string;
+}
+
+export interface SuggestionInbox {
+  suggestions: Suggestion[];
+  n_open: number;
+  n_slots: number;
+  n_proposed_ever: number;
 }
 
 export interface NextMove {

@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src import resilience as R
+from src.research import resilience as R
 
 
 def _synthetic(n_dates: int = 400, n_syms: int = 60, seed: int = 0

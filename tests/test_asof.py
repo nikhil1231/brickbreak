@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src import asof, fetch_opening as fo
+from src.research_data.pipelines import asof, opening as fo
 
 
 def _panel(symbols=("AAA", "BBB"), n=6):
@@ -150,7 +150,7 @@ def test_a_renamed_symbol_is_not_refetched_under_its_new_ticker(monkeypatch):
     cands = _cands([("NEWNAME", "2024-01-02")])
     man = _man([("OLDNAME", "2024-01-02")])          # fetched under the old ticker
 
-    import src.renames as renames
+    from src.research_data.pipelines import renames
     monkeypatch.setattr(renames, "canonical_map",
                         lambda m=None: {"OLDNAME": "NEWNAME"})
     work, rep = fo.build_work_list(cands, manifest=man, rmap=rmap, verbose=False)

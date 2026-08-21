@@ -1,6 +1,6 @@
-"""Research jobs: dashboard -> spec -> worktree -> Claude Code -> result (PLAN.md §5.7).
+"""Research jobs: dashboard -> spec -> worktree -> LLM worker -> result (PLAN.md §5.7).
 
-    job spec -> isolated worktree -> Claude Code CLI -> job/signal.py
+    job spec -> isolated worktree -> selected coding CLI -> job/signal.py
              -> trusted harness -> experiment_result.json -> store
 
 THE CONTRACT
@@ -31,18 +31,34 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from .. import config
+from ..core import config
 from . import agent, worktree
 from .spec import ExperimentSpec, SpecValidationError, validate_spec
 
 JOBS_DIR = config.METADATA_DIR / "research_store" / "jobs"
 
-STATES = ("queued", "running", "succeeded", "failed", "blocked", "timeout")
+STATES = ("queued", "running", "succeeded", "failed", "blocked", "timeout",
+          "interrupted")
+
+# Where a running job actually is. `state` says whether it is alive; `phase`
+# says what it is doing, which is the only thing worth watching for the twenty
+# minutes it spends inside "running". Ordered, so an interface can render
+# progress without knowing what any single phase means.
+PHASES = (
+    "planning",             # idea -> plan, before a spec exists
+    "checking budget",      # spec validation and the sample-budget ledger
+    "loading data",
+    "preparing worktree",
+    "writing the signal",   # the worker's turn — the long one
+    "evaluating",           # standard report, neutralisation, backtest
+    "done",
+)
 
 # Fields a job result must carry before the store will accept it.
 REQUIRED_RESULT_FIELDS = (
     "job_id", "hypothesis_id", "signal_name", "partition", "role",
-    "failure_class", "interpretation", "evaluation", "manifest",
+    "provider", "model", "failure_class", "interpretation", "evaluation",
+    "manifest",
 )
 
 
@@ -58,7 +74,12 @@ class ResultSchemaError(JobError):
 class Job:
     id: str
     spec: dict[str, Any]
+    provider: str = agent.DEFAULT_PROVIDER
+    model: str = "cli-default"
     state: str = "queued"
+    phase: str = ""
+    phase_started_at: str = ""
+    timeout_s: int = 0
     created_at: str = field(
         default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     finished_at: str = ""
@@ -85,11 +106,104 @@ class Job:
         return p
 
 
+    def enter(self, phase: str) -> None:
+        """Record the stage this job has reached, durably.
+
+        Written through to disk on every transition rather than held in
+        memory: the interface reads these files, and a phase only this
+        process knows about is a progress bar that stops at the first thing
+        that goes wrong.
+        """
+        self.phase = phase
+        self.phase_started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.save()
+
+
 def list_jobs() -> list[Job]:
     if not JOBS_DIR.exists():
         return []
+    # `*_result.json` lives in the same directory and is a result, not a job
+    # record. Globbing both fed an experiment result to `Job.from_dict` and
+    # took the whole listing down with a TypeError.
     return [Job.from_dict(json.loads(p.read_text()))
-            for p in sorted(JOBS_DIR.glob("*.json"), reverse=True)]
+            for p in sorted(JOBS_DIR.glob("*.json"), reverse=True)
+            if not p.name.endswith("_result.json")]
+
+
+def worker_progress(jb: Job) -> dict[str, Any]:
+    """Evidence that the worker is alive, for the phase that has none.
+
+    `writing the signal` is most of an exploration's wall-clock and reports
+    nothing while it runs, so a slow turn and a hung process look identical.
+    The worktree is the one thing that changes as the worker works: whether
+    `job/signal.py` exists yet, how big it is, and when it last changed
+    separates "still thinking" from "stopped".
+    """
+    out: dict[str, Any] = {"signal_written": False, "signal_bytes": 0,
+                           "seconds_since_change": None}
+    if not jb.worktree_path:
+        return out
+    root = Path(jb.worktree_path)
+    if not root.exists():
+        return out
+
+    signal_path = root / "job" / "signal.py"
+    newest = 0.0
+    for candidate in (root / "job").glob("*") if (root / "job").exists() else ():
+        try:
+            newest = max(newest, candidate.stat().st_mtime)
+        except OSError:
+            continue
+    if signal_path.exists():
+        stat = signal_path.stat()
+        out["signal_written"] = True
+        out["signal_bytes"] = stat.st_size
+    if newest:
+        import time as _time
+        out["seconds_since_change"] = round(_time.time() - newest, 1)
+    return out
+
+
+def reap_orphans() -> list[Job]:
+    """Annotate jobs whose process died, and say so in the record.
+
+    A job runs synchronously inside the request that dispatched it, so nothing
+    survives the process that started it. Any record still `running` when a
+    new server comes up therefore belongs to a process that is gone — and left
+    alone it shows in the interface as permanently in progress, which is worse
+    than a failure because nothing ever clears it.
+
+    Annotated, never deleted: an interrupted run is a run that happened.
+    """
+    reaped = []
+    for jb in list_jobs():
+        if jb.state not in ("queued", "running"):
+            continue
+        jb.state = "interrupted"
+        jb.error = (jb.error or "") + (
+            "" if jb.error else
+            f"the process running this job exited during "
+            f"{jb.phase or 'an unrecorded phase'}; no result was produced")
+        jb.finished_at = jb.finished_at or datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S")
+        jb.save()
+        reaped.append(jb)
+    return reaped
+
+
+def open_job(spec: ExperimentSpec, provider: str = agent.DEFAULT_PROVIDER,
+             model: str | None = None, phase: str = "planning") -> Job:
+    """Open a job record before the work that fills it in.
+
+    The idea-to-plan step runs before a spec is final, and it is slow enough
+    to be worth watching. Opening the record first means planning is visible
+    as planning rather than as a gap before the job appears.
+    """
+    jb = Job(id=f"JOB_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+             spec=spec.to_dict(), provider=agent.validate_provider(provider),
+             model=model or "cli-default", state="running", phase=phase)
+    jb.save()
+    return jb
 
 
 def get_job(job_id: str) -> Job | None:
@@ -292,11 +406,13 @@ def run_job(
     question: str | None = None,
     timeout_s: int = 1800,
     max_turns: int = 40,
+    provider: str = agent.DEFAULT_PROVIDER,
     model: str | None = None,
     cli: str | None = None,
     agent_fn: Callable[[str, Path], agent.AgentResult] | None = None,
     keep_worktree: bool = False,
     sample_rows: int = 5000,
+    existing: Job | None = None,
 ) -> Job:
     """Run one research job end to end.
 
@@ -307,12 +423,21 @@ def run_job(
     from .runner import run_exploration          # local: avoids a cycle
 
     import time
+    provider = agent.validate_provider(provider)
     t0 = time.time()
-    job_id = f"JOB_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    jb = Job(id=job_id, spec=spec.to_dict())
+    # `existing` lets a caller that has already done the slow planning step
+    # hand its open record over, so one exploration is one job rather than a
+    # silence followed by a job.
+    jb = existing or Job(id=f"JOB_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                         spec=spec.to_dict(), provider=provider,
+                         model=model or "cli-default")
+    job_id = jb.id
+    jb.spec = spec.to_dict()
+    jb.timeout_s = timeout_s
 
     # Budget and lineage are checked *before* a worktree is created: a blocked
     # job should cost nothing.
+    jb.enter("checking budget")
     try:
         validate_spec(spec)
     except Exception as exc:
@@ -323,7 +448,7 @@ def run_job(
         return jb
 
     jb.state = "running"
-    jb.save()
+    jb.enter("loading data")
 
     wt = None
     try:
@@ -334,16 +459,18 @@ def run_job(
                                     asof_open=True, include_context=True)
         sample = df.head(sample_rows).copy()
 
+        jb.enter("preparing worktree")
         wt = worktree.create(job_id)
         jb.worktree_path = str(wt.path)
         jb.commit = wt.commit
         prompt = build_prompt(spec, list(df.columns), question=question)
         _seed_worktree(wt, spec, sample, prompt)
-        jb.save()
+        jb.enter("writing the signal")
 
         res = (agent_fn(prompt, wt.path) if agent_fn else
                agent.run_agent(prompt, cwd=wt.path, timeout_s=timeout_s,
-                               max_turns=max_turns, model=model, cli=cli))
+                               max_turns=max_turns, model=model, cli=cli,
+                               provider=provider))
         jb.agent_turns = res.num_turns
         jb.agent_cost_usd = res.cost_usd
         jb.agent_session = res.session_id
@@ -352,11 +479,15 @@ def run_job(
             jb.error = res.stderr or res.text[:500] or "agent reported failure"
             return jb
 
+        jb.enter("evaluating")
         compute = load_signal_fn(wt.signal_path)
 
         # The harness runs from the canonical checkout, in this process. The
         # worker's copy of it is irrelevant by construction.
-        summary = run_exploration(spec, compute, save_results=True)
+        model_used = model or "cli-default"
+        summary = run_exploration(
+            spec, compute, save_results=True, provider_used=provider,
+            model_used=model_used)
 
         result = {
             "job_id": job_id,
@@ -364,6 +495,8 @@ def run_job(
             "signal_name": spec.signal_name,
             "partition": spec.partition,
             "role": spec.role,
+            "provider": provider,
+            "model": model_used,
             "failure_class": summary["failure_class"],
             "interpretation": summary["interpretation"],
             "evaluation": summary["evaluation"],
@@ -371,6 +504,8 @@ def run_job(
             "exploration_id": summary["exploration_id"],
             "suggested_next_moves": summary.get("suggested_next_moves", []),
             "agent": {
+                "provider": provider,
+                "model": model_used,
                 "turns": res.num_turns,
                 "cost_usd": res.cost_usd,
                 "session_id": res.session_id,
@@ -387,6 +522,7 @@ def run_job(
         stored.write_text(json.dumps(result, indent=2, default=str) + "\n")
         jb.result_path = str(stored)
         jb.state = "succeeded"
+        jb.phase = "done"
 
     except Exception as exc:                       # noqa: BLE001 — recorded, not raised
         jb.state = "failed"

@@ -58,23 +58,31 @@ Two rules that hold from now on, whatever the migration state:
   direct read. Three of this project's four lookaheads entered through ad-hoc
   parquet access.
 
-**The lab, end to end:** `python -m src.cli plan "<idea>"` proposes an
+**The lab, end to end:** `python -m src.cli suggest` reads the research inbox —
+what to test next, proposed against the whole ledger and the graveyard so
+nothing already tested returns in new words (`--new` regenerates the three
+slots, `--refresh Sxxx` replaces one; reading costs nothing, generating spends
+a model call). `python -m src.cli plan "<idea>"` proposes an
 experiment; `python -m src.cli job --hypothesis H0xx --question "..." --signal
-name` runs one in an isolated worktree with a Claude Code worker; `jobs`,
+name --provider claude|codex [--model MODEL]` runs one in an isolated worktree
+with the selected coding agent; `jobs`,
 `forward`, `burden` and `serve` inspect the results. The worker writes exactly
 one file — `job/signal.py` with `compute(df) -> Series` — and the harness runs
 from the canonical checkout, never from the worktree, so an agent cannot loosen
-the evaluation it is judged by. **The CLI must be installed:**
-`npm install -g @anthropic-ai/claude-code`, then `claude` once to log in.
+the evaluation it is judged by. Claude remains the default. Install and log in
+to at least one supported CLI: `npm install -g @anthropic-ai/claude-code` then
+`claude`, or `npm install -g @openai/codex` then `codex login`.
 
 **Built so far:** `src/research_data/splits.py` — versioned, purged,
 quarter-level partitions, frozen as `data/metadata/split_v1_frozen.json`
 (hash `657db79f7d380880`). Select rows with `splits.assign(df)`, never with a
 date range. `python -m src.cli split --show` describes it.
 
-**Current state, until the rest of the refactor lands:** `build_screen.load()` defaults to
-the lagged `screen_metrics_asof.parquet`, `explore.fence()` raises on holdout
-rows, and `family.holdout()` / `resilience.semi_stale()` re-hash frozen specs
+**Current state, until the rest of the refactor lands:**
+`research_data.pipelines.daily_panel.load()` defaults to the lagged
+`screen_metrics_asof.parquet`, `research.opening_window.explore.fence()` raises
+on holdout rows, and `research.opening_window.family.holdout()` /
+`research.resilience.semi_stale()` re-hash frozen specs
 before reading. Treat those as the module's ancestors — extend them, do not add
 parallel access paths beside them.
 
@@ -107,7 +115,7 @@ with a stated caveat. **When lineage is ambiguous, block.**
 | 1-second opening ticks | Breeze `1second` | 2018-04-02 onward |
 | symbol renames | NSE `equities/symbolchange.csv` | full history, 1999 onward |
 | sector / size tiers | NSE `ind_nifty*list.csv` | current snapshot |
-| market regime, breakout levels, RS | `src/context.py` (derived, as-of) | 2020-01-01 onward |
+| market regime, breakout levels, RS | `src/research_data/pipelines/context.py` (derived, as-of) | 2020-01-01 onward |
 | ETF exclusion | NSE `eq_etfseclist.csv` | current snapshot |
 
 **Prefer bhavcopy for daily.** Free, unauthenticated, carries turnover and
@@ -184,7 +192,7 @@ obvious place. Assume there is a fifth. In the target architecture each of these
 is caught by the data module or the leakage gate rather than by vigilance.
 
 - **Selecting on the entry day's own close (H015).** Fixed 2026-08-19 via
-  `src/asof.py`; `build_screen.load()` defaults to the lagged panel. Everything
+  `src/research_data/pipelines/asof.py`; `daily_panel.load()` defaults to the lagged panel. Everything
   built before that sits on the contaminated pool and must be **re-run, not
   adjusted**: the corrected screen overlaps the old one on only **61%** of
   candidate mornings. *Why it inverts rather than inflates:* the contraction
@@ -392,6 +400,20 @@ project's research ledger and outlives any single refactor.
   says so in words, because an interface that looks broken gets worked around.
   Register a promoted signal with `forward.register(...)` and `forward.accrue()`
   scores it on whatever sessions have arrived.
+- **A job records where it is, not just whether it lives.** `state` says
+  alive or not; `phase` says which of `job.PHASES` it is in, written through
+  to disk on entry, because almost all of an exploration's wall-clock is spent
+  inside one state and one step of it. A job runs inside the request that
+  dispatched it, so anything still `running` when the server starts belongs to
+  a dead process: `job.reap_orphans()` marks those `interrupted` with the
+  phase they died in, and never deletes them.
+- **A suggestion is not a hypothesis until someone presses play.** Minting an
+  H0xx for every idea a model has overnight would fill the ledger with entries
+  no experiment ever ran against, so proposals live in `runner.suggest` and
+  only `promote()` registers one — with its family and lineage edges, which is
+  what the budget ledger reasons over. Nothing is deleted there either: a
+  refreshed-away suggestion is kept as `replaced`, because the list of things
+  already proposed is what stops the next generation proposing them again.
 - **An unregistered hypothesis is blocked, not defaulted.** Resolving an
   unknown id to a "general" family granted it confirmatory access to spent
   quarters, because nothing is recorded against a family that does not exist.
@@ -401,7 +423,7 @@ project's research ledger and outlives any single refactor.
   matters: adjusting before merging bakes a fake step into every handover.
   Anything keyed on symbol folds through `renames.canonical_map()`.
 - Indicators on adjusted prices; anything asserting what was tradeable on `*_raw`.
-- All Breeze traffic goes through `src/breeze_client.py` (throttle, 429 retry,
+- All Breeze traffic goes through `src/research_data/sources/breeze.py` (throttle, 429 retry,
   call logging to `data/metadata/api_calls.jsonl`).
 - Verify empirically rather than trusting docs; that has repeatedly paid off.
 - Long pulls run on the server (`user@server`) under tmux via

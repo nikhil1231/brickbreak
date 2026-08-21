@@ -29,8 +29,9 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src import config, fetch_opening as fo          # noqa: E402
-from src.breeze_client import BreezeClient           # noqa: E402
+from src.core import config
+from src.research_data.pipelines import opening as fo          # noqa: E402
+from src.research_data.sources.breeze import BreezeClient           # noqa: E402
 
 WORK_LIST = ROOT / "data" / "metadata" / "work_list.parquet"
 STATUS = ROOT / "data" / "metadata" / "pull_status.json"

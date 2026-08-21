@@ -4,6 +4,11 @@
 Evidence: ~200 live API calls, all logged in `data/metadata/api_calls.jsonl`,
 full matrix in `data/metadata/feasibility_report.json`.
 
+**Source relocation (2026-08-21).** Historical `src/<module>.py` references
+below describe the paths used when the work ran. Current code is grouped under
+`src/research_data/` for data access and `src/research/` for hypothesis-family
+research; the measurements and evidence were not rewritten.
+
 Everything below was measured. Where the SDK docs and observed behaviour differ,
 the observation wins.
 

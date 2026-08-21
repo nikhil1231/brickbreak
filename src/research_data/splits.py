@@ -68,7 +68,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .. import config
+from ..core import config
 
 SPLIT_DIR = config.METADATA_DIR
 BARS_PATH = config.NORMALIZED_DIR / "daily_bars_adj.parquet"

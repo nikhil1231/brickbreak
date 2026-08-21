@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .. import config
+from ..core import config
 from . import catalogue as cat_mod
 from . import splits
 

@@ -2,9 +2,9 @@
 import pandas as pd
 import pytest
 
-from src import security_master as sm
-from src.estimate import estimate_daily_history, estimate_full_download, measured_throughput
-from src.universe import TEST_UNIVERSE
+from src.research_data.sources import security_master as sm
+from src.research_data.feasibility.estimate import estimate_daily_history, estimate_full_download, measured_throughput
+from src.research_data.feasibility.universe import TEST_UNIVERSE
 
 
 @pytest.fixture(scope="module")
@@ -96,7 +96,7 @@ def test_bhavcopy_parser_trusts_file_date_not_url():
     """NSE serves the prior session for holiday URLs; the parser must not
     relabel those rows with the requested date."""
     from datetime import date as _date
-    from src.nse_archive import parse_bhavcopy
+    from src.research_data.sources.nse import parse_bhavcopy
     csv = (
         "SYMBOL, SERIES, DATE1, PREV_CLOSE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, "
         "LAST_PRICE, CLOSE_PRICE, AVG_PRICE, TTL_TRD_QNTY, TURNOVER_LACS, "
@@ -109,7 +109,7 @@ def test_bhavcopy_parser_trusts_file_date_not_url():
 
 
 def test_bhavcopy_parser_keeps_only_cash_series():
-    from src.nse_archive import parse_bhavcopy
+    from src.research_data.sources.nse import parse_bhavcopy
     csv = (
         "SYMBOL, SERIES, DATE1, PREV_CLOSE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, "
         "LAST_PRICE, CLOSE_PRICE, AVG_PRICE, TTL_TRD_QNTY, TURNOVER_LACS, "
@@ -132,7 +132,7 @@ def test_find_no_session_dates_detects_muhurat():
     """Diwali Muhurat is an evening session: bhavcopy has bars, but the
     09:15-09:20 window is empty for every symbol."""
     import pandas as pd
-    from src.fetch_opening import find_no_session_dates
+    from src.research_data.pipelines.opening import find_no_session_dates
     man = pd.DataFrame({
         "symbol": list("ABCDEF"),
         "date": pd.to_datetime(["2025-10-20"] * 3 + ["2025-10-21"] * 3),
@@ -144,7 +144,7 @@ def test_find_no_session_dates_detects_muhurat():
 def test_find_no_session_dates_ignores_thin_days():
     """A date with too few attempts is not evidence of a missing session."""
     import pandas as pd
-    from src.fetch_opening import find_no_session_dates
+    from src.research_data.pipelines.opening import find_no_session_dates
     man = pd.DataFrame({"symbol": ["A"], "date": pd.to_datetime(["2025-01-02"]),
                         "status": ["empty"]})
     assert find_no_session_dates(man, min_attempts=3) == []
@@ -153,7 +153,7 @@ def test_find_no_session_dates_ignores_thin_days():
 def test_flag_bad_volume_and_exclusion():
     """Negative volume is an archive defect; the symbol-day is dropped, not clipped."""
     import pandas as pd
-    from src.fetch_opening import flag_bad_volume, opening_features
+    from src.research_data.pipelines.opening import flag_bad_volume, opening_features
     ts = pd.Timestamp("2024-01-09 09:15:10")
     d = _mk_opening([
         ["X", "GOOD", ts, 10.0, 10.5, 9.9, 10.2, 500],
@@ -173,7 +173,7 @@ def test_bhavcopy_parser_reads_xlsx_served_at_csv_url(tmp_path):
     """On 2022-08-08 NSE served an XLSX workbook from the .csv URL."""
     import io
     import pandas as pd
-    from src.nse_archive import parse_bhavcopy
+    from src.research_data.sources.nse import parse_bhavcopy
 
     book = pd.DataFrame([{
         "SYMBOL": "ACME", "SERIES": "EQ", "DATE1": "08-Aug-2022",
@@ -200,7 +200,7 @@ def test_sync_files_a_session_under_its_own_date(tmp_path, monkeypatch):
     """
     from datetime import date as _date
     import pandas as pd
-    from src import nse_archive
+    from src.research_data.sources import nse as nse_archive
 
     monkeypatch.setattr(nse_archive, "BHAV_DIR", tmp_path)
 
@@ -226,7 +226,7 @@ def test_sync_requests_weekends_so_special_sessions_are_not_lost(tmp_path, monke
     """Budget Saturdays and Muhurat Sundays are real sessions."""
     from datetime import date as _date
     import pandas as pd
-    from src import nse_archive
+    from src.research_data.sources import nse as nse_archive
 
     monkeypatch.setattr(nse_archive, "BHAV_DIR", tmp_path)
     asked: list[_date] = []

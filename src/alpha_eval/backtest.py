@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from .. import config
+from ..research_data import repository
 from .guards import assert_scorable
 
 
@@ -126,8 +126,7 @@ def canonical_backtest(
 
     # Load adjusted daily bars if not supplied
     if bars is None:
-        bars = pd.read_parquet(
-            config.NORMALIZED_DIR / "daily_bars_adj.parquet",
+        bars = repository.daily_bars(
             columns=["symbol", "date", "open", "close"])
 
     # Rank daily and pick top K

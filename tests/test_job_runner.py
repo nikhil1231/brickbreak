@@ -132,6 +132,61 @@ class TestAgentAdapter:
         res = agent.run_agent("x", cwd=tmp_path, cli=str(p))
         assert not res.ok and res.returncode == 3 and "bad" in res.stderr
 
+    def test_codex_exec_flags_and_jsonl_are_normalized(self, tmp_path):
+        p = tmp_path / "fake_codex"
+        p.write_text(
+            "#!/bin/bash\n"
+            'echo "$@" > "$PWD/codex_argv.txt"\n'
+            "echo '{\"type\":\"thread.started\",\"thread_id\":\"codex-thread\"}'\n"
+            "echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"done by codex\"}}'\n"
+            "echo '{\"type\":\"turn.completed\",\"usage\":{\"output_tokens\":5}}'\n")
+        p.chmod(p.stat().st_mode | stat.S_IEXEC)
+
+        res = agent.run_agent(
+            "hello", cwd=tmp_path, cli=str(p), provider="codex",
+            model="gpt-test")
+
+        argv = (tmp_path / "codex_argv.txt").read_text()
+        assert "exec --json --ephemeral --ignore-user-config" in argv
+        assert "--sandbox workspace-write" in argv
+        assert 'approval_policy="never"' in argv
+        assert "--model gpt-test hello" in argv
+        assert res.ok and res.text == "done by codex"
+        assert res.session_id == "codex-thread" and res.num_turns == 1
+        assert res.cost_usd is None
+
+    def test_codex_nested_abort_reason_is_preserved(self, tmp_path):
+        p = tmp_path / "failed_codex"
+        p.write_text(
+            "#!/bin/bash\n"
+            "echo '{\"type\":\"turn.failed\",\"error\":{\"message\":\"rate limit reached\",\"code\":\"rate_limit\"}}'\n"
+            "exit 1\n")
+        p.chmod(p.stat().st_mode | stat.S_IEXEC)
+
+        res = agent.run_agent("hello", cwd=tmp_path, cli=str(p), provider="codex")
+
+        assert not res.ok
+        assert "rate limit reached" in res.stderr
+        assert "rate_limit" in res.stderr
+
+    def test_unknown_provider_is_rejected_before_a_subprocess(self, tmp_path):
+        with pytest.raises(agent.AgentError, match="unknown LLM provider"):
+            agent.run_agent("x", cwd=tmp_path, provider="other")
+
+    def test_provider_catalog_keeps_claude_default(self, monkeypatch):
+        monkeypatch.setattr(
+            agent, "available", lambda explicit=None, provider="claude": True)
+        monkeypatch.setattr(
+            agent, "find_cli", lambda explicit=None, provider="claude": f"/{provider}")
+        monkeypatch.setattr(
+            agent, "_codex_models", lambda exe: (("", "CLI default"),
+                                                  ("gpt-test", "GPT Test")))
+        catalog = agent.provider_catalog()
+        assert catalog["default_provider"] == "claude"
+        assert [p["id"] for p in catalog["providers"]] == ["claude", "codex"]
+        codex = next(p for p in catalog["providers"] if p["id"] == "codex")
+        assert codex["models"][1]["id"] == "gpt-test"
+
 
 # ---------------------------------------------------------------------------
 # the worker contract
@@ -188,6 +243,25 @@ class TestSignalContract:
 # ---------------------------------------------------------------------------
 
 class TestJobOrchestration:
+
+    @pytest.fixture(autouse=True)
+    def _isolated_jobs_dir(self, tmp_path, monkeypatch):
+        """Keep test runs out of the real job store.
+
+        These tests dispatch real jobs, so without this every run left records
+        behind — and now that the Explore tab lists them, that noise is
+        visible rather than merely untidy.
+        """
+        monkeypatch.setattr(job, "JOBS_DIR", tmp_path / "jobs")
+
+    def test_job_record_round_trips_provider_and_model(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(job, "JOBS_DIR", tmp_path)
+        original = job.Job(id="J_PROVIDER", spec={}, provider="codex",
+                           model="gpt-test")
+        original.save()
+        loaded = job.get_job("J_PROVIDER")
+        assert loaded is not None
+        assert loaded.provider == "codex" and loaded.model == "gpt-test"
 
     def test_a_blocked_spec_never_creates_a_worktree(self, tmp_path):
         """A job that cannot legally run should cost nothing."""
@@ -374,16 +448,31 @@ class TestInterpretation:
         return ExperimentSpec(hypothesis_id="H024", question="q",
                               signal_name="s", primary_horizon=10)
 
+    @staticmethod
+    def _no_worker(prompt):
+        """Force the deterministic writer.
+
+        `write_interpretation` hands its paragraph to the CLI for a fluency
+        pass whenever one is installed, so these assertions on exact wording
+        passed or failed according to whether the machine running them
+        happened to be logged in. What is under test here is the composition,
+        not the rewrite.
+        """
+        return agent.AgentResult(ok=False, text="", returncode=1,
+                                 duration_s=0.0)
+
     def test_it_reads_as_prose_and_carries_the_numbers(self):
         txt = interpret.write_interpretation(self.REPORT, self._spec(),
-                                             "SIGNAL_BUT_BETA")
+                                             "SIGNAL_BUT_BETA",
+                                             agent_fn=self._no_worker)
         assert "0.0210" in txt and "2.60" in txt
         assert "SIGNAL_BUT_BETA" in txt
         assert txt.count(".") >= 4
 
     def test_a_factor_result_is_stated_plainly(self):
         txt = interpret.write_interpretation(self.REPORT, self._spec(),
-                                             "SIGNAL_BUT_BETA")
+                                             "SIGNAL_BUT_BETA",
+                                             agent_fn=self._no_worker)
         assert "factor exposure" in txt
 
     def test_a_dead_signal_is_not_dressed_up(self):
@@ -391,7 +480,8 @@ class TestInterpretation:
             "primary_ic": {"mean_ic": 0.001, "t_stat": 0.2, "n_sessions": 700,
                            "horizon": 10, "effective_n": 70},
             "ic_decay": [{"horizon": 10, "t_stat": 0.2}]}}
-        txt = interpret.write_interpretation(dead, self._spec(), "NO_SIGNAL")
+        txt = interpret.write_interpretation(dead, self._spec(), "NO_SIGNAL",
+                                             agent_fn=self._no_worker)
         assert "no statistically distinguishable" in txt
         assert "No horizon clears" in txt
 
@@ -400,7 +490,8 @@ class TestInterpretation:
             "primary_ic": {"mean_ic": 0.05, "t_stat": 2.2, "n_sessions": 100,
                            "horizon": 20, "effective_n": 5},
             "ic_decay": []}}
-        txt = interpret.write_interpretation(small, self._spec(), "SUCCESS")
+        txt = interpret.write_interpretation(small, self._spec(), "SUCCESS",
+                                             agent_fn=self._no_worker)
         assert "non-overlapping blocks" in txt
 
 

@@ -29,7 +29,7 @@ from typing import Any
 
 import pandas as pd
 
-from .. import config
+from ..core import config
 from ..persistence import Evidence, store
 from ..research_data import frame, splits
 
