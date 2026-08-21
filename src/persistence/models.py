@@ -186,6 +186,30 @@ class Evidence:
         return cls(**data)
 
 
+@dataclass
+class PreFlightResult:
+    """Result of label-free pre-flight screening before dispatch (PLAN.md §6)."""
+    id: str
+    hypothesis_id: str
+    signal_name: str
+    partition: str
+    passed: bool
+    failure_class: str | None = None
+    reasons: list[str] = field(default_factory=list)
+    mechanics: dict[str, Any] = field(default_factory=dict)
+    factor_correlations: dict[str, float] = field(default_factory=dict)
+    signal_correlations: dict[str, float] = field(default_factory=dict)
+    created_date: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> PreFlightResult:
+        return cls(**data)
+
+
+
 # ---------------------------------------------------------------------------
 # Idea Graph
 # ---------------------------------------------------------------------------

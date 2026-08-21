@@ -32,7 +32,7 @@ from typing import Any, Callable
 import pandas as pd
 
 from ..core import config
-from . import agent, worktree
+from . import agent, preflight, worktree
 from .spec import ExperimentSpec, SpecValidationError, validate_spec
 
 JOBS_DIR = config.METADATA_DIR / "research_store" / "jobs"
@@ -50,6 +50,7 @@ PHASES = (
     "loading data",
     "preparing worktree",
     "writing the signal",   # the worker's turn — the long one
+    "pre-flight check",     # label-free screening
     "evaluating",           # standard report, neutralisation, backtest
     "done",
 )
@@ -479,12 +480,58 @@ def run_job(
             jb.error = res.stderr or res.text[:500] or "agent reported failure"
             return jb
 
-        jb.enter("evaluating")
+        model_used = model or "cli-default"
+        jb.enter("pre-flight check")
         compute = load_signal_fn(wt.signal_path)
+
+        # Pre-flight check on label-free dataframe
+        df_sig = df.copy()
+        sig_out = compute(df_sig)
+        if isinstance(sig_out, pd.Series):
+            df_sig[spec.signal_name] = sig_out
+        elif isinstance(sig_out, pd.DataFrame):
+            df_sig = sig_out
+
+        pf_res = preflight.run_preflight(df_sig, spec.signal_name, spec=spec, save_results=True)
+        if not pf_res.passed:
+            jb.state = "failed"
+            jb.phase = "pre-flight rejected"
+            jb.error = f"Pre-flight rejection [{pf_res.failure_class}]: " + "; ".join(pf_res.reasons)
+            result = {
+                "job_id": job_id,
+                "hypothesis_id": spec.hypothesis_id,
+                "signal_name": spec.signal_name,
+                "partition": spec.partition,
+                "role": spec.role,
+                "provider": provider,
+                "model": model_used,
+                "failure_class": pf_res.failure_class,
+                "interpretation": f"Pre-flight rejected: {'; '.join(pf_res.reasons)}",
+                "evaluation": {"preflight": pf_res.to_dict(), "mechanics": pf_res.mechanics},
+                "manifest": {"hash": "preflight_rejected", "preflight_id": pf_res.id},
+                "agent": {
+                    "provider": provider,
+                    "model": model_used,
+                    "turns": res.num_turns,
+                    "cost_usd": res.cost_usd,
+                    "session_id": res.session_id,
+                    "summary": res.text[:2000],
+                    "signal_source": wt.signal_path.read_text(),
+                },
+                "commit": wt.commit,
+            }
+            validate_result(result)
+            wt.result_path.write_text(json.dumps(result, indent=2, default=str) + "\n")
+            JOBS_DIR.mkdir(parents=True, exist_ok=True)
+            stored = JOBS_DIR / f"{job_id}_result.json"
+            stored.write_text(json.dumps(result, indent=2, default=str) + "\n")
+            jb.result_path = str(stored)
+            return jb
+
+        jb.enter("evaluating")
 
         # The harness runs from the canonical checkout, in this process. The
         # worker's copy of it is irrelevant by construction.
-        model_used = model or "cli-default"
         summary = run_exploration(
             spec, compute, save_results=True, provider_used=provider,
             model_used=model_used)

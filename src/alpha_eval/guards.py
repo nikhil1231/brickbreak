@@ -23,6 +23,10 @@ class ScoringGuardError(RuntimeError):
     pass
 
 
+class LeakageGuardError(RuntimeError):
+    pass
+
+
 def assert_scorable(signal_col: str, allow_unscorable: bool = False) -> None:
     """Refuse to score a feature the catalogue marks stratification-only.
 
@@ -51,3 +55,20 @@ def assert_scorable(signal_col: str, allow_unscorable: bool = False) -> None:
         logger.warning("SCORING GUARD OVERRIDDEN — %s", msg)
         return
     raise ScoringGuardError(msg)
+
+
+def assert_no_forward_labels(df, context: str = "operation") -> None:
+    """Ensure no forward-looking label columns are present.
+
+    Pre-flight and generation stages must operate without seeing outcomes.
+    """
+    import pandas as pd
+    if not isinstance(df, pd.DataFrame):
+        return
+    bad = [c for c in df.columns if str(c).startswith(("fwd_ret_", "excess_ret_"))]
+    if bad:
+        raise LeakageGuardError(
+            f"Forward label columns {bad!r} detected in {context}. "
+            f"Pre-flight and generation stages must be label-free (PLAN.md §6)."
+        )
+

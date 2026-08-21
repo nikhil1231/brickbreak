@@ -219,6 +219,13 @@ def main(argv=None) -> int:
     bd.add_argument("--limit", type=int, default=25)
     bd.set_defaults(fn=iface_cli.cmd_burden)
 
+    pf_p = sub.add_parser("preflight", help="run label-free pre-flight screening on a signal")
+    pf_p.add_argument("--signal", required=True, help="signal column name")
+    pf_p.add_argument("--hypothesis", default=None, help="hypothesis ID")
+    pf_p.add_argument("--partition", default="train", help="partition (default: train)")
+    pf_p.add_argument("--json", action="store_true")
+    pf_p.set_defaults(fn=iface_cli.cmd_preflight)
+
     orp = sub.add_parser("opening-report", help="quality report for fetched opening data")
     orp.set_defaults(fn=opening_window.cmd_opening_report)
 

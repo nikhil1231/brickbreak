@@ -321,3 +321,54 @@ def cmd_burden(args) -> int:
         print(f"  {mark}  {r['hypothesis_id']:<8} {str(r['signal']):<24} "
               f"t={r['t_stat']}")
     return 0
+
+
+def cmd_preflight(args: argparse.Namespace) -> int:
+    """Run label-free pre-flight screening on a signal."""
+    from ...runner import preflight, spec as spec_mod
+    from ...runner.burden import count_tests
+
+    partition = getattr(args, "partition", "train")
+    signal_name = args.signal
+    hypo_id = getattr(args, "hypothesis", None) or "H_PREFLIGHT"
+
+    prior_count = count_tests(partition)
+
+    # Load panel strictly WITHOUT forward labels
+    df = frame.load_daily_panel(partition=partition, asof_open=True, include_context=True)
+
+    exp_spec = spec_mod.ExperimentSpec(
+        hypothesis_id=hypo_id,
+        question=f"Pre-flight check for {signal_name}",
+        signal_name=signal_name,
+        partition=partition,
+    )
+
+    res = preflight.run_preflight(df, signal_name, spec=exp_spec, save_results=True)
+
+    if getattr(args, "json", False):
+        print(json.dumps(res.to_dict(), indent=2))
+        return 0 if res.passed else 1
+
+    verdict_str = "PASSED" if res.passed else f"REJECTED ({res.failure_class})"
+    print(f"\nPre-flight Screening: {signal_name} on {partition} -> {verdict_str}\n")
+    if res.mechanics:
+        print("Signal Mechanics:")
+        print(f"  Turnover:           {res.mechanics.get('mean_turnover', 'N/A')}")
+        print(f"  1d Autocorrelation: {res.mechanics.get('autocorrelation_1d', 'N/A')}")
+        print(f"  5d Autocorrelation: {res.mechanics.get('autocorrelation_5d', 'N/A')}")
+        print(f"  Mean Coverage:      {res.mechanics.get('mean_coverage_names', 'N/A')} names")
+    if res.factor_correlations:
+        print("\nFactor Correlations:")
+        for factor, corr in res.factor_correlations.items():
+            print(f"  {factor:<12}: {corr:+.3f}")
+    if res.reasons:
+        print("\nRejection Reasons:")
+        for r in res.reasons:
+            print(f"  - {r}")
+
+    after_count = count_tests(partition)
+    print(f"\nMultiplicity Count Check: {prior_count} prior -> {after_count} after (budget spent: {after_count - prior_count})")
+    print()
+    return 0 if res.passed else 1
+

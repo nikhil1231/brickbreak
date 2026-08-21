@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Iterator
 
 from ..core import config
-from .models import (Evidence, Exploration, Hypothesis, IdeaGraph, Signal,
-                     Suggestion)
+from .models import (Evidence, Exploration, Hypothesis, IdeaGraph,
+                     PreFlightResult, Signal, Suggestion)
 
 
 STORE_DIR = config.METADATA_DIR / "research_store"
@@ -21,11 +21,12 @@ EXPLORATIONS_DIR = STORE_DIR / "explorations"
 SIGNALS_DIR = STORE_DIR / "signals"
 EVIDENCE_DIR = STORE_DIR / "evidence"
 SUGGESTIONS_DIR = STORE_DIR / "suggestions"
+PREFLIGHTS_DIR = STORE_DIR / "preflights"
 
 
 def _ensure_dirs() -> None:
     for d in (HYPOTHESES_DIR, EXPLORATIONS_DIR, SIGNALS_DIR, EVIDENCE_DIR,
-              SUGGESTIONS_DIR):
+              SUGGESTIONS_DIR, PREFLIGHTS_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 
@@ -258,3 +259,40 @@ def next_suggestion_id() -> str:
         if m:
             highest = max(highest, int(m.group(1)))
     return f"S{highest + 1:03d}"
+
+
+# ---------------------------------------------------------------------------
+# Pre-flight Results (PLAN.md §6)
+# ---------------------------------------------------------------------------
+
+def save_preflight(res: PreFlightResult) -> Path:
+    _ensure_dirs()
+    p = PREFLIGHTS_DIR / f"{res.id}.json"
+    p.write_text(json.dumps(res.to_dict(), indent=2) + "\n")
+    return p
+
+
+def get_preflight(id: str) -> PreFlightResult | None:
+    p = PREFLIGHTS_DIR / f"{id}.json"
+    if not p.exists():
+        return None
+    return PreFlightResult.from_dict(json.loads(p.read_text()))
+
+
+def list_preflights(
+    hypothesis_id: str | None = None,
+    signal_name: str | None = None,
+    passed: bool | None = None,
+) -> list[PreFlightResult]:
+    _ensure_dirs()
+    out = []
+    for p in sorted(PREFLIGHTS_DIR.glob("*.json")):
+        res = PreFlightResult.from_dict(json.loads(p.read_text()))
+        if hypothesis_id and res.hypothesis_id != hypothesis_id:
+            continue
+        if signal_name and res.signal_name != signal_name:
+            continue
+        if passed is not None and res.passed != passed:
+            continue
+        out.append(res)
+    return out
