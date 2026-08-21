@@ -62,6 +62,7 @@ class FeatureSpec:
     # If True, the feature may only be used for stratification, never scoring.
     # Automatically set for non-PIT features.
     stratification_only: bool = False
+    data_floor: str = "2000-01-01"
 
     def __post_init__(self) -> None:
         if self.available_as_of not in AVAILABILITY_ORDER:
@@ -71,6 +72,7 @@ class FeatureSpec:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +196,36 @@ class Catalogue:
         return [s for s in self._specs.values()
                 if s.available_as_of == "future"]
 
+    def feature_floor(self, name: str) -> str:
+        """Transitive data floor for a feature (PLAN.md §8).
+
+        Walks inputs to find the latest earliest-date required. A feature with
+        a delivery-based input inherits the 2020-01-01 floor, while price/momentum
+        features go back to 2000-01-01.
+        """
+        visited: set[str] = set()
+        floors: list[str] = []
+
+        def _walk(n: str) -> None:
+            if n in visited:
+                return
+            visited.add(n)
+            if n in self._specs:
+                spec = self._specs[n]
+                floors.append(getattr(spec, "data_floor", "2000-01-01"))
+                for inp in spec.inputs:
+                    _walk(inp)
+
+        _walk(name)
+        return max(floors) if floors else "2000-01-01"
+
+    def effective_floor(self, names: list[str]) -> str:
+        """Effective data floor for a collection of features."""
+        if not names:
+            return "2000-01-01"
+        return max(self.feature_floor(n) for n in names)
+
+
     # ------------------------------------------------------------------
     # serialisation
     # ------------------------------------------------------------------
@@ -285,8 +317,10 @@ def _daily_bar_features() -> list[FeatureSpec]:
           known_caveats="Lookahead if unlagged"),
         F("deliv_pct", "Delivery percentage of volume traded",
           "close", 0, False, True, owner="daily_bars",
-          known_caveats="Lookahead if unlagged"),
+          data_floor="2020-01-01",
+          known_caveats="Lookahead if unlagged; unified bhavcopy starts 2020"),
         F("prev_close", "Previous session close (adjusted), on D's row",
+
           "open", 0, True, True, owner="daily_bars"),
         F("prev_close_raw", "Previous session close (raw), on D's row",
           "open", 0, False, True, owner="daily_bars"),

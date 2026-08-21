@@ -42,6 +42,7 @@ class LedgerEntry:
     partition: str                  # train, validation, test, forward
     quarters: list[str]             # e.g. ["2021Q1", "2021Q2"]
     manifest_hash: str = ""
+    dataset_version: str = "v1"
     timestamp: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     def to_dict(self) -> dict:
@@ -50,6 +51,7 @@ class LedgerEntry:
     @classmethod
     def from_dict(cls, data: dict) -> LedgerEntry:
         return cls(**data)
+
 
 
 class SampleBudgetLedger:
@@ -128,6 +130,7 @@ class SampleBudgetLedger:
         partition: str,
         quarters: list[str],
         manifest_hash: str = "",
+        dataset_version: str = "v1",
         save_after: bool = True,
     ) -> LedgerEntry:
         """Records data consumption into the ledger."""
@@ -138,6 +141,7 @@ class SampleBudgetLedger:
             partition=partition,
             quarters=quarters,
             manifest_hash=manifest_hash,
+            dataset_version=dataset_version,
         )
         self._entries.append(entry)
         if save_after:
@@ -150,12 +154,13 @@ class SampleBudgetLedger:
         family: str,
         role: str,
         quarters: list[str],
+        dataset_version: str = "v1",
     ) -> tuple[bool, list[str]]:
         """Verifies if the hypothesis has permission to read the requested quarters in `role`.
 
         If `role == 'confirmatory'`, checks if this hypothesis, its family, or any
         ancestor in the idea graph has already read any of these quarters in a
-        confirmatory role.
+        confirmatory role on this `dataset_version`.
 
         Returns (is_permitted, blocked_quarters).
         """
@@ -178,7 +183,7 @@ class SampleBudgetLedger:
         for q in quarters:
             # Check if q was previously read in confirmatory role by any related hypothesis or family
             for entry in self._entries:
-                if entry.role == "confirmatory" and q in entry.quarters:
+                if entry.dataset_version == dataset_version and entry.role == "confirmatory" and q in entry.quarters:
                     if entry.family in family_names or entry.hypothesis_id in related_ids:
                         blocked.append(q)
                         break
@@ -193,13 +198,15 @@ class SampleBudgetLedger:
         family: str,
         role: str,
         quarters: list[str],
+        dataset_version: str = "v1",
     ) -> None:
         """Raises BudgetExhaustedError if access is blocked."""
-        ok, blocked = self.check_permission(hypothesis_id, family, role, quarters)
+        ok, blocked = self.check_permission(hypothesis_id, family, role, quarters, dataset_version=dataset_version)
         if not ok:
             raise BudgetExhaustedError(
                 f"Hypothesis {hypothesis_id} (family: {family}) is BLOCKED from "
-                f"confirmatory read on spent quarters: {blocked}. "
+                f"confirmatory read on {dataset_version} spent quarters: {blocked}. "
                 f"These quarters were previously consumed in a confirmatory role. "
                 f"The forward lane is the only clean confirmatory partition."
             )
+

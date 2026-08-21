@@ -13,10 +13,11 @@ Exports:
 from __future__ import annotations
 
 from . import ledger, manifest, migration, models, store
-from .ledger import BudgetExhaustedError, SampleBudgetLedger
+from .ledger import BudgetExhaustedError, LedgerEntry, SampleBudgetLedger
 from .manifest import build_manifest, load_manifest, save_manifest, verify_manifest
 from .models import (BatchManifest, Edge, Evidence, Exploration, Hypothesis,
                      IdeaGraph, PreFlightResult, QueueProposal, Signal)
+
 from .store import (
     void_exploration,
     add_evidence,
@@ -53,9 +54,11 @@ __all__ = [
     "Exploration",
     "Hypothesis",
     "IdeaGraph",
+    "LedgerEntry",
     "PreFlightResult",
     "QueueProposal",
     "SampleBudgetLedger",
+
     "Signal",
     "add_evidence",
     "build_manifest",

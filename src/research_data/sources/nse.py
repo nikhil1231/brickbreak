@@ -83,9 +83,26 @@ COLUMN_MAP = {
     "NO_OF_TRADES": "trades", "DELIV_QTY": "deliv_qty", "DELIV_PER": "deliv_pct",
 }
 
+LEGACY_BHAV_URL = "https://nsearchives.nseindia.com/content/historical/EQUITIES/{yyyy}/{mmm}/cm{dd}{mmm}{yyyy}bhav.csv.zip"
+
+LEGACY_COLUMN_MAP = {
+    "SYMBOL": "symbol", "SERIES": "series", "TIMESTAMP": "date",
+    "OPEN": "open", "HIGH": "high", "LOW": "low", "CLOSE": "close",
+    "LAST": "last", "PREVCLOSE": "prev_close", "TOTTRDQTY": "volume",
+    "TOTTRDVAL": "turnover", "TOTALTRADES": "trades",
+}
+
 
 def bhav_url(d: date) -> str:
     return BHAV_URL.format(ddmmyyyy=d.strftime("%d%m%Y"))
+
+
+def legacy_bhav_url(d: date) -> str:
+    return LEGACY_BHAV_URL.format(
+        dd=d.strftime("%d"),
+        mmm=d.strftime("%b").upper(),
+        yyyy=d.strftime("%Y"),
+    )
 
 
 def _day_path(d: date) -> Path:
@@ -95,9 +112,54 @@ def _day_path(d: date) -> Path:
 def _read_table(content: bytes) -> pd.DataFrame:
     """CSV normally; XLSX when NSE serves a workbook at the .csv URL (2022-08-08)."""
     if content[:2] == b"PK":
+        # Check if it is a zip containing a CSV (legacy format) or XLSX
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as z:
+                csv_names = [n for n in z.namelist() if n.endswith(".csv")]
+                if csv_names:
+                    return pd.read_csv(z.open(csv_names[0]), skipinitialspace=True)
+        except Exception:
+            pass
         return pd.read_excel(io.BytesIO(content))
     return pd.read_csv(io.StringIO(content.decode("utf-8", "replace")),
                        skipinitialspace=True)
+
+
+def parse_legacy_bhavcopy(text: str | bytes, d: date | None = None) -> pd.DataFrame:
+    """Parse legacy pre-2020 bhavcopy (cmDDMMMYYYYbhav.csv) without delivery columns."""
+    content = text if isinstance(text, bytes) else text.encode("utf-8", "replace")
+    df = _read_table(content)
+    df.columns = [str(c).strip().upper() for c in df.columns]
+    df = df.rename(columns=LEGACY_COLUMN_MAP)
+    keep = [c for c in LEGACY_COLUMN_MAP.values() if c in df.columns]
+    df = df[keep]
+    for c in df.select_dtypes(include="object").columns:
+        df[c] = df[c].astype(str).str.strip()
+    df = df[df["series"].isin(["EQ", "BE"])].copy()
+    num = ["open", "high", "low", "close", "prev_close", "last", "volume", "turnover", "trades"]
+    for c in num:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+    if "turnover" in df.columns:
+        df["turnover_lacs"] = df["turnover"] / 100000.0
+
+    parsed = pd.to_datetime(df["date"], format="%d-%b-%Y", errors="coerce")
+    miss = parsed.isna()
+    if miss.any():
+        parsed[miss] = pd.to_datetime(df.loc[miss, "date"], errors="coerce")
+    df["date"] = parsed.dt.normalize()
+    df = df.dropna(subset=["date"])
+
+    # Legacy bhavcopy lacks delivery data
+    df["deliv_qty"] = np.nan
+    df["deliv_pct"] = np.nan
+
+    order = ["date", "symbol", "series", "open", "high", "low", "close",
+             "prev_close", "last", "volume", "turnover_lacs", "trades",
+             "deliv_qty", "deliv_pct"]
+    present = [c for c in order if c in df.columns]
+    return df[present].sort_values(["symbol"]).reset_index(drop=True)
+
 
 
 def parse_bhavcopy(text: str | bytes, d: date | None = None) -> pd.DataFrame:

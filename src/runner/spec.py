@@ -153,4 +153,6 @@ def validate_spec(
         family=family,
         role=spec.role,
         quarters=target_quarters,
+        dataset_version=spec.dataset_version,
     )
+

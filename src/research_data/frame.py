@@ -139,11 +139,17 @@ def load_daily_panel(
         if df.empty:
             logger.warning(f"partition {partition!r} returned 0 rows")
 
-    # Select columns.
+    # Select columns and enforce feature floors from catalogue (PLAN.md §8).
     if columns:
+        eff_floor = catalogue.effective_floor(columns)
+        if eff_floor > "2000-01-01" and "date" in df.columns:
+            floor_dt = pd.to_datetime(eff_floor)
+            df = df[df["date"] >= floor_dt].copy()
+
         keep = ["symbol", "date", "partition"]
         keep += [c for c in columns if c not in keep and c in df.columns]
         df = df[keep]
+
 
     n = len(df)
     n_sym = df["symbol"].nunique() if "symbol" in df else 0
