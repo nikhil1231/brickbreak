@@ -90,28 +90,41 @@ def _ann(**kw) -> dict:
     return base
 
 
-def test_a_date_without_a_time_is_flagged():
-    """2005-era announcements carry a date only; 100% of them, measured.
+def test_a_zero_time_is_not_a_known_time():
+    """NSE ships a literal zero, not an absent field, for its early era.
 
-    Parsing "03-Jun-2005" to 00:00:00 and treating that as the disclosure
-    moment gives a backtest the whole trading day for free. The flag is what
-    lets `pipelines/events` refuse to do that, and it has to be set here
-    because once the value is a midnight timestamp the distinction is gone.
+    Every one of the 1,578 announcements in June 2005 reads
+    "30-Jun-2005 00:00:00" with `exchdisstime` of "-". So "does the source
+    string contain a colon" is NOT the test — it passes for all of them and
+    marks the whole pre-2008 archive as disseminated at midnight, i.e.
+    tradable at that morning's open. That is a full trading day of lookahead
+    across several years, and it is the bug this assertion pins.
     """
-    df = announcements.parse([_ann(an_dt="03-Jun-2005", exchdisstime="03-Jun-2005")])
-    assert df.loc[0, "time_known"] is False or df.loc[0, "time_known"] == False
-    assert df.loc[0, "broadcast_at"] == pd.Timestamp("2005-06-03")
+    df = announcements.parse([_ann(an_dt="30-Jun-2005 00:00:00", exchdisstime="-")])
+    assert bool(df.loc[0, "time_known"]) is False
+    assert df.loc[0, "broadcast_at"] == pd.Timestamp("2005-06-30")
 
 
-def test_a_genuine_midnight_filing_is_not_flagged():
+def test_a_genuine_midnight_filing_is_still_known():
     """NSE's overnight batch really does disseminate at 00:00:04.
 
-    So "midnight" cannot be the test for a missing time — the presence of a
-    time component in the source string is.
+    So the rule cannot simply be "midnight means unknown" either: a non-zero
+    time-of-day is a real one, however close to midnight it sits.
     """
     df = announcements.parse([_ann(an_dt="19-Aug-2026 00:00:04")])
     assert bool(df.loc[0, "time_known"]) is True
     assert df.loc[0, "broadcast_at"] == pd.Timestamp("2026-08-19 00:00:04")
+
+
+def test_a_dissemination_stamp_rescues_an_exact_midnight_broadcast():
+    """A real filing at exactly 00:00:00 still carries a dissemination time.
+
+    The early era is distinguished by having neither, not by the broadcast
+    clock alone.
+    """
+    df = announcements.parse([_ann(an_dt="19-Aug-2026 00:00:00",
+                                   exchdisstime="19-Aug-2026 00:01:12")])
+    assert bool(df.loc[0, "time_known"]) is True
 
 
 def test_both_disclosure_timestamps_are_kept():

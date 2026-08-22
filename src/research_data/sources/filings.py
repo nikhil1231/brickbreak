@@ -140,12 +140,12 @@ def parse_legacy(records: list[dict]) -> pd.DataFrame:
     # set of line items entirely. Carrying it lets an XBRL consumer branch.
     out["is_bank"] = df.get("bank", pd.Series(pd.NA, index=df.index)).astype(str).str.upper().eq("B")
 
-    raw_bcast = df.get("broadCastDate", pd.Series(pd.NA, index=df.index)).astype(str).str.strip()
-    out["broadcast_at"] = _timestamp(raw_bcast)
+    out["broadcast_at"] = _timestamp(df.get("broadCastDate", pd.Series(pd.NA, index=df.index)))
     out["filed_at"] = _timestamp(df.get("filingDate", pd.Series(pd.NA, index=df.index)))
     out["disseminated_at"] = _timestamp(df.get("exchdisstime", pd.Series(pd.NA, index=df.index)))
     out["dissemination_lag"] = _clean(df.get("difference", pd.Series(pd.NA, index=df.index)))
-    out["time_known"] = raw_bcast.str.contains(":", regex=False)
+    out["time_known"] = nse_api.time_is_known(out["broadcast_at"],
+                                              out["disseminated_at"])
 
     out["regime"] = "legacy"
     # The legacy feed does not label revisions; they are inferred downstream
@@ -196,12 +196,12 @@ def parse_integrated(records: list[dict]) -> pd.DataFrame:
     out["ind_as"] = pd.NA
     out["is_bank"] = df.get("xbrl", pd.Series("", index=df.index)).astype(str).str.contains("BANKING")
 
-    raw_bcast = df.get("broadcast_Date", pd.Series(pd.NA, index=df.index)).astype(str).str.strip()
-    out["broadcast_at"] = _timestamp(raw_bcast)
+    out["broadcast_at"] = _timestamp(df.get("broadcast_Date", pd.Series(pd.NA, index=df.index)))
     out["filed_at"] = _timestamp(df.get("creation_Date", pd.Series(pd.NA, index=df.index)))
     out["disseminated_at"] = _timestamp(df.get("creation_Date", pd.Series(pd.NA, index=df.index)))
     out["dissemination_lag"] = _clean(df.get("diff", pd.Series(pd.NA, index=df.index)))
-    out["time_known"] = raw_bcast.str.contains(":", regex=False)
+    out["time_known"] = nse_api.time_is_known(out["broadcast_at"],
+                                              out["disseminated_at"])
 
     out["regime"] = "integrated"
     out["revision"] = _clean(df.get("type_Sub", pd.Series(pd.NA, index=df.index))).str.lower()

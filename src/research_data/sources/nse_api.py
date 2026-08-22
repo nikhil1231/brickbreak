@@ -216,6 +216,34 @@ def decode_csv(body: bytes) -> pd.DataFrame:
     return df
 
 
+def time_is_known(broadcast: pd.Series, dissemination: pd.Series) -> pd.Series:
+    """Whether a disclosure timestamp carries a real time, not just a date.
+
+    NSE does not omit the time in its early era — it ships a literal zero:
+    every 2005 announcement reads "30-Jun-2005 00:00:00", and every one of the
+    1,578 in that month has time-of-day exactly 00:00:00. So "does the string
+    contain a colon" is not the test, which is the mistake this function
+    exists to stop being made again: it marks the whole pre-2008 archive as
+    disseminated at midnight, i.e. tradable at that morning's open, which is a
+    full trading day of lookahead across several years.
+
+    A time is taken as real when either the broadcast has a non-zero
+    time-of-day, or the exchange recorded a dissemination timestamp at all —
+    that column is "-" throughout the early era and populated throughout the
+    modern one. Both clauses are needed: NSE's overnight batch genuinely
+    disseminates at 00:00:04 (non-zero, first clause), and a genuine filing at
+    exactly midnight would still carry a dissemination stamp (second clause).
+    A modern row with neither falls back to "not known", which is conservative
+    in the right direction.
+    """
+    broadcast = pd.to_datetime(broadcast, errors="coerce")
+    dissemination = pd.to_datetime(dissemination, errors="coerce")
+    has_clock = broadcast.notna() & (broadcast != broadcast.dt.normalize())
+    has_dissemination = dissemination.notna() & (
+        dissemination != dissemination.dt.normalize())
+    return (has_clock | has_dissemination).fillna(False)
+
+
 def raw_dir(name: str) -> Path:
     d = config.RAW_DIR / name
     d.mkdir(parents=True, exist_ok=True)
@@ -223,4 +251,4 @@ def raw_dir(name: str) -> Path:
 
 
 __all__ = ["BASE", "Client", "NSEBlocked", "PRIME_PAGES", "decode_csv",
-           "decode_json", "raw_dir"]
+           "decode_json", "raw_dir", "time_is_known"]

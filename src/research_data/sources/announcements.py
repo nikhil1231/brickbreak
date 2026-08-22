@@ -111,12 +111,10 @@ def parse(records: list[dict]) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = pd.NA
 
-    raw_broadcast = df["broadcast_at"].astype(str).str.strip()
     df["broadcast_at"] = _timestamp(df["broadcast_at"])
     df["disseminated_at"] = _timestamp(df["disseminated_at"])
-    # A source string with no time component at all is the pre-2008 era. A
-    # parsed midnight whose source *did* carry "00:00:04" is a real filing.
-    df["time_known"] = raw_broadcast.str.contains(":", regex=False)
+    df["time_known"] = nse_api.time_is_known(df["broadcast_at"],
+                                             df["disseminated_at"])
 
     df["symbol"] = df["symbol"].astype(str).str.strip().str.upper()
     for c in ("company", "isin", "industry", "subject", "details",
