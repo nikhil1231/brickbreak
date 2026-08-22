@@ -532,6 +532,6 @@ but nothing new should be built in that shape.
 - Long pulls run on the server (`user@server`) under tmux via
   `scripts/run_pull.sh`; resumable from the manifest. Watch the **log timestamp**,
   not the process list — a hung pull never exits and the supervisor cannot see it.
-- `.venv/bin/python -m pytest tests/ -q` — keep green (569 tests). Tests marked
+- `.venv/bin/python -m pytest tests/ -q` — keep green (571 tests). Tests marked
   `network` hit live NSE and are deselected by default; run with `-m network`.
   Leakage tests are part of the suite, not optional extras.

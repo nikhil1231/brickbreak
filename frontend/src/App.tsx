@@ -4,6 +4,7 @@ import { Header, TabType } from './components/common/Header';
 import { ScreenerView } from './components/screener/ScreenerView';
 import { ExploreConsole } from './components/alpha/ExploreConsole';
 import { HypothesesLedger } from './components/alpha/HypothesesLedger';
+import { ReplaysView } from './components/alpha/ReplaysView';
 import { IdeaGraphView } from './components/alpha/IdeaGraphView';
 import { SignalCompare } from './components/alpha/SignalCompare';
 import { BudgetLedgerView } from './components/alpha/BudgetLedgerView';
@@ -28,6 +29,7 @@ export const App: React.FC = () => {
       <AppShell.Main>
         <Box style={{ minHeight: 'calc(100vh - 56px)' }}>
           {activeTab === 'explore' && <ExploreConsole />}
+          {activeTab === 'replays' && <ReplaysView />}
           {activeTab === 'hypotheses' && <HypothesesLedger />}
           {activeTab === 'graph' && <IdeaGraphView />}
           {activeTab === 'compare' && <SignalCompare />}

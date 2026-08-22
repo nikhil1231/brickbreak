@@ -297,3 +297,49 @@ class TestInterfaceAPI:
         assert req.status == 200
         data = json.loads(req.read().decode("utf-8"))
         assert "entries" in data
+
+
+# ---------------------------------------------------------------------------
+# the wire format
+# ---------------------------------------------------------------------------
+
+def test_the_backend_never_emits_bare_nan():
+    """Python's json.dumps writes `NaN`, which is not JSON.
+
+    `JSON.parse` throws on it, so the whole view fails to load rather than
+    showing a blank cell — and a replay whose selector took nothing has NaN in
+    every headline field, which makes this the normal path rather than an edge
+    case. Caught by loading the page, not by a unit test, which is why one
+    exists now.
+    """
+    import json
+    import math
+
+    from src.interface.backend import _json_safe
+
+    payload = {
+        "headline": {"excess_lift_bps": float("nan"),
+                     "take_rate_pct": 0.0,
+                     "t": float("inf")},
+        "rows": [1.0, float("-inf"), {"nested": float("nan")}],
+        "text": "fine",
+    }
+    safe = _json_safe(payload)
+    # allow_nan=False is what a browser's parser effectively enforces.
+    encoded = json.dumps(safe, allow_nan=False)
+    back = json.loads(encoded)
+
+    assert back["headline"]["excess_lift_bps"] is None
+    assert back["headline"]["t"] is None
+    assert back["headline"]["take_rate_pct"] == 0.0, (
+        "a real zero must survive; only non-finite values become null")
+    assert back["rows"][1] is None
+    assert back["rows"][2]["nested"] is None
+    assert back["text"] == "fine"
+    assert "NaN" not in encoded and "Infinity" not in encoded
+
+
+def test_json_safe_leaves_ordinary_values_alone():
+    from src.interface.backend import _json_safe
+    payload = {"a": 1, "b": "x", "c": [1, 2, 3], "d": None, "e": True}
+    assert _json_safe(payload) == payload

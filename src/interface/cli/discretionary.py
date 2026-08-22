@@ -161,6 +161,15 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def _bps(v) -> str:
+    """A missing number is not a zero and must not print as one."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return "       —"
+    return "       —" if f != f else f"{f:+8.1f}"
+
+
 def _print_report(rep: dict) -> None:
     hl, v = rep["headline"], rep["verdict"]
     print(f"\n{'=' * 72}")
@@ -173,26 +182,26 @@ def _print_report(rep: dict) -> None:
 
     print(f"\nSELECTION")
     print(f"  take rate            {hl['take_rate_pct']}%  ({hl['n_taken']} taken)")
-    print(f"  taken, mean excess   {hl['taken_mean_excess_bps']:+.0f} bps  "
-          f"({hl['taken_net_of_costs_bps']:+.0f} after costs)")
+    print(f"  taken, mean excess  {_bps(hl['taken_mean_excess_bps'])} bps  "
+          f"({_bps(hl['taken_net_of_costs_bps']).strip()} after costs)")
 
     print(f"\nDID SELECTION HELP?   (per-session paired, HAC-corrected)")
     for label, key in (("vs the pool it was given", "excess_lift_bps"),
                        ("vs what it skipped", "take_vs_skip_bps")):
         t = hl[key.replace("_bps", "_t")]
-        val = hl[key]
-        print(f"  {label:<24} {val:+8.1f} bps   t={t}")
+        print(f"  {label:<24} {_bps(hl[key])} bps   t={t if t == t else '—'}")
     if hl.get("best_baseline"):
-        print(f"  vs {hl['best_baseline']:<21} {hl['lift_over_baseline_bps']:+8.1f} bps   "
-              f"t={hl['lift_over_baseline_t']}")
+        t = hl["lift_over_baseline_t"]
+        print(f"  vs {hl['best_baseline']:<21} {_bps(hl['lift_over_baseline_bps'])} bps   "
+              f"t={t if t == t else '—'}")
 
     print(f"\nARMS  (identical cases, matched take rate)")
     print(f"  {'arm':<18} {'take%':>7} {'mean excess':>13}")
     print(f"  {'ai':<18} {hl['take_rate_pct']:>7.1f} "
-          f"{hl['taken_mean_excess_bps']:>10.0f} bps")
+          f"{_bps(hl['taken_mean_excess_bps']):>10} bps")
     for name, b in rep["baselines"].items():
         m = b["taken"].get("mean")
-        m = f"{m * 100:>10.0f} bps" if m is not None and m == m else f"{'—':>14}"
+        m = f"{m * 100:>10.1f} bps" if m is not None and m == m else f"{'—':>14}"
         print(f"  {name:<18} {b['take_rate_pct']:>7.1f} {m}")
 
     cal = rep["calibration"]
@@ -219,9 +228,9 @@ def _print_report(rep: dict) -> None:
               f"measured {c['measured']} against a bar of {c['bar']}")
     print(f"\n  {v['sample_caveat']}")
     m = rep.get("multiplicity", {})
-    if m:
-        print(f"\n  multiplicity: {m.get('n_tests')} tests against this "
-              f"partition; bar |t| > {m.get('required_t')}")
+    if m and m.get("n_tests") is not None:
+        print(f"\n  multiplicity: {m['n_tests']} tests against this partition; "
+              f"bar |t| > {m.get('required_t')}")
     print()
 
 
@@ -336,6 +345,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     dc.add_argument("--tag", default=None, help="filter to one reasoning tag")
     dc.add_argument("--action", default=None, help="TAKE / SKIP / WATCH")
     dc.add_argument("--limit", type=int, default=20)
+    dc.add_argument("--json", action="store_true")
     dc.add_argument("--full", action="store_true",
                     help="show the full reasoning, not just the rationale")
     dc.set_defaults(fn=cmd_decisions)

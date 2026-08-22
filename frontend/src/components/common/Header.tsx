@@ -11,6 +11,7 @@ import {
 import {
   IconCompass,
   IconBook,
+  IconGavel,
   IconBinaryTree,
   IconGitCompare,
   IconDatabase,
@@ -19,7 +20,7 @@ import {
   IconFlame,
 } from '@tabler/icons-react';
 
-export type TabType = 'explore' | 'hypotheses' | 'graph' | 'compare' | 'ledger' | 'catalogue' | 'screener';
+export type TabType = 'explore' | 'replays' | 'hypotheses' | 'graph' | 'compare' | 'ledger' | 'catalogue' | 'screener';
 
 interface HeaderProps {
   activeTab: TabType;
@@ -36,6 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const tabs = [
     { id: 'explore', label: 'Explore', icon: IconCompass },
+    { id: 'replays', label: 'Replays', icon: IconGavel },
     { id: 'hypotheses', label: 'Hypotheses', icon: IconBook },
     { id: 'graph', label: 'Idea Graph', icon: IconBinaryTree },
     { id: 'compare', label: 'Signal Compare', icon: IconGitCompare },

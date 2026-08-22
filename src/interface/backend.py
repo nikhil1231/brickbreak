@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import http.server
 import json
+import math
 import socketserver
 import threading
 import urllib.parse
@@ -22,6 +23,7 @@ from ..core import config
 from ..persistence import migration, store
 from ..persistence.ledger import SampleBudgetLedger
 from ..persistence.models import Edge, Hypothesis, RELATION_TYPES
+from ..discretionary import replay as d_replay
 from ..research_data import catalogue
 from ..runner import agent, compare, job, planner, spec, suggest
 from . import screener_api
@@ -328,6 +330,28 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
         # Silence standard HTTP access logging to keep terminal clean
         pass
 
+    @staticmethod
+    def _replay_row(r) -> dict:
+        """Enough to render a row without opening every artefact."""
+        st = r.status()
+        row = {"id": r.id, "phases": st["phases"], "next": st["next"]}
+        try:
+            d = r.definition()
+            row.update({"idea": d.idea, "hypothesis_id": d.hypothesis_id,
+                        "generator": d.generator, "partition": d.partition,
+                        "sample_n": d.sample_n, "anonymised": d.anonymise,
+                        "primary_horizon": d.primary_horizon})
+        except Exception:
+            pass
+        if r.report_path.exists():
+            try:
+                rep = json.loads(r.report_path.read_text())
+                row["headline"] = rep.get("headline", {})
+                row["verdict"] = rep.get("verdict", {})
+            except Exception:
+                pass
+        return row
+
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
@@ -430,6 +454,61 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
             # the list under someone choosing between its entries.
             self._send_json(self._suggestion_payload())
             return
+
+        # --- the discretionary loop, read-only -------------------------
+        # Read-only on purpose. A replay spends the sample at its reveal
+        # phase, and a button that spends sample does not belong on a page
+        # somebody opens to look around. Dispatch stays on the CLI where the
+        # phase you are running is the thing you typed.
+        if path == "/api/replays":
+            self._send_json({"replays": [self._replay_row(r)
+                                         for r in d_replay.list_replays()[:50]]})
+            return
+
+        if path.startswith("/api/replays/"):
+            parts = [p for p in path.split("/") if p]
+            rid = parts[2]
+            try:
+                r = d_replay.get(rid)
+            except d_replay.ReplayError as exc:
+                self._send_json({"error": str(exc)}, status=404)
+                return
+            leaf = parts[3] if len(parts) > 3 else None
+            try:
+                if leaf == "cases":
+                    idx = int(query.get("index", ["0"])[0])
+                    cases = r.cases()
+                    if not 0 <= idx < len(cases):
+                        self._send_json({"error": "index out of range"}, status=404)
+                        return
+                    c = cases[idx]
+                    self._send_json({"n_cases": len(cases), "index": idx,
+                                     "case_id": c.case_id,
+                                     "case_hash": c.case_hash,
+                                     "anonymised": c.anonymised,
+                                     "rendered": c.render()})
+                    return
+                if leaf == "decisions":
+                    who = query.get("decider", ["ai"])[0]
+                    self._send_json({"decisions": [
+                        d.to_dict() for d in r.decisions() if d.decider == who]})
+                    return
+                if leaf == "report":
+                    if not r.report_path.exists():
+                        self._send_json({"error": "not evaluated yet"}, status=404)
+                        return
+                    self._send_json(json.loads(r.report_path.read_text()))
+                    return
+                out = self._replay_row(r)
+                out["definition"] = r.definition().to_dict()
+                if r.seal_path.exists():
+                    out["seal"] = json.loads(r.seal_path.read_text())
+                self._send_json(out)
+                return
+            except Exception as exc:
+                self._send_json({"error": f"{type(exc).__name__}: {exc}"},
+                                status=500)
+                return
 
         if path == "/api/catalogue":
             cat = catalogue.DEFAULT
@@ -779,12 +858,33 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
         }
 
     def _send_json(self, data: Any, status: int = 200) -> None:
-        body = json.dumps(data, indent=2, default=str).encode("utf-8")
+        # `allow_nan=False` plus a NaN-scrubbing pass, not one or the other.
+        # Python emits bare `NaN` by default, which is *not* JSON: the browser
+        # throws on parse and the whole view fails to load rather than showing
+        # a blank cell. A selector that took nothing legitimately has NaN
+        # everywhere, so this is the normal path, not an edge case.
+        body = json.dumps(_json_safe(data), indent=2, default=str,
+                          allow_nan=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+
+def _json_safe(value: Any) -> Any:
+    """Replace non-finite floats with null, recursively.
+
+    A missing number is not a zero. `null` is the honest wire representation
+    and the frontend already renders it as an em dash.
+    """
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
 
 
 def serve_backend(port: int = 8080, block: bool = True) -> tuple[socketserver.ThreadingTCPServer, threading.Thread | None]:

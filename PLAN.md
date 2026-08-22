@@ -129,11 +129,49 @@ API path that is minutes and single-digit dollars; on the subscription CLI it is
 serial and slow, which is why the CLI is for working on a prompt and the API is
 for running a replay.
 
-### 3.1 What 500 cases can and cannot detect
+### 3.1 The take rate is the real multiplier, and it is small
+
+Measured on the first live replay (`RPL_20260822_020607`, 8 cases, broad
+`liquid_universe` generator, Claude via the sealed CLI):
+
+> **take rate 0%.** Six SKIP, two WATCH, no TAKE. Zero failed calls.
+
+That is not a defect and the reasoning was not thin — each decision named
+specific unusual features, argued a real competing explanation (one cited a
+failed high-volume spike *earlier in the same case's own window*), gave a
+concrete invalidation level, and assessed asymmetry explicitly against the
+0.40% cost floor. It is the design working: a broad generator shows mostly
+ordinary situations, and the prompt says in as many words that skipping is free
+and that "nothing unusual" is the right answer most of the time.
+
+The consequence is arithmetic and it governs how a replay is sized:
+
+    cases needed  ≈  takes wanted  /  take rate
+
+At a take rate somewhere in 5–15%, a replay needs **300–600 cases to yield
+30–60 takes**, and 30 takes is the floor at which any breakdown by regime or
+sector means anything. A 50-case pilot cannot answer the mission's question; it
+can only estimate the take rate — which is a legitimate and cheap thing to spend
+50 cases on, and should be done before committing to a full replay against a
+generator nobody has run yet.
+
+Two corollaries worth stating before they are discovered the expensive way:
+
+- **A zero take rate is a valid outcome and the report says so** rather than
+  manufacturing a contrast — `INSUFFICIENT_SAMPLE`, and every lift reads "—"
+  rather than a number.
+- **The take rate is a property of the generator and the prompt jointly.**
+  Narrowing the generator raises it, which is a reason to reach for a narrower
+  generator that is *not* about making the numbers work. Change one at a time,
+  and remember that changing the prompt is a new test.
+
+### 3.2 What 500 cases can and cannot detect
 
 500 cases spread over a few hundred sessions at a ten-session horizon is
 **tens of independent blocks**, not hundreds. `evaluate` reports
-`independent_blocks` in the headline for exactly this reason.
+`independent_blocks` in the headline for exactly this reason — and note that
+§3.1 makes this worse than it looks, because only the *taken* cases carry the
+contrast.
 
 Measured here, on 60 coin-flip selectors against synthetic data with a realistic
 session factor:
