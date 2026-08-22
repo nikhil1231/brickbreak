@@ -394,3 +394,116 @@ def universe(
 
     return df
 
+
+
+# ---------------------------------------------------------------------------
+# corporate events — the guarded door onto the event tables
+# ---------------------------------------------------------------------------
+
+EVENT_PATHS = {
+    "deals": config.NORMALIZED_DIR / "deals.parquet",
+    "announcements": config.NORMALIZED_DIR / "announcements.parquet",
+    "filings": config.NORMALIZED_DIR / "financial_result_filings.parquet",
+}
+
+EVENT_BUILD_HINT = {
+    "deals": "python -m src.cli sync-deals && python -m src.cli build-events",
+    "announcements": ("python -m src.cli sync-announcements && "
+                      "python -m src.cli build-events"),
+    "filings": "python -m src.cli sync-filings && python -m src.cli build-events",
+}
+
+
+def load_events(
+    kind: str,
+    version: str = "v1",
+    partition: str | None = None,
+    asof: str | pd.Timestamp | None = None,
+    symbols: list[str] | None = None,
+    latest_revision_only: bool = False,
+    drop_purged: bool = True,
+) -> pd.DataFrame:
+    """Corporate events, partitioned, and never before they were knowable.
+
+    `kind` is "deals", "announcements" or "filings". The frame returned is
+    dated by ``first_tradable_session`` — the first session whose open follows
+    the event becoming public — and that column, not the deal date or the
+    period end, is what joins to the daily panel. See `pipelines/events.py`
+    for how availability is derived and why.
+
+    Parameters
+    ----------
+    asof : timestamp or None
+        If given, drop everything not yet available at that instant. This is
+        the "what did the market know on the morning of D?" filter, and it
+        compares against ``available_at``, so an announcement disseminated at
+        14:45 on D is excluded from an as-of of D 09:15.
+    latest_revision_only : bool
+        Filings only, and **off by default on purpose**. A restated result
+        supersedes an earlier one, and the earlier one is what the market
+        actually traded on at the time. Turning this on gives the modern view
+        of history — correct for describing a company, a lookahead for
+        scoring one.
+
+    Notes
+    -----
+    Partition labels come from the same split manifest the daily panel uses,
+    assigned on ``first_tradable_session``, so an event and the prices it
+    might explain never land on opposite sides of a purge boundary.
+    """
+    if kind not in EVENT_PATHS:
+        raise FrameError(f"unknown event kind {kind!r}; "
+                         f"choose from {sorted(EVENT_PATHS)}")
+    path = EVENT_PATHS[kind]
+    if not path.exists():
+        raise FrameError(f"{path.name} missing. Run:\n  {EVENT_BUILD_HINT[kind]}")
+
+    df = pd.read_parquet(path)
+    if df.empty:
+        return df
+
+    if symbols:
+        df = df[df["symbol"].isin({s.upper() for s in symbols})]
+
+    if asof is not None:
+        cutoff = pd.Timestamp(asof)
+        df = df[df["available_at"] <= cutoff]
+
+    if latest_revision_only:
+        if "is_latest" not in df.columns:
+            raise FrameError(
+                f"latest_revision_only is meaningless for {kind!r}: only "
+                f"filings carry revisions.")
+        logger.warning(
+            "load_events(latest_revision_only=True) returns restated figures "
+            "in place of the ones the market traded on. Correct for "
+            "describing a company as it is now; a lookahead for scoring one.")
+        df = df[df["is_latest"].astype(bool)]
+
+    # An event with no tradable session yet (published after the last session
+    # the tape holds) cannot be partitioned or joined, and silently keeping it
+    # would put undated rows into an experiment.
+    unresolved = int(df["first_tradable_session"].isna().sum())
+    if unresolved:
+        logger.info(f"load_events({kind!r}): dropping {unresolved:,} events "
+                    f"with no tradable session in the tape yet")
+        df = df[df["first_tradable_session"].notna()]
+
+    # Partition on the session the event is actionable in, never on its own
+    # date — that is the whole point of the column.
+    df = df.rename(columns={"first_tradable_session": "date"})
+    df = splits.assign(df, version=version, drop_purged=drop_purged)
+    df = df.rename(columns={"date": "first_tradable_session"})
+
+    if partition:
+        valid = splits.SETS + ("forward",)
+        if partition not in valid:
+            raise FrameError(f"unknown partition {partition!r}; "
+                             f"choose from {valid}")
+        df = df[df["partition"] == partition].copy()
+        if df.empty:
+            logger.warning(f"partition {partition!r} returned 0 rows")
+
+    logger.info(f"load_events: kind={kind} {len(df):,} rows, "
+                f"version={version}, partition={partition}, asof={asof}")
+    return df.reset_index(drop=True)

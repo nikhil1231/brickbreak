@@ -313,3 +313,90 @@ def cmd_split(args) -> int:
     return 0
 
 
+
+
+# ---------------------------------------------------------------------------
+# Corporate events: bulk/block deals, announcements, result filings.
+#
+# All three come from www.nseindia.com rather than the archive host, so they
+# need a primed session and a polite throttle (see sources/nse_api.py). None
+# of them needs authentication.
+# ---------------------------------------------------------------------------
+
+def _opt_date(value):
+    from datetime import date as _date
+    return _date.fromisoformat(value) if value else None
+
+
+def cmd_sync_deals(args) -> int:
+    """Download bulk deals, block deals and reported short selling."""
+    from ...research_data.sources import deals
+
+    kinds = tuple(args.kind) if args.kind else tuple(deals.KINDS)
+    print(f"syncing {', '.join(kinds)} ...")
+    stats = deals.sync(start=_opt_date(args.start), end=_opt_date(args.end),
+                       kinds=kinds, throttle=args.throttle, force=args.force)
+    print(json.dumps(stats, indent=2, default=str))
+    print("\nRun `python -m src.cli build-events` to timestamp and store them.")
+    return 0
+
+
+def cmd_sync_announcements(args) -> int:
+    """Download the corporate-announcement dissemination feed."""
+    from ...research_data.sources import announcements
+
+    stats = announcements.sync(start=_opt_date(args.start),
+                               end=_opt_date(args.end),
+                               throttle=args.throttle, force=args.force)
+    print(json.dumps(stats, indent=2, default=str))
+    print("\nRun `python -m src.cli build-events` to timestamp and store them.")
+    return 0
+
+
+def cmd_sync_filings(args) -> int:
+    """Download financial-result filing metadata, and optionally the XBRL.
+
+    There is no date-range form of the results endpoint, so this is one
+    request per symbol per period per regime. The symbol list defaults to the
+    traded universe rather than to everything NSE has ever listed.
+    """
+    from ...research_data.sources import filings, xbrl
+
+    if args.symbols:
+        symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+    else:
+        bars = repository.daily_bars(adjusted=False, columns=["symbol"])
+        symbols = sorted(bars["symbol"].dropna().unique())
+        if args.limit:
+            symbols = symbols[:args.limit]
+    print(f"fetching result filings for {len(symbols):,} symbols "
+          f"(~{len(symbols) * 3:,} requests) ...")
+    stats = filings.sync(symbols, throttle=args.throttle, force=args.force)
+    print(json.dumps(stats, indent=2, default=str))
+
+    if args.archive_xbrl:
+        df = filings.load()
+        rows = [{"filing_id": r.filing_id, "symbol": r.symbol, "url": r.xbrl_url}
+                for r in df.itertuples() if isinstance(r.xbrl_url, str)]
+        print(f"\narchiving {len(rows):,} XBRL filings ...")
+        manifest = xbrl.archive(rows, throttle=args.throttle)
+        ok = int((manifest["status"] == "ok").sum())
+        print(f"  archive holds {ok:,} filings "
+              f"({manifest['sha256'].nunique():,} distinct payloads)")
+    print("\nRun `python -m src.cli build-events` to timestamp and store them.")
+    return 0
+
+
+def cmd_build_events(args) -> int:
+    """Derive availability timestamps and write the normalized event tables."""
+    from ...research_data.pipelines import events
+
+    if not (config.NORMALIZED_DIR / "daily_bars.parquet").exists():
+        print("daily_bars.parquet missing — the trading calendar comes from "
+              "the tape.\nRun `python -m src.cli sync-nse` first.",
+              file=sys.stderr)
+        return 2
+    print("building event tables ...")
+    stats = events.build()
+    print(json.dumps(stats, indent=2, default=str))
+    return 0

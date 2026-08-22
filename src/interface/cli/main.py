@@ -174,6 +174,52 @@ def main(argv=None) -> int:
                     help="re-download cached corporate-action chunks")
     ca.set_defaults(fn=data.cmd_sync_corp_actions)
 
+    # -----------------------------------------------------------------------
+    # Corporate events. Three collectors and one builder: the collectors cache
+    # raw payloads, the builder derives when the market could know each row.
+    # -----------------------------------------------------------------------
+    sd = sub.add_parser("sync-deals",
+                        help="download NSE bulk/block deals and short selling")
+    sd.add_argument("--start", default=None,
+                    help="default: each deal type's own archive floor "
+                         "(bulk 2004-01, block 2005-11)")
+    sd.add_argument("--end", default=None)
+    sd.add_argument("--kind", action="append",
+                    choices=("bulk_deals", "block_deals", "short_selling"),
+                    help="restrict to one deal type, repeatable")
+    sd.add_argument("--throttle", type=float, default=1.5,
+                    help="min seconds between requests (default 1.5)")
+    sd.add_argument("--force", action="store_true",
+                    help="re-download cached windows")
+    sd.set_defaults(fn=data.cmd_sync_deals)
+
+    sa = sub.add_parser("sync-announcements",
+                        help="download the NSE corporate-announcement feed")
+    sa.add_argument("--start", default=None, help="default: 2003-01-01")
+    sa.add_argument("--end", default=None)
+    sa.add_argument("--throttle", type=float, default=1.5)
+    sa.add_argument("--force", action="store_true",
+                    help="re-download cached months")
+    sa.set_defaults(fn=data.cmd_sync_announcements)
+
+    sf = sub.add_parser("sync-filings",
+                        help="download financial-result filing metadata + XBRL")
+    sf.add_argument("--symbols", default=None,
+                    help="comma-separated symbols (default: the traded universe)")
+    sf.add_argument("--limit", type=int, default=None,
+                    help="cap the symbol list — this collector is per-symbol "
+                         "and there is no date-range form")
+    sf.add_argument("--archive-xbrl", action="store_true",
+                    help="also download and content-address every linked XBRL")
+    sf.add_argument("--throttle", type=float, default=1.5)
+    sf.add_argument("--force", action="store_true")
+    sf.set_defaults(fn=data.cmd_sync_filings)
+
+    be = sub.add_parser("build-events",
+                        help="timestamp corporate events by when they became "
+                             "knowable and write the normalized tables")
+    be.set_defaults(fn=data.cmd_build_events)
+
     bm = sub.add_parser("build-metrics", help="compute the screening metrics panel")
     bm.add_argument("--force", action="store_true")
     bm.set_defaults(fn=data.cmd_build_metrics)

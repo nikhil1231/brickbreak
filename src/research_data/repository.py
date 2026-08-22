@@ -26,6 +26,10 @@ OPENING_BEHAVIOUR = config.NORMALIZED_DIR / "opening_behaviour.parquet"
 ENTRY_WINDOW_GRID = config.NORMALIZED_DIR / "entry_window_grid.parquet"
 RENAME_MAP = config.METADATA_DIR / "rename_map.parquet"
 CA_RECONCILIATION = config.METADATA_DIR / "ca_reconciliation.parquet"
+DEALS = config.NORMALIZED_DIR / "deals.parquet"
+ANNOUNCEMENTS = config.NORMALIZED_DIR / "announcements.parquet"
+FILINGS = config.NORMALIZED_DIR / "financial_result_filings.parquet"
+XBRL_MANIFEST = config.METADATA_DIR / "xbrl_manifest.parquet"
 
 
 def daily_bars(
@@ -90,17 +94,49 @@ def corporate_action_reconciliation() -> pd.DataFrame:
     return pd.read_parquet(CA_RECONCILIATION)
 
 
+# ---------------------------------------------------------------- events
+#
+# These three carry `available_at` and `first_tradable_session` rather than a
+# single event date, because for all three the date on the record is earlier
+# than the moment the market could act on it. Prefer `frame.load_events`,
+# which will not hand back a row before it was knowable; these accessors are
+# the unguarded byte-level door beneath it.
+
+def deals(*, columns: list[str] | None = None) -> pd.DataFrame:
+    """Bulk deals, block deals and reported short selling."""
+    return pd.read_parquet(DEALS, columns=columns)
+
+
+def announcements(*, columns: list[str] | None = None) -> pd.DataFrame:
+    """The corporate-announcement dissemination feed."""
+    return pd.read_parquet(ANNOUNCEMENTS, columns=columns)
+
+
+def financial_result_filings(*, columns: list[str] | None = None) -> pd.DataFrame:
+    """Result-filing metadata, one row per *version* of a filing."""
+    return pd.read_parquet(FILINGS, columns=columns)
+
+
+def xbrl_manifest() -> pd.DataFrame:
+    """filing_id -> the SHA-256 of the archived filing bytes."""
+    return pd.read_parquet(XBRL_MANIFEST)
+
+
 __all__ = [
+    "announcements",
     "behaviour_panel",
     "candidate_labels",
     "candidate_panel",
     "corporate_action_reconciliation",
     "daily_bars",
+    "deals",
     "entry_window_grid",
+    "financial_result_filings",
     "opening_features",
     "opening_manifest",
     "opening_ticks",
     "rename_map",
     "screen_metrics",
     "symbol_metadata",
+    "xbrl_manifest",
 ]

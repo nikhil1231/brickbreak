@@ -148,6 +148,9 @@ with a stated caveat. **When lineage is ambiguous, block.**
 | sector / size tiers | NSE `ind_nifty*list.csv` | current snapshot |
 | market regime, breakout levels, RS | `src/research_data/pipelines/context.py` (derived, as-of) | 2020-01-01 onward |
 | ETF exclusion | NSE `eq_etfseclist.csv` | current snapshot |
+| bulk / block deals, short selling | NSE `historicalOR/bulk-block-short-deals` (CSV) | bulk 2004-01-04, block 2005-11-17 |
+| corporate announcements | NSE `api/corporate-announcements` | 2003 onward, dense from 2005 |
+| result filings + XBRL | NSE `corporates-financial-results` **and** `integrated-filing-results` | 2005-03 onward, two regimes |
 
 **Prefer bhavcopy for daily.** Free, unauthenticated, carries turnover and
 delivery %, and is **point-in-time** — each file lists exactly what traded that
@@ -215,6 +218,90 @@ feature catalogue**, not in a comment.
 - **`change_date` is the filing date, not the handover.** QUALITY printed on its
   own stated change date. Split on the tape.
 - 9 symbol-days carry negative volume (archive defect) and are excluded.
+
+## Corporate-event gotchas (measured 2026-08-22, all silent)
+
+The three event feeds — deals, announcements, result filings — come from
+`www.nseindia.com`, not the archive host, through `sources/nse_api.py`. They
+are collected by `sync-deals`, `sync-announcements` and `sync-filings`, and
+timestamped by `build-events`.
+
+- **The bulk/block route in every guide is dead.** `/api/historical/bulk-deals`
+  and `/api/historical/block-deals` 503 permanently. The live route is
+  `/api/historicalOR/bulk-block-short-deals?optionType=bulk_deals|block_deals|short_selling`.
+  A dead route and a rate-limit block are both 503, so a collector written
+  against the documented route retries forever instead of failing.
+- **That endpoint's JSON form silently caps at 70 rows** — for any range, one
+  day or one year — keeps the *earliest* 70, and honours no pagination
+  parameter (`page`, `limit`, `start`, `length` all tried). A year-long request
+  comes back looking like a complete answer for the first session of the year.
+  `&csv=true` on the identical request is complete: 25,863 rows over 247
+  sessions. **Always CSV.** This is the Breeze 1,000-row tail cap again.
+- **A range wider than one year returns 500.** History is walked in yearly
+  chunks.
+- **Deal quantities use Indian digit grouping** ("6,91,650"). A thousands-
+  separator parser mangles or drops exactly the large deals worth looking at.
+- **The announcement feed is not capped** — two single days sum exactly to the
+  two-day range. That equality is the check the deals endpoint fails, and it is
+  worth re-running rather than assuming.
+- **Announcement and filing timestamps are date-only in the early era.** 100%
+  of 2005 announcements carry `an_dt` at 00:00:00; real intraday times appear
+  from ~2008. Result periods start 2005-03 but the earliest broadcast timestamp
+  is 2007-07. Reading a parsed midnight as the disclosure moment hands an
+  experiment a full trading day. `time_known` records the distinction, which
+  cannot be recovered later — NSE's overnight batch really does disseminate at
+  00:00:04, so "is it midnight?" is not the test.
+- **The results endpoint froze at the Integrated Filing switch.** Legacy
+  `corporates-financial-results` holds periods to 2024-12-31 and broadcasts to
+  2025-01, then stops; the post-2025-04-01 regime lives at
+  `integrated-filing-results`. Reading only the legacy one looks healthy and
+  holds no earnings after 2024. Both are fetched and `regime` records which.
+- **There is no date-range form of the results endpoint** — `from_date`/
+  `to_date` returns zero rows. It is per-symbol only, so a full backfill is
+  ~3 requests per symbol rather than a date sweep. This is the expensive
+  collector by an order of magnitude.
+- **`(symbol, quarter)` is not a key.** Restatements are real and common —
+  RELIANCE 6 periods with more than one filing, SUZLON 8, INFY 4. Every version
+  is kept, `supersedes` links them and `is_latest` marks the survivor. The
+  original is what the market traded on; the revision is what is true.
+- **The XBRL files themselves only exist from 2018.** The metadata reaches
+  2005, and it links a filing for every one of those records — but 556 of 940
+  URLs across five symbols return 404, and the split is by date, not by
+  symbol: **0% retrievable for period ends before 2018-03-31, ~60% from 2018
+  onward** (the remainder being rows with no distinct filing). So filing
+  *timing* is available from 2005 and filing *contents* from 2018. Any earnings
+  study should state which of the two it depends on. This is also the argument
+  for archiving: what NSE links today it may not serve tomorrow, and more than
+  half of what it links right now is already gone.
+- **In XBRL, the period does not identify a fact.** HDFC Bank's Q3 FY25 filing
+  declares contexts `OneD` and `FourD` with the same entity, the same start and
+  end dates and no dimensions, reporting InterestEarned as 850bn against one
+  and 2,496bn against the other — the quarter and the year to date, with the
+  YTD context's dates simply wrong. 30 such collisions in that filing, 37 in
+  Reliance's, 0 in an integrated-regime one. `sources/xbrl.py` therefore returns
+  a **long** fact table carrying `context_ref`, and `ambiguous_facts` reports
+  the collisions. Assert it is empty over the elements you select before
+  flattening anything into named columns.
+- **Priming is insurance, not a requirement.** All four endpoints answered a
+  completely cold session when measured. The client primes anyway, because
+  NSE's tolerance varies by IP and over time — but no behaviour here depends
+  on it, and a 503 is not evidence that priming failed.
+
+### Event data is dated by disclosure, not by the event
+
+`pipelines/events.py` derives `available_at` and `first_tradable_session`, and
+those are the join keys. Every one of these rows carries an appealing date that
+is *not* when the information existed: a bulk deal dated 14-Aug was published
+after that day's close, a result for the quarter to 31-Dec was broadcast on
+23-Jan, and a 2005 announcement carries no time at all. Joining an event table
+to the daily panel on its own date is the H015 lookahead wearing a new hat.
+Reach them through `frame.load_events`, which partitions on the tradable
+session and will not hand back a row before it was knowable.
+
+`load_events(..., latest_revision_only=True)` is off by default and warns:
+restated figures are correct for describing a company and a lookahead for
+scoring one.
+
 
 ## Lookahead is this project's characteristic failure
 
@@ -532,6 +619,25 @@ but nothing new should be built in that shape.
 - Long pulls run on the server (`user@server`) under tmux via
   `scripts/run_pull.sh`; resumable from the manifest. Watch the **log timestamp**,
   not the process list — a hung pull never exits and the supervisor cannot see it.
+- The corporate-event equivalent is `scripts/run_events.sh` ->
+  `scripts/server_events.py`, status in `data/metadata/events_pull_status.json`,
+  pulled back with `scripts/sync_events_from_server.sh`. Only the filings +
+  XBRL stage is worth offloading (hours to days); deals is ~2 minutes and
+  announcements ~10, so run those locally. Resumption needs no checkpoint —
+  every collector caches its raw payload before parsing and skips what it
+  holds, so killing and restarting resumes exactly where it stopped.
+  **The sync-down brings back raw caches only**: the normalized event tables
+  are rebuilt locally by `build-events`, because availability timestamps are
+  derived against the local trading calendar and a table built on a staler
+  tape would disagree with the panel.
+  There is no session token here, so the overnight-death failure the Breeze
+  pull guards against cannot happen. The one that replaces it is **blocking**:
+  Akamai judges a datacenter IP more harshly than a residential one, and the
+  endpoints were only verified from a laptop. `server_events.py` makes one
+  cheap request before doing anything and exits 2 if NSE will not answer that
+  host, because a backfill that discovers this on request 6,000 leaves a
+  directory of empty payloads indistinguishable from "this symbol has no
+  filings".
 - `.venv/bin/python -m pytest tests/ -q` — keep green (571 tests). Tests marked
   `network` hit live NSE and are deselected by default; run with `-m network`.
   Leakage tests are part of the suite, not optional extras.
