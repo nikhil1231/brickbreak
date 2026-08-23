@@ -9,6 +9,9 @@ from src.providers import (
     NoFallbackError,
     ProviderRole,
     ProviderType,
+    ClaudeAdapter,
+    CodexAdapter,
+    GoogleAntigravityAdapter,
     SubscriptionLane,
     SubscriptionPool,
     route_council_call,
@@ -63,3 +66,39 @@ def test_route_council_call():
     resp2, p2 = route_council_call(pool, role=ProviderRole.CRITIC, prompt="Critique", proposer_provider=ProviderType.CLAUDE)
     assert p2 == ProviderType.CODEX
     assert resp2 == "Critic response"
+
+    # A Codex proposal is reviewed by available Claude, not the disabled
+    # placeholder Google lane.
+    resp3, p3 = route_council_call(
+        pool, role=ProviderRole.CRITIC, prompt="Critique",
+        proposer_provider=ProviderType.CODEX)
+    assert p3 == ProviderType.CLAUDE
+    assert resp3 == "Scout idea"
+
+
+@pytest.mark.parametrize(
+    ("adapter", "provider"),
+    [(ClaudeAdapter(), "claude"), (CodexAdapter(), "codex")],
+)
+def test_real_cli_adapters_use_sealed_agent_runner(monkeypatch, adapter, provider):
+    from src.runner import agent
+
+    seen = {}
+
+    def fake_run(prompt, **kwargs):
+        seen.update(kwargs)
+        return agent.AgentResult(
+            ok=True, text=f"{provider} answer", returncode=0, duration_s=0.1)
+
+    monkeypatch.setattr(agent, "run_agent", fake_run)
+    assert adapter.generate("prompt", system_prompt="system") == f"{provider} answer"
+    assert seen["provider"] == provider
+    assert seen["allowed_tools"] == ()
+    assert seen["sandbox"] == "read-only"
+
+
+def test_unconfigured_google_lane_is_not_faked():
+    adapter = GoogleAntigravityAdapter()
+    assert not adapter.is_available()
+    with pytest.raises(Exception, match="no configured supported CLI"):
+        adapter.generate("prompt")

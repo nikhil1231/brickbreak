@@ -77,10 +77,21 @@ class MechanismDossier:
             raise DossierValidationError("hypothesis_id cannot be empty")
         if not self.claim.strip():
             raise DossierValidationError("claim cannot be empty")
+        if not self.population.strip():
+            raise DossierValidationError("population cannot be empty")
+        if self.expected_horizon_days <= 0:
+            raise DossierValidationError("expected_horizon_days must be positive")
+        if not self.observable_facts:
+            raise DossierValidationError("observable_facts cannot be empty")
+        if not self.interpretation.strip():
+            raise DossierValidationError("interpretation cannot be empty")
         if not self.causal_chain.strip():
             raise DossierValidationError("causal_chain cannot be empty")
         if not self.counterparty.strip():
             raise DossierValidationError("counterparty cannot be empty")
+        if not self.counterparty_persistence_rationale.strip():
+            raise DossierValidationError(
+                "counterparty_persistence_rationale cannot be empty")
         if len(self.competing_explanations) < 2:
             raise DossierValidationError(
                 "at least two competing explanations are required (PLAN §3.1)")
@@ -88,8 +99,16 @@ class MechanismDossier:
             raise DossierValidationError("strongest_baseline cannot be empty")
         if not self.natural_falsifiers:
             raise DossierValidationError("natural_falsifiers cannot be empty")
+        if not self.unique_predictions:
+            raise DossierValidationError("unique_predictions cannot be empty")
         if self.min_effect_bps <= 0.0:
             raise DossierValidationError("min_effect_bps must be positive")
+        if not self.memory_risk_classification.strip():
+            raise DossierValidationError("memory_risk_classification cannot be empty")
+        if not self.forward_confirmation_path.strip():
+            raise DossierValidationError("forward_confirmation_path cannot be empty")
+        if not self.proposer.strip() or not self.hostile_reviewer.strip():
+            raise DossierValidationError("proposer and hostile_reviewer cannot be empty")
         if self.proposer == self.hostile_reviewer:
             raise DossierValidationError(
                 "proposer and hostile_reviewer must be separate entities (PLAN §4)")
@@ -100,21 +119,9 @@ class MechanismDossier:
 
     @property
     def dossier_hash(self) -> str:
-        payload = json.dumps(
-            {
-                "dossier_id": self.dossier_id,
-                "hypothesis_id": self.hypothesis_id,
-                "claim": self.claim,
-                "causal_chain": self.causal_chain,
-                "counterparty": self.counterparty,
-                "competing_explanations": list(self.competing_explanations),
-                "strongest_baseline": self.strongest_baseline,
-                "natural_falsifiers": list(self.natural_falsifiers),
-                "min_effect_bps": self.min_effect_bps,
-                "required_observations_absent": list(self.required_observations_absent),
-            },
-            sort_keys=True,
-        )
+        semantic_fields = asdict(self)
+        semantic_fields.pop("created_at", None)
+        payload = json.dumps(semantic_fields, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
     def to_dict(self) -> dict[str, Any]:
@@ -127,7 +134,7 @@ class MechanismDossier:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MechanismDossier:
         d = dict(data)
-        d.pop("dossier_hash", None)
+        expected_hash = d.pop("dossier_hash", None)
         d.pop("has_data_gap", None)
         if "dissents" in d:
             d["dissents"] = tuple(
@@ -138,4 +145,9 @@ class MechanismDossier:
                   "required_observations_absent"):
             if k in d and isinstance(d[k], (list, tuple)):
                 d[k] = tuple(d[k])
-        return cls(**d)
+        dossier = cls(**d)
+        if expected_hash is not None and dossier.dossier_hash != expected_hash:
+            raise DossierValidationError(
+                f"dossier_hash mismatch: stored {expected_hash}, "
+                f"computed {dossier.dossier_hash}")
+        return dossier

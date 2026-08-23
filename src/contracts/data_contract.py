@@ -73,6 +73,10 @@ class DataContract:
             raise DataContractValidationError("contract_id cannot be empty")
         if not self.source_name.strip():
             raise DataContractValidationError("source_name cannot be empty")
+        if not self.source_owner.strip():
+            raise DataContractValidationError("source_owner cannot be empty")
+        if not self.licence_type.strip():
+            raise DataContractValidationError("licence_type cannot be empty")
         if not self.raw_fields:
             raise DataContractValidationError("raw_fields cannot be empty")
         if not self.available_at_rule.strip():
@@ -83,22 +87,19 @@ class DataContract:
             raise DataContractValidationError("expected_join_rate_pct must be between 0 and 100")
         if self.cash_cost_usd < 0:
             raise DataContractValidationError("cash_cost_usd cannot be negative")
+        if self.publication_latency_hours < 0:
+            raise DataContractValidationError(
+                "publication_latency_hours cannot be negative")
+        if not self.storage_path.strip():
+            raise DataContractValidationError("storage_path cannot be empty")
+        if not self.maintenance_owner.strip():
+            raise DataContractValidationError("maintenance_owner cannot be empty")
 
     @property
     def contract_hash(self) -> str:
-        payload = json.dumps(
-            {
-                "contract_id": self.contract_id,
-                "source_name": self.source_name,
-                "licence_type": self.licence_type,
-                "cash_cost_usd": self.cash_cost_usd,
-                "available_at_rule": self.available_at_rule,
-                "first_tradable_session_rule": self.first_tradable_session_rule,
-                "raw_fields": [f.to_dict() for f in self.raw_fields],
-                "unlocked_families": list(self.unlocked_families),
-            },
-            sort_keys=True,
-        )
+        semantic_fields = asdict(self)
+        semantic_fields.pop("created_at", None)
+        payload = json.dumps(semantic_fields, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
     def to_dict(self) -> dict[str, Any]:
@@ -110,11 +111,16 @@ class DataContract:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DataContract:
         d = dict(data)
-        d.pop("contract_hash", None)
+        expected_hash = d.pop("contract_hash", None)
         if "raw_fields" in d:
             d["raw_fields"] = tuple(
                 SourceFieldDef(**f) if isinstance(f, dict) else f for f in d["raw_fields"]
             )
         if "unlocked_families" in d and isinstance(d["unlocked_families"], (list, tuple)):
             d["unlocked_families"] = tuple(d["unlocked_families"])
-        return cls(**d)
+        contract = cls(**d)
+        if expected_hash is not None and contract.contract_hash != expected_hash:
+            raise DataContractValidationError(
+                f"contract_hash mismatch: stored {expected_hash}, "
+                f"computed {contract.contract_hash}")
+        return contract

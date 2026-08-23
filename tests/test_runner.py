@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import src.runner.runner as runner_mod
 from src.persistence import store
 from src.persistence.models import Hypothesis
 from src.runner import (
@@ -181,3 +182,69 @@ class TestEndToEndRunner:
         ev = [e for e in store.list_evidence() if e.exploration_id == exp_id]
         assert ev, "the exploration saved no evidence"
         assert "t_stat" in ev[0].metrics
+
+
+def test_signal_compute_runs_before_any_forward_outcome_is_constructed(
+        monkeypatch):
+    base = pd.DataFrame({
+        "date": pd.to_datetime(["2026-01-01", "2026-01-01"]),
+        "symbol": ["A", "B"],
+        "predictor": [1.0, 2.0],
+    })
+    events: list[str] = []
+
+    monkeypatch.setattr(runner_mod, "validate_spec", lambda *a, **k: None)
+    monkeypatch.setattr(
+        runner_mod.gate, "enforce_dispatch_gate", lambda *a, **k: None)
+    monkeypatch.setattr(
+        runner_mod.frame, "load_daily_panel", lambda **kwargs: base.copy())
+
+    def compute(df):
+        events.append("compute")
+        assert not any(str(c).startswith(("fwd_ret_", "excess_ret_"))
+                       for c in df.columns)
+        return df["predictor"]
+
+    def forward_return(df, **kwargs):
+        events.append("outcome")
+        return pd.Series([0.5, -0.5], index=df.index)
+
+    monkeypatch.setattr(runner_mod.frame, "forward_return", forward_return)
+    monkeypatch.setattr(
+        runner_mod, "evaluate_signal",
+        lambda *a, **k: {
+            "predictive_content": {"primary_ic": {"t_stat": 0.0}},
+            "quantiles": {}, "signal_mechanics": {},
+        })
+    monkeypatch.setattr(
+        runner_mod, "classify_result",
+        lambda *a, **k: ("NO_SIGNAL", "no signal", []))
+    monkeypatch.setattr(
+        runner_mod, "write_interpretation",
+        lambda *a, **k: "no signal")
+    monkeypatch.setattr(
+        runner_mod.burden_mod, "assess",
+        lambda *a, **k: type("Burden", (), {"to_dict": lambda self: {}})())
+    monkeypatch.setattr(
+        runner_mod, "build_manifest",
+        lambda **kwargs: {"hash": "test_manifest"})
+
+    spec = ExperimentSpec(
+        hypothesis_id="H_TEST", question="q", signal_name="signal",
+        horizons=(5,), primary_horizon=5)
+    result = runner_mod.run_exploration(
+        spec, compute, save_results=False, enforce_gate=False,
+        enforce_exposure=False)
+
+    assert events == ["compute", "outcome"]
+    assert result["signal_name"] == "signal"
+
+    def fabricates_outcome(df):
+        df["fwd_ret_99d_pct"] = 100.0
+        return df["predictor"]
+
+    from src.alpha_eval.guards import LeakageGuardError
+    with pytest.raises(LeakageGuardError, match="signal compute output"):
+        runner_mod.run_exploration(
+            spec, fabricates_outcome, save_results=False, enforce_gate=False,
+            enforce_exposure=False)

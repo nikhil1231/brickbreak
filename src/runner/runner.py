@@ -20,6 +20,7 @@ from typing import Any, Callable
 import pandas as pd
 
 from ..alpha_eval import evaluate_signal
+from ..alpha_eval.guards import assert_no_forward_labels
 from ..persistence import (
     Edge,
     Evidence,
@@ -52,9 +53,11 @@ def run_exploration(
     gate_policy: gate.RateLimitPolicy | None = None,
     batch_id: str = "",
     batch_hash: str = "",
+    enforce_exposure: bool = True,
 ) -> dict[str, Any]:
     """Executes one complete, clean exploration end-to-end."""
     t0 = time.time()
+    exp_id = f"EXP_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
 
     # 1. Pre-dispatch validation & sample budget permission check
     ledger = SampleBudgetLedger.load()
@@ -70,21 +73,29 @@ def run_exploration(
         include_context=True,
     )
 
-    # Attach forward returns for all requested horizons
-    for h in spec.horizons:
-        df[f"fwd_ret_{h}d_pct"] = frame.forward_return(
-            df, horizon=h, version=spec.dataset_version, bars=bars
-        )
-
-    # 3. Compute candidate signal
+    # 3. Compute the candidate signal before constructing any outcome. Source
+    # scanning catches an obvious ``df['fwd_ret_...']`` reference, but it
+    # cannot prove that dynamic column selection will not find a label. The
+    # only reliable boundary is to make labels absent from the object the
+    # untrusted signal function receives.
     res = compute_signal_fn(df)
     if isinstance(res, pd.Series):
         df[spec.signal_name] = res
     elif isinstance(res, pd.DataFrame):
         df = res
 
+    assert_no_forward_labels(df, context="signal compute output")
+
     if spec.signal_name not in df.columns:
         raise ValueError(f"Signal function did not produce expected column {spec.signal_name!r}")
+
+    # Outcome construction begins only after the signal is fixed.
+    if enforce_exposure:
+        gate.reserve_outcome_access(spec, source_id=exp_id, batch_id=batch_id)
+    for h in spec.horizons:
+        df[f"fwd_ret_{h}d_pct"] = frame.forward_return(
+            df, horizon=h, version=spec.dataset_version, bars=bars
+        )
 
     # 4. Standard alpha evaluation battery
     primary_fwd = f"fwd_ret_{spec.primary_horizon}d_pct"
@@ -116,7 +127,6 @@ def run_exploration(
     runtime = time.time() - t0
 
     # 6. Immutable cryptographic manifest
-    exp_id = f"EXP_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     manifest_data = build_manifest(
         hypothesis_id=spec.hypothesis_id,
         spec=spec.to_dict(),

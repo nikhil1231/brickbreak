@@ -30,6 +30,14 @@ def synthesize_data_contract(probe: ProbeResult,
                              maintenance_owner: str = "Data Broker"
                              ) -> DataContract:
     """Create a verified DataContract from an approved probe."""
+    if not probe.passed:
+        failed = ", ".join(c.name for c in probe.checks if not c.passed)
+        raise ValueError(
+            f"Cannot synthesize contract from failed source probe: {failed or probe.notes}")
+    if approval.source_name != probe.source_name:
+        raise ValueError(
+            f"Approval card source {approval.source_name!r} does not match "
+            f"probe source {probe.source_name!r}")
     if approval.status not in (ApprovalStatus.AUTO_APPROVED, ApprovalStatus.APPROVED):
         raise ValueError(f"Cannot synthesize contract for unapproved source (status={approval.status.value})")
 

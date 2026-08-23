@@ -12,6 +12,10 @@ Rate limit: E1 + E2 share a ceiling of 5 accesses per calendar week.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+import uuid
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -33,6 +37,10 @@ class ExposureLimitError(RuntimeError):
     pass
 
 
+class ExposureLogError(RuntimeError):
+    """The exposure ledger is unreadable; outcome access must fail closed."""
+
+
 WEEKLY_OUTCOME_ACCESS_CEILING = 5
 
 
@@ -48,6 +56,7 @@ class ExposureEntry:
     target_columns: tuple[str, ...]
     actor: str
     reason: str
+    source_id: str = ""
     timestamp: str = field(
         default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
@@ -63,6 +72,7 @@ class ExposureEntry:
             "target_columns": list(self.target_columns),
             "actor": self.actor,
             "reason": self.reason,
+            "source_id": self.source_id,
             "timestamp": self.timestamp,
         }
 
@@ -70,12 +80,13 @@ class ExposureEntry:
 EXPOSURE_LOG_PATH = config.METADATA_DIR / "research_store" / "exposure_log.json"
 
 
-def load_exposure_log(path: Path | None = None) -> list[ExposureEntry]:
-    p = path or EXPOSURE_LOG_PATH
+def _read_exposure_log(p: Path) -> list[ExposureEntry]:
     if not p.exists():
         return []
     try:
         data = json.loads(p.read_text())
+        if not isinstance(data, dict) or not isinstance(data.get("entries", []), list):
+            raise ValueError("root must contain an entries list")
         entries = []
         for item in data.get("entries", []):
             item_copy = dict(item)
@@ -83,18 +94,55 @@ def load_exposure_log(path: Path | None = None) -> list[ExposureEntry]:
             item_copy["target_columns"] = tuple(item_copy["target_columns"])
             entries.append(ExposureEntry(**item_copy))
         return entries
-    except Exception:
-        return []
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        raise ExposureLogError(
+            f"Exposure ledger {p} is unreadable; refusing outcome access: {exc}") from exc
 
 
-def save_exposure_log(entries: Sequence[ExposureEntry], path: Path | None = None) -> None:
-    p = path or EXPOSURE_LOG_PATH
+def _write_exposure_log(entries: Sequence[ExposureEntry], p: Path) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "entries": [e.to_dict() for e in entries],
     }
-    p.write_text(json.dumps(payload, indent=2) + "\n")
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{p.name}.", suffix=".tmp",
+                                    dir=str(p.parent))
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(payload, fh, indent=2)
+            fh.write("\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, p)
+    finally:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+
+
+@contextmanager
+def _exclusive_log_lock(p: Path):
+    """Serialize quota check plus append across processes."""
+    import fcntl
+
+    p.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = p.with_name(f".{p.name}.lock")
+    with lock_path.open("a+") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def load_exposure_log(path: Path | None = None) -> list[ExposureEntry]:
+    p = path or EXPOSURE_LOG_PATH
+    return _read_exposure_log(p)
+
+
+def save_exposure_log(entries: Sequence[ExposureEntry], path: Path | None = None) -> None:
+    p = path or EXPOSURE_LOG_PATH
+    with _exclusive_log_lock(p):
+        _write_exposure_log(entries, p)
 
 
 def check_weekly_exposure_limit(entries: Sequence[ExposureEntry],
@@ -111,8 +159,10 @@ def check_weekly_exposure_limit(entries: Sequence[ExposureEntry],
                 t = datetime.strptime(e.timestamp, "%Y-%m-%d %H:%M:%S")
                 if t >= cutoff:
                     recent_outcome_exposures += 1
-            except Exception:
-                pass
+            except (TypeError, ValueError) as exc:
+                raise ExposureLogError(
+                    f"Exposure entry {e.entry_id!r} has an invalid timestamp; "
+                    "refusing to undercount quota") from exc
     can_proceed = recent_outcome_exposures < ceiling
     return recent_outcome_exposures, can_proceed
 
@@ -126,30 +176,77 @@ def record_exposure(hypothesis_id: str,
                     target_columns: Sequence[str],
                     actor: str,
                     reason: str,
+                    source_id: str = "",
+                    timestamp: str | None = None,
                     path: Path | None = None,
                     enforce_limit: bool = True) -> ExposureEntry:
     """Record an exposure event in the research ledger."""
-    entries = load_exposure_log(path)
-    if enforce_limit and level in (ExposureLevel.E1_SHAPE, ExposureLevel.E2_DIRECTIONAL_TRAIN):
-        count, ok = check_weekly_exposure_limit(entries)
-        if not ok:
-            raise ExposureLimitError(
-                f"Weekly outcome exposure ceiling reached ({count}/{WEEKLY_OUTCOME_ACCESS_CEILING} in trailing 7 days). "
-                f"Cannot spend further outcome access without human review (PLAN.md §6)."
-            )
+    if not isinstance(level, ExposureLevel):
+        raise TypeError("level must be an ExposureLevel")
+    for name, value in (
+        ("hypothesis_id", hypothesis_id), ("family", family),
+        ("batch_id", batch_id), ("dataset_version", dataset_version),
+        ("partition", partition), ("actor", actor), ("reason", reason),
+    ):
+        if not str(value).strip():
+            raise ValueError(f"{name} cannot be empty in an exposure record")
+    if level in (ExposureLevel.E1_SHAPE, ExposureLevel.E2_DIRECTIONAL_TRAIN) \
+            and partition != "train":
+        raise ValueError(f"{level.value} exposure must use the train partition")
+    if level == ExposureLevel.E3_CONFIRMATORY \
+            and partition not in ("validation", "test"):
+        raise ValueError("E3 exposure must use validation or test")
+    if level == ExposureLevel.E4_FORWARD and partition != "forward":
+        raise ValueError("E4 exposure must use forward")
+    if level != ExposureLevel.E0_MECHANICS and not target_columns:
+        raise ValueError("outcome exposure must declare target_columns")
 
-    entry = ExposureEntry(
-        entry_id=f"EXP_{len(entries)+1:04d}_{datetime.now():%Y%m%d_%H%M%S}",
-        hypothesis_id=hypothesis_id,
-        family=family,
-        batch_id=batch_id,
-        exposure_level=level,
-        dataset_version=dataset_version,
-        partition=partition,
-        target_columns=tuple(target_columns),
-        actor=actor,
-        reason=reason,
-    )
-    entries.append(entry)
-    save_exposure_log(entries, path)
-    return entry
+    p = path or EXPOSURE_LOG_PATH
+    with _exclusive_log_lock(p):
+        entries = _read_exposure_log(p)
+        if source_id:
+            existing = next(
+                (entry for entry in entries if entry.source_id == source_id), None)
+            if existing is not None:
+                identity = (
+                    existing.hypothesis_id == hypothesis_id
+                    and existing.family == family
+                    and existing.batch_id == batch_id
+                    and existing.exposure_level == level
+                    and existing.dataset_version == dataset_version
+                    and existing.partition == partition
+                    and existing.target_columns == tuple(target_columns)
+                )
+                if not identity:
+                    raise ExposureLogError(
+                        f"Exposure source_id {source_id!r} is already bound to a "
+                        "different outcome access; refusing id reuse")
+                return existing
+        if enforce_limit and level in (
+                ExposureLevel.E1_SHAPE, ExposureLevel.E2_DIRECTIONAL_TRAIN):
+            count, ok = check_weekly_exposure_limit(entries)
+            if not ok:
+                raise ExposureLimitError(
+                    f"Weekly outcome exposure ceiling reached "
+                    f"({count}/{WEEKLY_OUTCOME_ACCESS_CEILING} in trailing 7 days). "
+                    f"Cannot spend further outcome access without human review "
+                    f"(PLAN.md §6)."
+                )
+
+        entry = ExposureEntry(
+            entry_id=f"EXP_{datetime.now():%Y%m%d_%H%M%S_%f}_{uuid.uuid4().hex[:6]}",
+            hypothesis_id=hypothesis_id,
+            family=family,
+            batch_id=batch_id,
+            exposure_level=level,
+            dataset_version=dataset_version,
+            partition=partition,
+            target_columns=tuple(target_columns),
+            actor=actor,
+            reason=reason,
+            source_id=source_id,
+            timestamp=timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        entries.append(entry)
+        _write_exposure_log(entries, p)
+        return entry

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any, Sequence
 
 import numpy as np
@@ -34,6 +35,7 @@ class ShapeGateReport:
     min_required_excess_ratio: float
     p_value: float
     verdict_statement: str
+    exposure_entry_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -48,11 +50,39 @@ def evaluate_shape_gate(df: pd.DataFrame,
                         min_required_excess_ratio: float = 1.25,
                         n_permutations: int = 200,
                         seed: int = 42,
-                        record_exposure_log: bool = True
+                        record_exposure_log: bool = True,
+                        dataset_version: str = "v1",
+                        partition: str = "train",
+                        batch_id: str = "SHAPE_GATE",
+                        actor: str = "shape_gate",
+                        exposure_path: Path | None = None,
                         ) -> ShapeGateReport:
     """Evaluate E1 shape gate measuring excess outcome dispersion across groups."""
-    if outcome_col not in df.columns or group_col not in df.columns:
-        raise ValueError(f"Columns {group_col!r} or {outcome_col!r} missing from frame")
+    required = (group_col, outcome_col, date_col)
+    missing = [column for column in required if column not in df.columns]
+    if missing:
+        raise ValueError(f"Shape gate columns missing from frame: {missing}")
+    if n_permutations < 20:
+        raise ValueError("n_permutations must be at least 20")
+
+    # Reserve and durably record the outcome access before reading a single
+    # outcome value. If quota enforcement fails, the computation never starts.
+    exposure_entry_id = ""
+    if record_exposure_log:
+        exposure = record_exposure(
+            hypothesis_id=hypothesis_id,
+            family=family,
+            batch_id=batch_id,
+            level=ExposureLevel.E1_SHAPE,
+            dataset_version=dataset_version,
+            partition=partition,
+            target_columns=[outcome_col],
+            actor=actor,
+            reason=f"Registered shape gate on {group_col} vs {outcome_col}",
+            path=exposure_path,
+            enforce_limit=True,
+        )
+        exposure_entry_id = exposure.entry_id
 
     clean = df.dropna(subset=[group_col, outcome_col, date_col]).copy()
     if clean.empty or clean[group_col].nunique() < 2:
@@ -69,6 +99,7 @@ def evaluate_shape_gate(df: pd.DataFrame,
             min_required_excess_ratio=min_required_excess_ratio,
             p_value=1.0,
             verdict_statement="Insufficient data or single group in shape gate",
+            exposure_entry_id=exposure_entry_id,
         )
 
     # Calculate observed dispersion: standard deviation of group mean outcomes
@@ -91,7 +122,8 @@ def evaluate_shape_gate(df: pd.DataFrame,
     null_p50 = float(np.percentile(null_arr, 50))
     null_p95 = float(np.percentile(null_arr, 95))
 
-    p_val = float((null_arr >= obs_disp).mean())
+    p_val = float((1 + np.count_nonzero(null_arr >= obs_disp))
+                  / (n_permutations + 1))
     ratio = round(obs_disp / max(null_p50, 1e-6), 2)
 
     passed = (ratio >= min_required_excess_ratio) and (p_val <= 0.05)
@@ -108,20 +140,6 @@ def evaluate_shape_gate(df: pd.DataFrame,
             f"No excess outcome separability detected."
         )
 
-    if record_exposure_log:
-        record_exposure(
-            hypothesis_id=hypothesis_id,
-            family=family,
-            batch_id="SHAPE_GATE",
-            level=ExposureLevel.E1_SHAPE,
-            dataset_version="v1",
-            partition="train",
-            target_columns=[outcome_col],
-            actor="shape_gate",
-            reason=f"Registered shape gate on {group_col} vs {outcome_col}",
-            enforce_limit=True,
-        )
-
     return ShapeGateReport(
         passed=passed,
         hypothesis_id=hypothesis_id,
@@ -135,4 +153,5 @@ def evaluate_shape_gate(df: pd.DataFrame,
         min_required_excess_ratio=min_required_excess_ratio,
         p_value=round(p_val, 4),
         verdict_statement=verdict,
+        exposure_entry_id=exposure_entry_id,
     )

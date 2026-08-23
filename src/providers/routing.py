@@ -38,11 +38,21 @@ def route_council_call(pool: SubscriptionPool,
     target = preferred_provider
     if target is None:
         if role == ProviderRole.SCOUT:
-            target = ProviderType.CLAUDE
+            preference = (ProviderType.CLAUDE, ProviderType.CODEX,
+                          ProviderType.GOOGLE_ANTIGRAVITY)
         elif role in (ProviderRole.CRITIC, ProviderRole.ADJUDICATOR):
-            target = ProviderType.CODEX if proposer_provider != ProviderType.CODEX else ProviderType.GOOGLE_ANTIGRAVITY
+            preference = (ProviderType.CODEX, ProviderType.CLAUDE,
+                          ProviderType.GOOGLE_ANTIGRAVITY)
         else:
-            target = ProviderType.GOOGLE_ANTIGRAVITY
+            preference = (ProviderType.CLAUDE, ProviderType.CODEX,
+                          ProviderType.GOOGLE_ANTIGRAVITY)
+        available = set(pool.available_provider_types(
+            exclude=(proposer_provider,) if proposer_provider else ()))
+        target = next((provider for provider in preference if provider in available), None)
+        if target is None:
+            raise NoFallbackError(
+                f"No available provider can serve role {role.value!r} while remaining "
+                "independent of the proposer")
 
     if proposer_provider is not None and role != ProviderRole.SCOUT:
         validate_asymmetric_assignment(proposer_provider, target, context=f"Role {role.value}")

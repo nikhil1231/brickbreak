@@ -91,7 +91,9 @@ def run_source_micro_probe(source_name: str,
         checks.append(ProbeCheck("silent_cap", True, f"{n_rows} rows fetched without cap collision"))
 
     # 2. Date coverage
-    dates = pd.to_datetime(sample_df[date_col].dropna()) if date_col in sample_df.columns else pd.Series()
+    raw_dates = (sample_df[date_col].dropna()
+                 if date_col in sample_df.columns else pd.Series(dtype="object"))
+    dates = pd.to_datetime(raw_dates, errors="coerce").dropna()
     if dates.empty:
         usable_start = ""
         usable_end = ""
@@ -99,7 +101,10 @@ def run_source_micro_probe(source_name: str,
     else:
         usable_start = str(dates.min().date())
         usable_end = str(dates.max().date())
-        checks.append(ProbeCheck("date_parsing", True, f"Spans {usable_start} to {usable_end}"))
+        parse_rate = 100.0 * len(dates) / max(len(raw_dates), 1)
+        checks.append(ProbeCheck(
+            "date_parsing", parse_rate >= 95.0,
+            f"Spans {usable_start} to {usable_end}; parsed {parse_rate:.1f}%"))
 
     # 3. Join rate against canonical trading calendar
     join_rate = 100.0
@@ -113,10 +118,22 @@ def run_source_micro_probe(source_name: str,
     # 4. Timestamp fidelity
     fidelity = "date_only"
     if time_col and time_col in sample_df.columns:
-        times = sample_df[time_col].dropna().astype(str)
-        if any(":" in t and not t.endswith("00:00:00") for t in times):
+        raw_times = sample_df[time_col].dropna()
+        parsed_times = pd.to_datetime(raw_times, errors="coerce")
+        valid_times = parsed_times.dropna()
+        has_exact = any(
+            (value.hour, value.minute, value.second) != (0, 0, 0)
+            for value in valid_times)
+        has_zero_or_unknown = (
+            len(valid_times) < len(raw_times)
+            or any((value.hour, value.minute, value.second) == (0, 0, 0)
+                   for value in valid_times)
+        )
+        if has_exact and has_zero_or_unknown:
+            fidelity = "mixed"
+        elif has_exact:
             fidelity = "exact_intraday"
-        elif all("00:00:00" in t for t in times):
+        elif len(valid_times):
             fidelity = "zero_stamped"
     checks.append(ProbeCheck("timestamp_fidelity", True, f"Fidelity assessed as {fidelity}"))
 

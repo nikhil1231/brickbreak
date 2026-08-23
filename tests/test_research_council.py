@@ -1,6 +1,9 @@
 """Tests for Stage AA AI Research Council."""
 from __future__ import annotations
 
+import argparse
+import json
+
 import pytest
 
 from src.contracts.dossier import MechanismDossier
@@ -14,6 +17,7 @@ from src.council import (
     review_leakage_and_pit,
     review_power_and_costs,
 )
+from src.providers import ProviderError, ProviderType
 
 
 def _sample_dossier():
@@ -66,13 +70,28 @@ def test_scout_prompt_and_json_parsing():
       "natural_falsifiers": ["Low volume session"],
       "confounds": [],
       "capacity_notes": "Liquid",
-      "min_effect_bps": 50.0
+      "min_effect_bps": 50.0,
+      "nearest_hypothesis_ids": [],
+      "required_observations_absent": [],
+      "memory_risk_classification": "anonymised_unrecognised",
+      "forward_confirmation_path": "Accrue 60 clean forward sessions"
     }
     """
     dossier = parse_dossier_json(mock_json, dossier_id="D1", hypothesis_id="H048", family="opening", proposer="scout")
     assert dossier.claim == "Morning auction volume imbalance"
     assert dossier.min_effect_bps == 50.0
     assert len(dossier.competing_explanations) == 2
+
+
+def test_scout_parser_rejects_missing_fields_instead_of_inventing_a_dossier():
+    with pytest.raises(ValueError, match="omitted required dossier fields"):
+        parse_dossier_json(
+            '{"claim": "A fluent but incomplete idea"}',
+            dossier_id="D_BAD",
+            hypothesis_id="H999",
+            family="general",
+            proposer="scout",
+        )
 
 
 def test_critics_and_leakage_detection():
@@ -127,3 +146,42 @@ def test_novelty_and_adjudication():
     assert adj.approved
     assert adj.priority_score > 5.0
     assert "APPROVED" in adj.verdict
+
+
+def test_discover_cli_persists_a_deterministically_named_dossier(
+        tmp_path, monkeypatch):
+    from src.interface.cli import council as council_cli
+
+    response = json.dumps(_sample_dossier().to_dict())
+    monkeypatch.setattr(
+        council_cli,
+        "route_council_call",
+        lambda *args, **kwargs: (response, ProviderType.CLAUDE),
+    )
+    output = tmp_path / "dossier.json"
+    args = argparse.Namespace(
+        lens="market_structure", hint="", hypothesis="H048",
+        family="opening_window", provider="claude", output=str(output),
+    )
+
+    assert council_cli.cmd_discover(args) == 0
+    stored = json.loads(output.read_text())
+    assert stored["dossier_id"].startswith("DOS_MARK_")
+    assert stored["dossier_hash"]
+
+
+def test_discover_cli_reports_provider_failure_without_canned_fallback(
+        tmp_path, monkeypatch):
+    from src.interface.cli import council as council_cli
+
+    def fail(*args, **kwargs):
+        raise ProviderError("subscription unavailable")
+
+    monkeypatch.setattr(council_cli, "route_council_call", fail)
+    args = argparse.Namespace(
+        lens="market_structure", hint="", hypothesis="H048",
+        family="general", provider="claude",
+        output=str(tmp_path / "must_not_exist.json"),
+    )
+    assert council_cli.cmd_discover(args) == 1
+    assert not (tmp_path / "must_not_exist.json").exists()

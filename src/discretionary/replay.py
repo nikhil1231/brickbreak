@@ -351,6 +351,9 @@ def reveal(replay_id: str, enforce_budget: bool = True,
         # is read, and everything before it was replaceable.
         validate(d, check_budget=True)
         gate.enforce_dispatch_gate(_gate_spec(d))
+        gate.reserve_outcome_access(
+            _gate_spec(d), source_id=f"replay:{replay_id}",
+            batch_id=f"REPLAY:{replay_id}")
 
     cases = r.cases()
     keys = pd.DataFrame({

@@ -19,7 +19,7 @@ def test_micro_probe_normal_data():
     df = pd.DataFrame({
         "symbol": ["RELIANCE", "TCS"] * 25,
         "date": dates,
-        "timestamp": [str(d) + " 10:30:00" for d in dates],
+        "timestamp": dates + pd.Timedelta(hours=10, minutes=30),
         "quantity": [1000] * 50,
     })
     res = run_source_micro_probe(
@@ -34,6 +34,16 @@ def test_micro_probe_normal_data():
     assert not res.silent_cap_detected
     assert res.join_rate_pct == 100.0
     assert res.timestamp_fidelity == "exact_intraday"
+
+
+def test_micro_probe_does_not_call_a_mixed_timestamp_era_exact():
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2006-01-02", "2026-01-02"]),
+        "timestamp": ["2006-01-02 00:00:00", "2026-01-02 14:30:00"],
+    })
+    result = run_source_micro_probe(
+        "Mixed Feed", df, date_col="date", time_col="timestamp")
+    assert result.timestamp_fidelity == "mixed"
 
 
 def test_micro_probe_cap_detection_and_empty():
@@ -97,3 +107,36 @@ def test_synthesize_data_contract():
     assert dc.contract_hash
     assert dc.source_name == "Sample Feed"
     assert dc.cash_cost_usd == 0.0
+
+
+def test_failed_probe_cannot_be_promoted_into_a_data_contract():
+    probe = run_source_micro_probe("Empty Feed", pd.DataFrame())
+    approval = create_approval_card(
+        "Empty Feed", "public", 0.0, 1.0, ("test_fam",), 0)
+
+    with pytest.raises(ValueError, match="failed source probe"):
+        synthesize_data_contract(
+            probe=probe,
+            approval=approval,
+            fields=[SourceFieldDef("date", "datetime64[ns]", "Date", is_pit=True)],
+            source_owner="Test Exchange",
+            storage_path="data/raw/empty/",
+            available_at_rule="After close",
+            first_tradable_session_rule="Next session",
+        )
+
+
+def test_approval_card_cannot_be_reused_for_another_source():
+    dates = pd.bdate_range("2021-01-04", periods=10)
+    probe = run_source_micro_probe(
+        "Source A", pd.DataFrame({"date": dates, "value": range(10)}))
+    approval = create_approval_card(
+        "Source B", "public", 0.0, 1.0, ("family",), 5)
+    with pytest.raises(ValueError, match="does not match"):
+        synthesize_data_contract(
+            probe=probe, approval=approval,
+            fields=[SourceFieldDef("date", "datetime64[ns]", "Date", is_pit=True)],
+            source_owner="Exchange", storage_path="data/raw/source_a/",
+            available_at_rule="After close",
+            first_tradable_session_rule="Next session",
+        )

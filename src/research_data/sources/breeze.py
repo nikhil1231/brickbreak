@@ -20,8 +20,6 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Any
 
-from breeze_connect import BreezeConnect
-
 from ...core import config
 
 V1_INTERVALS = ("1minute", "5minute", "30minute", "1day")
@@ -30,6 +28,22 @@ V2_INTERVALS = ("1second", "1minute", "5minute", "30minute", "1day")
 # Breeze wants ISO-ish stamps with a literal .000Z suffix. It treats them as
 # IST wall-clock despite the Z; that assumption is tested in validate_data.
 TS_FMT = "%Y-%m-%dT%H:%M:%S.000Z"
+
+
+def _new_sdk_client(api_key: str):
+    """Import the network-active SDK only when a Breeze client is requested.
+
+    ``breeze_connect`` downloads its security master while its top-level module
+    is imported.  Keeping that import out of module scope is therefore required
+    for offline research-data imports, CLI help, and test collection.
+    """
+    try:
+        from breeze_connect import BreezeConnect
+    except ImportError as exc:  # pragma: no cover - depends on optional install
+        raise RuntimeError(
+            "Breeze access requires the optional 'breeze-connect' package"
+        ) from exc
+    return BreezeConnect(api_key=api_key)
 
 
 def fmt_ts(dt: datetime) -> str:
@@ -77,7 +91,7 @@ class BreezeClient:
         self.max_retries = max_retries
         self._throttle_lock = threading.Lock()
         self._last_call_at = 0.0
-        self.breeze = BreezeConnect(api_key=creds.api_key)
+        self.breeze = _new_sdk_client(creds.api_key)
         self.session_error: str | None = None
         self.customer: dict | None = None
 

@@ -10,6 +10,7 @@ from .critics import (
 )
 from .novelty import NoveltyReport, check_dossier_novelty
 from .scouts import (
+    SCOUT_SYSTEM_PROMPT,
     ScoutLens,
     build_scout_prompt,
     parse_dossier_json,
@@ -17,6 +18,7 @@ from .scouts import (
 
 __all__ = [
     "ScoutLens",
+    "SCOUT_SYSTEM_PROMPT",
     "build_scout_prompt",
     "parse_dossier_json",
     "CriticReview",

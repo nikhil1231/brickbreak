@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from src.persistence import Exploration, QueueProposal, store
+from src.firewall import exposure as exposure_mod
 from src.runner import gate, preregistration, queue
 from src.runner.gate import (
     DispatchRateLimitExceededError,
@@ -32,6 +33,8 @@ def isolated_store(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "PREFLIGHTS_DIR", store_dir / "preflights")
     monkeypatch.setattr(store, "QUEUE_DIR", store_dir / "queue")
     monkeypatch.setattr(store, "BATCHES_DIR", store_dir / "batches")
+    monkeypatch.setattr(
+        exposure_mod, "EXPOSURE_LOG_PATH", store_dir / "exposure_log.json")
     store._ensure_dirs()
 
 
@@ -133,6 +136,38 @@ class TestDispatchGate:
         assert allowed is True
         assert max_allowed is None
         enforce_dispatch_gate(fwd_spec)
+
+    def test_atomic_reservation_closes_concurrent_dispatch_race(self):
+        """Four completed reads plus two simultaneous reservations yield one refusal."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        from src.firewall import ExposureLimitError, load_exposure_log
+
+        now = datetime.now()
+        for i in range(4):
+            t = now - timedelta(minutes=i)
+            store.save_exploration(Exploration(
+                id=f"EXP_{t.strftime('%Y%m%d_%H%M%S')}_{i}",
+                hypothesis_id=f"H{i}",
+                spec={"partition": "train", "dataset_version": "v1",
+                      "horizons": [5], "signal_name": f"old_{i}"},
+                verdict="tested", failure_class="NO_SIGNAL"))
+
+        def reserve(i):
+            candidate = ExperimentSpec(
+                hypothesis_id=f"H_NEW_{i}", question="q",
+                signal_name=f"new_{i}", partition="train", horizons=(5,))
+            try:
+                return gate.reserve_outcome_access(
+                    candidate, source_id=f"EXP_PENDING_{i}")
+            except ExposureLimitError:
+                return None
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(reserve, range(2)))
+
+        assert sum(result is not None for result in results) == 1
+        assert len(load_exposure_log()) == 5
 
 
 class TestDeepQueue:

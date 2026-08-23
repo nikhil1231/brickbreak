@@ -16,6 +16,7 @@ import pytest
 
 from src.persistence import ledger as ledger_mod
 from src.persistence import store
+from src.firewall import exposure as exposure_mod
 
 
 @pytest.fixture()
@@ -36,4 +37,6 @@ def research_store(tmp_path, monkeypatch):
                       ("SUGGESTIONS_DIR", "suggestions")):
         monkeypatch.setattr(store, name, store_dir / sub)
     monkeypatch.setattr(ledger_mod, "LEDGER_PATH", store_dir / "ledger.json")
+    monkeypatch.setattr(
+        exposure_mod, "EXPOSURE_LOG_PATH", store_dir / "exposure_log.json")
     return tmp_path

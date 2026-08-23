@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -14,7 +15,9 @@ from ...contracts import (
     LifecycleTracker,
     MechanismDossier,
 )
+from ...core import config
 from ...council import (
+    SCOUT_SYSTEM_PROMPT,
     ScoutLens,
     adjudicate_dossier,
     build_scout_prompt,
@@ -31,7 +34,13 @@ from ...firewall import (
     evaluate_structural_gate,
     load_exposure_log,
 )
-from ...providers import ProviderRole, ProviderType, SubscriptionPool, route_council_call
+from ...providers import (
+    ProviderError,
+    ProviderRole,
+    ProviderType,
+    SubscriptionPool,
+    route_council_call,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,25 +54,50 @@ def cmd_discover(args: argparse.Namespace) -> int:
         lens = ScoutLens.MARKET_STRUCTURE
 
     pool = SubscriptionPool()
-    prompt = build_scout_prompt(lens=lens, domain_hint=getattr(args, "hint", ""))
+    from ...persistence import store
+    from ...research_data.catalogue import DEFAULT as FEATURE_CATALOGUE
 
-    print(f"[*] Dispatching Mechanism Scout under lens {lens.value.upper()}...")
-    resp, provider = route_council_call(
-        pool,
-        role=ProviderRole.SCOUT,
-        prompt=prompt,
-        system_prompt="Propose MechanismDossier JSON",
-        preferred_provider=ProviderType.CLAUDE,
+    hypotheses = store.list_hypotheses()
+    graveyard = [
+        f"{h.id} [{h.family}/{h.status}] {h.title}: {h.rationale}"
+        for h in hypotheses
+        if h.status in ("rejected", "decayed", "superseded")
+    ]
+    prompt = build_scout_prompt(
+        lens=lens,
+        domain_hint=getattr(args, "hint", ""),
+        catalogue_features=[
+            f"{feature.name} ({feature.available_as_of}, "
+            f"{'PIT' if feature.point_in_time else 'not-PIT'})"
+            for feature in FEATURE_CATALOGUE
+        ],
+        graveyard_notes=graveyard,
     )
 
     try:
+        preferred = ProviderType(getattr(args, "provider", "claude"))
+        print(f"[*] Dispatching Mechanism Scout under lens {lens.value.upper()}...")
+        resp, provider = route_council_call(
+            pool,
+            role=ProviderRole.SCOUT,
+            prompt=prompt,
+            system_prompt=SCOUT_SYSTEM_PROMPT,
+            preferred_provider=preferred,
+        )
+        response_id = hashlib.sha256(resp.encode()).hexdigest()[:10].upper()
         dossier = parse_dossier_json(
             resp,
-            dossier_id=f"DOS_{lens.value.upper()[:4]}_{hash(resp)%10000:04d}",
+            dossier_id=f"DOS_{lens.value.upper()[:4]}_{response_id}",
             hypothesis_id=getattr(args, "hypothesis", "H_PROP"),
             family=getattr(args, "family", "general"),
-            proposer=f"scout_{lens.value}",
+            proposer=f"{provider.value}:scout_{lens.value}",
         )
+        output_arg = getattr(args, "output", None)
+        out_path = (Path(output_arg) if output_arg else
+                    config.METADATA_DIR / "research_store" / "dossiers" /
+                    f"{dossier.dossier_id}.json")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(dossier.to_dict(), indent=2) + "\n")
         print("\n=== MECHANISM DOSSIER ===")
         print(f"ID: {dossier.dossier_id} (Hash: {dossier.dossier_hash})")
         print(f"Claim: {dossier.claim}")
@@ -72,9 +106,14 @@ def cmd_discover(args: argparse.Namespace) -> int:
         print(f"Competing Explanations: {dossier.competing_explanations}")
         print(f"Min Effect: {dossier.min_effect_bps} bps (Baseline: {dossier.strongest_baseline})")
         print(f"Data Gap: {dossier.has_data_gap}")
+        print(f"Saved: {out_path}")
         return 0
+    except ProviderError as exc:
+        print(f"[-] Provider failed without fallback: {exc}")
+        return 1
     except Exception as exc:
-        print(f"[-] Scout response: {resp}")
+        if "resp" in locals():
+            print(f"[-] Scout response: {resp}")
         print(f"[-] Failed to parse dossier: {exc}")
         return 1
 

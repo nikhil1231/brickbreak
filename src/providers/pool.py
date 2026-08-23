@@ -7,6 +7,8 @@ and no silent fallback.
 from __future__ import annotations
 
 import logging
+import tempfile
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -38,6 +40,10 @@ class ProviderError(RuntimeError):
 
 class NoFallbackError(ProviderError):
     """Raised when a provider lane fails and silent substitution is refused."""
+
+
+class ProviderBusyError(ProviderError):
+    """Raised when a subscription lane has reached its concurrency limit."""
 
 
 @dataclass
@@ -80,17 +86,43 @@ class MockProviderAdapter(BaseProviderAdapter):
         return self._canned
 
 
+def _run_cli_provider(provider: str, prompt: str,
+                      system_prompt: str = "", model: str = "") -> str:
+    """Run a subscription CLI through the existing sealed agent adapter."""
+    from pathlib import Path
+
+    from ..runner import agent
+
+    full_prompt = f"{system_prompt}\n\n---\n\n{prompt}" if system_prompt else prompt
+    with tempfile.TemporaryDirectory(prefix=f"council_{provider}_") as tmp:
+        result = agent.run_agent(
+            full_prompt,
+            cwd=Path(tmp),
+            timeout_s=900,
+            max_turns=1,
+            allowed_tools=(),
+            model=model or None,
+            provider=provider,
+            sandbox="read-only",
+        )
+    if not result.ok:
+        detail = result.stderr or f"{provider} CLI exited with {result.returncode}"
+        raise ProviderError(detail)
+    if not result.text.strip():
+        raise ProviderError(f"{provider} CLI returned an empty response")
+    return result.text
+
+
 class ClaudeAdapter(BaseProviderAdapter):
     def provider_type(self) -> ProviderType:
         return ProviderType.CLAUDE
 
     def is_available(self) -> bool:
-        import shutil
-        return shutil.which("claude") is not None
+        from ..runner import agent
+        return agent.available(provider="claude")
 
     def generate(self, prompt: str, system_prompt: str = "", model: str = "") -> str:
-        from ..discretionary.providers import cli
-        return cli._run_cli(prompt, system_prompt=system_prompt, model=model or None)
+        return _run_cli_provider("claude", prompt, system_prompt, model)
 
 
 class CodexAdapter(BaseProviderAdapter):
@@ -98,24 +130,27 @@ class CodexAdapter(BaseProviderAdapter):
         return ProviderType.CODEX
 
     def is_available(self) -> bool:
-        import shutil
-        return shutil.which("codex") is not None
+        from ..runner import agent
+        return agent.available(provider="codex")
 
     def generate(self, prompt: str, system_prompt: str = "", model: str = "") -> str:
-        from ..runner import job
-        return job.run_codex_cli(prompt, model=model or None) if hasattr(job, "run_codex_cli") else "Codex CLI response"
+        return _run_cli_provider("codex", prompt, system_prompt, model)
 
 
 class GoogleAntigravityAdapter(BaseProviderAdapter):
+    """Reserved lane until a supported, auditable subscription surface exists."""
+
     def provider_type(self) -> ProviderType:
         return ProviderType.GOOGLE_ANTIGRAVITY
 
     def is_available(self) -> bool:
-        return True
+        return False
 
     def generate(self, prompt: str, system_prompt: str = "", model: str = "") -> str:
-        # In Antigravity environment, returns model response
-        return "Antigravity generated response"
+        raise ProviderError(
+            "Google/Antigravity has no configured supported CLI or API adapter; "
+            "the lane remains disabled rather than returning a fabricated response"
+        )
 
 
 @dataclass
@@ -126,9 +161,25 @@ class SubscriptionLane:
     max_concurrent_jobs: int = 1
     active_jobs: int = 0
     usage: ProviderUsage = field(default_factory=ProviderUsage)
+    _lock: threading.Lock = field(default_factory=threading.Lock,
+                                  init=False, repr=False, compare=False)
 
     def is_idle(self) -> bool:
-        return self.active_jobs < self.max_concurrent_jobs and self.adapter.is_available()
+        with self._lock:
+            return (self.active_jobs < self.max_concurrent_jobs
+                    and self.adapter.is_available())
+
+    def acquire(self) -> bool:
+        with self._lock:
+            if (self.active_jobs >= self.max_concurrent_jobs
+                    or not self.adapter.is_available()):
+                return False
+            self.active_jobs += 1
+            return True
+
+    def release(self) -> None:
+        with self._lock:
+            self.active_jobs = max(0, self.active_jobs - 1)
 
 
 class SubscriptionPool:
@@ -150,6 +201,12 @@ class SubscriptionPool:
                 return lane
         return None
 
+    def available_provider_types(self,
+                                 exclude: Sequence[ProviderType] = ()) -> list[ProviderType]:
+        excluded = set(exclude)
+        return [lane.provider_type for lane in self.lanes
+                if lane.provider_type not in excluded and lane.is_idle()]
+
     def dispatch(self,
                  provider_type: ProviderType,
                  prompt: str,
@@ -159,34 +216,33 @@ class SubscriptionPool:
                  allow_fallback: bool = False) -> str:
         """Dispatch a generation job to a designated lane without silent fallback."""
         lane = self.get_lane(provider_type)
-        if lane is None or not lane.adapter.is_available():
+        if lane is None or not lane.is_idle():
             if not allow_fallback:
+                state = "missing, unavailable, or busy"
                 raise NoFallbackError(
-                    f"Provider lane {provider_type.value!r} is unavailable. "
+                    f"Provider lane {provider_type.value!r} is {state}. "
                     f"Silent fallback to another provider is prohibited (PLAN.md §9)."
                 )
-            # Find any idle available lane
-            available = [l for l in self.lanes if l.adapter.is_available()]
+            available = [l for l in self.lanes if l.is_idle()]
             if not available:
                 raise ProviderError("No provider lanes available in subscription pool")
             lane = available[0]
 
-        lane.active_jobs += 1
+        if not lane.acquire():
+            raise ProviderBusyError(
+                f"Provider lane {lane.name!r} reached its concurrency limit")
         try:
-            resp = lane.adapter.generate(prompt, system_prompt=system_prompt, model=model)
             lane.usage.total_calls += 1
-            # Estimate tokens: ~4 chars per token approx
-            in_tok = len(prompt + system_prompt) // 4
-            out_tok = len(resp) // 4
-            lane.usage.input_tokens += in_tok
-            lane.usage.output_tokens += out_tok
+            lane.usage.input_tokens += max(1, len(prompt + system_prompt) // 4)
+            resp = lane.adapter.generate(prompt, system_prompt=system_prompt, model=model)
+            lane.usage.output_tokens += max(1, len(resp) // 4)
             return resp
         except Exception as exc:
             if not allow_fallback:
                 raise NoFallbackError(f"Job failed on {provider_type.value}: {exc}") from exc
             raise
         finally:
-            lane.active_jobs = max(0, lane.active_jobs - 1)
+            lane.release()
 
     def usage_summary(self) -> dict[str, Any]:
         return {

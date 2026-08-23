@@ -116,6 +116,16 @@ class LifecycleTracker:
                    cash_cost_usd: float = 0.0) -> StateTransitionRecord:
         """Advance to next state with audit record."""
         validate_transition(self.current_state, to_state)
+        if not actor.strip():
+            raise ValueError("lifecycle transition actor cannot be empty")
+        if not reason.strip():
+            raise ValueError("lifecycle transition reason cannot be empty")
+        if exposure_level not in ("E0", "E1", "E2", "E3", "E4"):
+            raise ValueError("invalid lifecycle exposure_level")
+        if tokens_spent < 0:
+            raise ValueError("tokens_spent cannot be negative")
+        if cash_cost_usd < 0:
+            raise ValueError("cash_cost_usd cannot be negative")
         rec = StateTransitionRecord(
             from_state=self.current_state,
             to_state=to_state,

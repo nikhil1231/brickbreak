@@ -39,7 +39,25 @@ The dossier must explain:
 5. Unique testable predictions and natural falsifiers.
 6. Minimum required effect after 40 bps round-trip costs.
 
+Return every required field explicitly, including empty lists where appropriate:
+claim, population, expected_horizon_days, observable_facts, interpretation,
+causal_chain, counterparty, counterparty_persistence_rationale,
+competing_explanations, strongest_baseline, unique_predictions,
+natural_falsifiers, confounds, capacity_notes, min_effect_bps,
+nearest_hypothesis_ids, required_observations_absent,
+memory_risk_classification, and forward_confirmation_path.
+
 Respond strictly in valid JSON matching the MechanismDossier schema."""
+
+_REQUIRED_DOSSIER_FIELDS = (
+    "claim", "population", "expected_horizon_days", "observable_facts",
+    "interpretation", "causal_chain", "counterparty",
+    "counterparty_persistence_rationale", "competing_explanations",
+    "strongest_baseline", "unique_predictions", "natural_falsifiers",
+    "confounds", "capacity_notes", "min_effect_bps",
+    "nearest_hypothesis_ids", "required_observations_absent",
+    "memory_risk_classification", "forward_confirmation_path",
+)
 
 
 def build_scout_prompt(lens: ScoutLens,
@@ -68,33 +86,34 @@ def parse_dossier_json(response_text: str,
         raise ValueError("Could not find JSON object in scout response")
 
     data = json.loads(match.group(0))
-    competing = data.get("competing_explanations") or ["Random noise", "Liquidity friction"]
-    if len(competing) < 2:
-        competing = list(competing) + ["Alternative liquidity friction"]
+    missing = [field for field in _REQUIRED_DOSSIER_FIELDS if field not in data]
+    if missing:
+        raise ValueError(
+            "Scout response omitted required dossier fields: " + ", ".join(missing))
 
     return MechanismDossier(
         dossier_id=dossier_id,
         hypothesis_id=hypothesis_id,
         family=family,
-        claim=str(data.get("claim") or "Proposed mechanism claim"),
-        population=str(data.get("population") or "NIFTY 500 equities"),
-        expected_horizon_days=int(data.get("expected_horizon_days") or 10),
-        observable_facts=tuple(data.get("observable_facts") or ["Point-in-time order flow and prices"]),
-        interpretation=str(data.get("interpretation") or "Persistent economic imbalance"),
-        causal_chain=str(data.get("causal_chain") or "Institutional constraint drives execution across sessions"),
-        counterparty=str(data.get("counterparty") or "Constrained liquidity seeker"),
-        counterparty_persistence_rationale=str(data.get("counterparty_persistence_rationale") or "Mandated deadline"),
-        competing_explanations=tuple(competing),
-        strongest_baseline=str(data.get("strongest_baseline") or "20d mechanical momentum"),
-        unique_predictions=tuple(data.get("unique_predictions") or ["Strongest on high turnover sessions"]),
-        natural_falsifiers=tuple(data.get("natural_falsifiers") or ["Fails across low volatility regimes"]),
-        confounds=tuple(data.get("confounds") or ["Earnings announcement dates"]),
-        capacity_notes=str(data.get("capacity_notes") or "₹5-10 lakh book scale"),
-        min_effect_bps=float(data.get("min_effect_bps") or 45.0),
-        nearest_hypothesis_ids=tuple(data.get("nearest_hypothesis_ids") or ()),
-        required_observations_absent=tuple(data.get("required_observations_absent") or ()),
-        memory_risk_classification=str(data.get("memory_risk_classification") or "anonymised_unrecognised"),
-        forward_confirmation_path=str(data.get("forward_confirmation_path") or "Accrue 60 clean forward sessions"),
+        claim=str(data["claim"]),
+        population=str(data["population"]),
+        expected_horizon_days=int(data["expected_horizon_days"]),
+        observable_facts=tuple(data["observable_facts"]),
+        interpretation=str(data["interpretation"]),
+        causal_chain=str(data["causal_chain"]),
+        counterparty=str(data["counterparty"]),
+        counterparty_persistence_rationale=str(data["counterparty_persistence_rationale"]),
+        competing_explanations=tuple(data["competing_explanations"]),
+        strongest_baseline=str(data["strongest_baseline"]),
+        unique_predictions=tuple(data["unique_predictions"]),
+        natural_falsifiers=tuple(data["natural_falsifiers"]),
+        confounds=tuple(data["confounds"]),
+        capacity_notes=str(data["capacity_notes"]),
+        min_effect_bps=float(data["min_effect_bps"]),
+        nearest_hypothesis_ids=tuple(data["nearest_hypothesis_ids"]),
+        required_observations_absent=tuple(data["required_observations_absent"]),
+        memory_risk_classification=str(data["memory_risk_classification"]),
+        forward_confirmation_path=str(data["forward_confirmation_path"]),
         proposer=proposer,
         hostile_reviewer=hostile_reviewer,
     )

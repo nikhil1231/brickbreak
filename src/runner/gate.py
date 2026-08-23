@@ -141,6 +141,80 @@ def enforce_dispatch_gate(
         raise DispatchRateLimitExceededError(reason)
 
 
+def reserve_outcome_access(
+    spec: ExperimentSpec,
+    source_id: str,
+    batch_id: str = "",
+):
+    """Atomically reserve the outcome access immediately before label use.
+
+    The historical dispatch gate counts completed explorations. That is useful
+    for reporting, but two concurrent jobs can both pass it before either one
+    persists a result. The exposure ledger is the reservation layer: recent
+    completed explorations are first backfilled idempotently, then the current
+    access is appended under the ledger's process lock.
+    """
+    from ..firewall.exposure import ExposureLevel, record_exposure
+
+    now = datetime.now()
+    cutoff = now - timedelta(days=DEFAULT_POLICIES["train"].period_days)
+    for exploration in store.list_explorations(include_voided=False):
+        when = _parse_exploration_time(exploration)
+        if when is None or when < cutoff:
+            continue
+        old_spec = exploration.spec or {}
+        partition = old_spec.get("partition", "train")
+        if partition == "train":
+            level = ExposureLevel.E2_DIRECTIONAL_TRAIN
+        elif partition in ("validation", "test"):
+            level = ExposureLevel.E3_CONFIRMATORY
+        elif partition == "forward":
+            level = ExposureLevel.E4_FORWARD
+        else:
+            continue
+        old_hypothesis = store.get_hypothesis(exploration.hypothesis_id)
+        horizons = old_spec.get("horizons") or (old_spec.get("primary_horizon", 10),)
+        record_exposure(
+            hypothesis_id=exploration.hypothesis_id,
+            family=old_hypothesis.family if old_hypothesis else "general",
+            batch_id=old_spec.get("batch_id") or "LEGACY_UNBATCHED",
+            level=level,
+            dataset_version=old_spec.get("dataset_version", "v1"),
+            partition=partition,
+            target_columns=[f"fwd_ret_{int(h)}d_pct" for h in horizons],
+            actor="dispatch_gate_migration",
+            reason="Backfilled recent completed exploration into exposure ledger",
+            source_id=exploration.id,
+            timestamp=when.strftime("%Y-%m-%d %H:%M:%S"),
+            enforce_limit=False,
+        )
+
+    hypothesis = store.get_hypothesis(spec.hypothesis_id)
+    if spec.partition == "train":
+        level = ExposureLevel.E2_DIRECTIONAL_TRAIN
+    elif spec.partition in ("validation", "test"):
+        level = ExposureLevel.E3_CONFIRMATORY
+    elif spec.partition == "forward":
+        level = ExposureLevel.E4_FORWARD
+    else:  # validate_spec normally catches this before reservation
+        raise DispatchGateRefusalError(
+            f"Cannot reserve outcome access for unknown partition {spec.partition!r}")
+
+    return record_exposure(
+        hypothesis_id=spec.hypothesis_id,
+        family=hypothesis.family if hypothesis else "general",
+        batch_id=batch_id or "UNBATCHED",
+        level=level,
+        dataset_version=spec.dataset_version,
+        partition=spec.partition,
+        target_columns=[f"fwd_ret_{int(h)}d_pct" for h in spec.horizons],
+        actor="evaluation_vault",
+        reason="Reserved directional outcome access before label construction",
+        source_id=source_id,
+        enforce_limit=True,
+    )
+
+
 def gate_status(period_days: int = 7) -> dict[str, Any]:
     """Summary of dispatch rate utilization across all partitions."""
     out = {}

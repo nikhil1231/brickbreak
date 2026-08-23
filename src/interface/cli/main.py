@@ -371,6 +371,9 @@ def main(argv=None) -> int:
     disc_p.add_argument("--hint", default="", help="domain or economic hint")
     disc_p.add_argument("--hypothesis", default="H_PROP", help="hypothesis ID")
     disc_p.add_argument("--family", default="general", help="family name")
+    disc_p.add_argument("--provider", choices=("claude", "codex"), default="claude")
+    disc_p.add_argument("--output", default=None,
+                        help="dossier JSON path (default: research store)")
     disc_p.set_defaults(fn=council.cmd_discover)
 
     att_p = sub.add_parser("attack", help="attack a mechanism dossier across council critics")

@@ -1,6 +1,8 @@
 """Tests for Stage W contracts and lifecycle state machine."""
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from src.contracts import (
@@ -15,6 +17,7 @@ from src.contracts import (
     validate_transition,
 )
 from src.contracts.dossier import DossierValidationError
+from src.contracts.data_contract import DataContractValidationError
 from src.contracts.experiment_contract import ExperimentContractValidationError
 
 
@@ -68,6 +71,11 @@ def test_mechanism_dossier_validation_and_hashing():
     assert restored.dossier_hash == dos.dossier_hash
     assert len(restored.dissents) == 1
     assert restored.dissents[0].reviewer_role == "power_reviewer"
+    assert replace(dos, population="A different population").dossier_hash != dos.dossier_hash
+    tampered = dict(d_dict)
+    tampered["population"] = "A silently altered population"
+    with pytest.raises(DossierValidationError, match="hash mismatch"):
+        MechanismDossier.from_dict(tampered)
 
 
 def test_dossier_requires_competing_explanations_and_distinct_reviewer():
@@ -160,6 +168,11 @@ def test_data_contract_validation_and_hashing():
     assert d["contract_hash"] == dc.contract_hash
     restored = DataContract.from_dict(d)
     assert restored.contract_hash == dc.contract_hash
+    assert replace(dc, publication_latency_hours=24.0).contract_hash != dc.contract_hash
+    tampered = dict(d)
+    tampered["publication_latency_hours"] = 24.0
+    with pytest.raises(DataContractValidationError, match="hash mismatch"):
+        DataContract.from_dict(tampered)
 
 
 def test_experiment_contract_requires_dual_bars_and_separate_roles():
@@ -197,6 +210,11 @@ def test_experiment_contract_requires_dual_bars_and_separate_roles():
     exp_dict = exp.to_dict()
     restored = ExperimentContract.from_dict(exp_dict)
     assert restored.contract_hash == exp.contract_hash
+    assert replace(exp, cost_round_trip_bps=75.0).contract_hash != exp.contract_hash
+    tampered = dict(exp_dict)
+    tampered["cost_round_trip_bps"] = 75.0
+    with pytest.raises(ExperimentContractValidationError, match="hash mismatch"):
+        ExperimentContract.from_dict(tampered)
 
     # Fails if proposer == reviewer
     with pytest.raises(ExperimentContractValidationError, match="separate entities"):
@@ -260,3 +278,15 @@ def test_lifecycle_state_machine_and_illegal_transitions():
     tracker.transition(LifecycleState.FORWARD, actor="forward_lane", reason="Enrolled in forward accrual")
     assert tracker.current_state == LifecycleState.FORWARD
     assert len(tracker.history) == 9
+
+
+def test_lifecycle_audit_record_cannot_omit_actor_or_reason():
+    tracker = LifecycleTracker(entity_id="H046")
+    with pytest.raises(ValueError, match="actor"):
+        tracker.transition(LifecycleState.DOSSIER, actor="", reason="drafted")
+    with pytest.raises(ValueError, match="reason"):
+        tracker.transition(LifecycleState.DOSSIER, actor="scout", reason="")
+    with pytest.raises(ValueError, match="exposure_level"):
+        tracker.transition(
+            LifecycleState.DOSSIER, actor="scout", reason="drafted",
+            exposure_level="FREE")

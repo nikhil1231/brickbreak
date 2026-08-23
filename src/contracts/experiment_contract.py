@@ -65,6 +65,14 @@ class ExperimentContract:
             raise ExperimentContractValidationError("invalid partition")
         if not self.horizons:
             raise ExperimentContractValidationError("horizons cannot be empty")
+        if any(h <= 0 for h in self.horizons):
+            raise ExperimentContractValidationError("horizons must be positive")
+        if self.cost_round_trip_bps < 0.0:
+            raise ExperimentContractValidationError("cost_round_trip_bps cannot be negative")
+        if self.capacity_limit_inr <= 0.0:
+            raise ExperimentContractValidationError("capacity_limit_inr must be positive")
+        if not self.baselines:
+            raise ExperimentContractValidationError("baselines cannot be empty")
         if self.min_magnitude_bps <= 0.0:
             raise ExperimentContractValidationError("min_magnitude_bps must be positive (PLAN §3.3)")
         if self.min_significance_t <= 0.0:
@@ -73,31 +81,28 @@ class ExperimentContract:
             raise ExperimentContractValidationError("min_independent_blocks must be >= 4")
         if self.exposure_level_incurred not in ("E0", "E1", "E2", "E3", "E4"):
             raise ExperimentContractValidationError("invalid exposure_level_incurred")
+        if self.exposure_level_incurred == "E2" and self.partition != "train":
+            raise ExperimentContractValidationError("E2 experiments must use train")
+        if self.exposure_level_incurred == "E3" and self.partition not in ("validation", "test"):
+            raise ExperimentContractValidationError(
+                "E3 experiments must use validation or test")
+        if self.exposure_level_incurred == "E4" and self.partition != "forward":
+            raise ExperimentContractValidationError("E4 experiments must use forward")
+        if self.exposure_level_incurred != "E0" and not self.requested_outcome_columns:
+            raise ExperimentContractValidationError(
+                "outcome-bearing experiments must declare requested_outcome_columns")
+        if not self.execution_code_or_prompt_hash.strip():
+            raise ExperimentContractValidationError(
+                "execution_code_or_prompt_hash cannot be empty")
         if self.proposer == self.reviewer:
             raise ExperimentContractValidationError(
                 "proposer and reviewer must be separate entities (PLAN §3.3)")
 
     @property
     def contract_hash(self) -> str:
-        payload = json.dumps(
-            {
-                "contract_id": self.contract_id,
-                "dossier_hash": self.dossier_hash,
-                "hypothesis_id": self.hypothesis_id,
-                "family": self.family,
-                "batch_id": self.batch_id,
-                "adapter_type": self.adapter_type,
-                "dataset_version": self.dataset_version,
-                "split_version": self.split_version,
-                "partition": self.partition,
-                "horizons": list(self.horizons),
-                "min_magnitude_bps": self.min_magnitude_bps,
-                "min_significance_t": self.min_significance_t,
-                "execution_code_or_prompt_hash": self.execution_code_or_prompt_hash,
-                "exposure_level_incurred": self.exposure_level_incurred,
-            },
-            sort_keys=True,
-        )
+        semantic_fields = asdict(self)
+        semantic_fields.pop("created_at", None)
+        payload = json.dumps(semantic_fields, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
     def to_dict(self) -> dict[str, Any]:
@@ -112,8 +117,13 @@ class ExperimentContract:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ExperimentContract:
         d = dict(data)
-        d.pop("contract_hash", None)
+        expected_hash = d.pop("contract_hash", None)
         for k in ("horizons", "baselines", "requested_outcome_columns", "abort_conditions"):
             if k in d and isinstance(d[k], (list, tuple)):
                 d[k] = tuple(d[k])
-        return cls(**d)
+        contract = cls(**d)
+        if expected_hash is not None and contract.contract_hash != expected_hash:
+            raise ExperimentContractValidationError(
+                f"contract_hash mismatch: stored {expected_hash}, "
+                f"computed {contract.contract_hash}")
+        return contract
