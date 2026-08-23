@@ -562,7 +562,74 @@ def h047_verdict(table: pd.DataFrame, coverage: dict[str, Any]) -> str:
     return "SURVIVES_TRAIN" if covered and statistical and robust and economic else "REJECT"
 
 
+def h047_smoke(partition: str = "train") -> dict[str, Any]:
+    """Non-evidentiary pipeline smoke test on whatever partial cache exists."""
+    if partition != "train":
+        raise EntryTimingError("H047 smoke test is train-only")
+    design = repository.h047_design()
+    bars = repository.daily_bars(columns=[
+        "symbol", "date", "low_raw", "high_raw", "open_raw", "close_raw",
+        "adj_factor"])
+    bars["date"] = pd.to_datetime(bars["date"])
+    reconciliation = repository.corporate_action_reconciliation()
+    prices = _h047_1515_prices(repository.bulk_1515_bars(), bars)
+
+    event_px = prices.rename(columns={"symbol": "event_symbol",
+                                      "entry_px": "event_entry_px"})
+    control_px = prices.rename(columns={"symbol": "control_symbol",
+                                        "entry_px": "control_entry_px"})
+    d = design.merge(event_px[["event_symbol", "entry_date", "event_entry_px"]],
+                     on=["event_symbol", "entry_date"], how="left")
+    d = d.merge(control_px[["control_symbol", "entry_date", "control_entry_px"]],
+                on=["control_symbol", "entry_date"], how="left")
+    d = _h047_attach_exit(d, "event_symbol", bars, reconciliation, "event")
+    d = d.drop(columns="exit_date")
+    d = _h047_attach_exit(d, "control_symbol", bars, reconciliation, "control")
+    d = d[d["event_exit_clean"] & d["control_exit_clean"]].dropna(subset=[
+        "event_entry_px", "control_entry_px", "event_exit_open",
+        "control_exit_open"]).copy()
+    if d.empty:
+        return {"status": "NON_EVIDENTIARY_PARTIAL", "complete_pairs": 0}
+
+    d["premium_pct"] = 100.0 * (d["all_vwap"] / d["event_entry_px"] - 1.0)
+    d["analogue_pct"] = 100.0 * (
+        d["control_vwap_raw"] / d["control_entry_px"] - 1.0)
+    d["event_ret"] = d["event_exit_open"] / d["event_entry_px"] - 1.0
+    d["control_ret"] = d["control_exit_open"] / d["control_entry_px"] - 1.0
+    cuts = d["premium_pct"].quantile([1 / 3, 2 / 3]).to_numpy()
+    ef = d[["entry_date", "premium_pct", "event_ret"]].rename(
+        columns={"event_ret": "excess_pct"})
+    ef["excess_pct"] *= 100.0
+    cf = d[["entry_date", "analogue_pct", "control_ret"]].rename(
+        columns={"control_ret": "excess_pct"})
+    cf["excess_pct"] *= 100.0
+    daily = _paired_spreads(ef, cf, float(cuts[0]), float(cuts[1]))
+    stats = diagnostics.cluster_stats(
+        daily["increment_pct"], daily["entry_date"], lags=0)
+    return {
+        "status": "NON_EVIDENTIARY_PARTIAL",
+        "reason": "chronologically incomplete cache; no H047 verdict",
+        "design_pairs": int(len(design)),
+        "complete_pairs": int(len(d)),
+        "coverage_pct": round(100.0 * len(d) / len(design), 1),
+        "entry_sessions": int(d["entry_date"].nunique()),
+        "first_entry": str(d["entry_date"].min().date()),
+        "last_entry": str(d["entry_date"].max().date()),
+        "cut_lo_pct": round(float(cuts[0]), 4),
+        "cut_hi_pct": round(float(cuts[1]), 4),
+        "paired_tail_sessions": int(len(daily)),
+        "event_spread_bps": round(
+            100.0 * float(daily["event_spread_pct"].mean()), 1),
+        "twin_spread_bps": round(
+            100.0 * float(daily["twin_spread_pct"].mean()), 1),
+        "increment_bps": round(
+            100.0 * float(daily["increment_pct"].mean()), 1),
+        "t_dk": stats["t"],
+    }
+
+
 __all__ = [
     "EntryTimingError", "build_h047_design", "h046_train", "h046_verdict",
-    "h047_coverage", "h047_requests", "h047_train", "h047_verdict",
+    "h047_coverage", "h047_requests", "h047_smoke", "h047_train",
+    "h047_verdict",
 ]
