@@ -1738,3 +1738,780 @@ The 2020-2023 window has now been read **twice**: once by `family.holdout()`
 against the opening-window family (H033) and once by `resilience.semi_stale()`
 against the frozen resilience spec (H037). It is spent for any purpose. The only
 untainted data this project has is sessions after 2026-08-18.
+
+---
+
+# Addendum — the ruler, not the market (2026-08-22)
+
+**No sample was spent producing anything below.** Every number here comes from
+Monte-Carlo against the lab's own evaluator, or from descriptive statistics of
+price dispersion. Nothing was tested, nothing was promoted, and the dispatch
+ledger did not move.
+
+## The simulator was 2.6x quieter than the tape
+
+`tests/test_selector_eval.py` assumed a **3.0%** standard deviation on 10-day
+excess returns. Measured on `data/normalized/daily_bars_adj.parquet` at
+`generators.DEFAULT_MIN_TV_CR = 1.0` — 1,647 sessions, ~1,150 names a session:
+
+| liquidity floor | names/session | median within-session SD |
+| ---: | ---: | ---: |
+| 1 cr | 1,146 | **7.94%** |
+| 10 cr | 506 | 7.37% |
+| 50 cr | 207 | 6.57% |
+
+Untrimmed, the pooled figure is 22.4%. Every safety property this lab believed
+about its own bar had been established at 3.0%.
+
+## Consequence 1 — the bar in basis points is not safe at 7.9%
+
+The default bar had no significance term, so its false-alarm rate is a pure
+function of how wide the sampling distribution of the measured lift is. On a
+500-case replay that distribution has SD ~92 bps, so the 60 bps threshold sits
+inside the noise. Pure-noise selectors, 8 cases/session, 150 seeds:
+
+| blocks | cases | bps only | bps + \|t\|>2 | bps + \|t\|>2.5 |
+| ---: | ---: | ---: | ---: | ---: |
+| 4 | 504 | **13%** | 4% | 2% |
+| 9 | 1,000 | 9% | 3% | 2% |
+| 18 | 2,000 | 8% | 2% | 2% |
+| 54 | 5,992 | 3% | 3% | 2% |
+
+PLAN.md's earlier conclusion — *promote on bps, never on t* — was right about t
+and wrong to stop there. Neither term alone controls the false-alarm rate; the
+conjunction does. On the shipped path over 250 seeds the conjunction admits
+8.8% at 4 blocks, 3.2% at 9, 2.4% at 18, which is what sets
+`MIN_INDEPENDENT_BLOCKS = 8`.
+
+## Consequence 2 — the power had never been measured, and it is fatal at 500 cases
+
+| blocks | cases | power at a true 150 bps edge |
+| ---: | ---: | ---: |
+| 4 | 504 | **31%** |
+| 18 | 2,000 | 69% |
+| 54 | 5,992 | 99% |
+
+150 bps is the optimistic end of a plausible discretionary selection edge; real
+quantitative ones live nearer 20–80. **A 500-case replay cannot answer the
+mission's question**, and the earlier plan sized every replay at 500. The floor
+is ~2,000 cases and the design works at ~6,000 — roughly 8M input tokens, which
+is money rather than sample and therefore the one binding constraint here that
+can be bought out of.
+
+## The defect that would have wasted the first replay
+
+`excess_lift` is takes against the pool **of the same session**, and the pool
+contains the takes: in a session of k cases with m taken, the contrast equals
+`(1 − m/k)` times take-vs-skip. At k=1 that factor is zero.
+
+`generators.sample` round-robins one case into every session before any session
+gets a second. `train` holds **749 sessions**. `sample_n` is **500**. So the
+default configuration puts exactly one case in each of 500 distinct sessions,
+and the primary metric is structurally zero. Verified against a planted 300 bps
+edge:
+
+| cases per session | measured lift | verdict |
+| ---: | ---: | --- |
+| 1 | **0.0 bps** | passed 0/25 |
+| 2 | 166.5 bps | passed 23/25 |
+| 3 | 234.2 bps | passed 24/25 |
+
+The report is otherwise fully populated. It fails *toward the null*, so it would
+have read as the honest "the AI has no edge" answer the lab is braced for.
+
+Shape is also a free lever — at a fixed 500-case budget, 63 sessions of 8 has
+99% power against 150 bps where 250 sessions of 2 has 72% and 500 of 1 has none.
+
+## What changed in the code
+
+- `opportunity.py` — `min_excess_lift_t` added to `MIN_MEANINGFUL` (floor 2.0)
+  and to `DEFAULT_PASS_CRITERION` (2.5); `validate_pass_criterion` now refuses a
+  bar of magnitude alone *or* significance alone; `MIN_INDEPENDENT_BLOCKS = 8`;
+  `validate_sample_adequacy` added.
+- `evaluate.py` — reports `cases_per_session` and `pool_attenuation`; new
+  `INADEQUATE_SAMPLE_SHAPE` verdict class; the `sample_caveat` rewritten, having
+  previously asserted the opposite of what is true.
+- `generators.py` — `sample` raises below 2 cases per session on all three paths.
+- `tests/test_selector_eval.py` — harness defaults to the measured `REAL_NOISE_PCT`
+  = 7.9; nine new tests; three power studies behind `-m power`.
+- `distil.py` + `tests/test_distil.py` — the new stage, below.
+
+## The stage that follows from all of this
+
+If a selection cannot be tested at any affordable case budget, then the judge's
+**picks** are the wrong output. Its **reasons**, written as a predicate, run
+over the whole panel where the sample is. `discretionary/distil.py` scores a
+distilled rule on fidelity to the judge (Cohen's kappa, not raw agreement —
+two 25% selectors agree 62% of the time knowing nothing) and hands the survivor
+to the signal path for edge. The authoring step refuses any frame carrying a
+forward label.
+
+## Data state — updated 2026-08-22
+
+The 1995–2019 legacy bhavcopy archive is complete and local: 6,218 sessions,
+7,371,508 rows, 490 MB, 0 errors, synced from the server 2026-08-22. Raw only —
+normalisation into the panel is not done. Against `train`'s 749 sessions it is
+~8x the independent blocks, which by the table above is worth about a factor of
+three on the detectable edge. The 2020-2023 window remains spent.
+
+---
+
+# Addendum — the dispersion gate, run on the corporate-event pull (2026-08-22)
+
+Second moments only. No direction was measured, no arms were compared, nothing
+was promoted, and the dispatch ledger did not move. The gate asks one question:
+**do outcomes after this event fan out more than they otherwise would?** A
+family that scores 1.0 has nothing for any selector to separate; one that scores
+high may have something, and says nothing about whether it is findable.
+
+## The null band, established on real data
+
+Three administrative announcement types and a random draw, which should all
+read 1.00 and do. This is what makes the rest of the table readable:
+
+| control | dispersion ratio | tail ratio |
+| --- | ---: | ---: |
+| random name-days | 1.014 | 0.999 |
+| Shareholders meeting | 1.010 | 1.012 |
+| Certificate under SEBI (Depositories) | 1.036 | 1.031 |
+| Copy of Newspaper Publication | 0.981 | 0.924 |
+
+**The null band is roughly 0.92–1.08.** Under full matching it tightens to
+±0.04. Anything inside it is nothing.
+
+## The result: bulk deals, and almost nothing else
+
+Control matched on the session, then additionally on a point-in-time volatility
+quintile and a liquidity quintile. The middle column is where most candidates
+die.
+
+| family | h | session only | + volatility | + vol & liquidity | n |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **deal: bulk** | 1 | 1.788 | 1.386 | **1.357** | 17,582 |
+| **deal: bulk** | 10 | 1.506 | 1.255 | **1.225** | 17,285 |
+| ann: Financial Result Updates | 1 | 1.283 | 1.188 | **1.154** | 19,497 |
+| ann: Outcome of Board Meeting | 1 | 1.296 | 1.205 | **1.202** | 28,481 |
+| ann: Financial Result Updates | 10 | 1.008 | 0.995 | 0.971 | 19,454 |
+| ann: Outcome of Board Meeting | 10 | 1.063 | 0.998 | 1.007 | 27,547 |
+| deal: block | 1 | 0.893 | 0.846 | 0.972 | 2,154 |
+| ~ADMIN Shareholders meeting | 1 | 1.017 | 1.010 | 0.997 | 27,013 |
+| ~CONTROL random | 1 | 0.982 | 1.011 | 0.990 | 27,000 |
+
+**About half the raw bulk-deal effect was confound** — deals happen in jumpy,
+thinner names — and a 22–36% excess dispersion survives anyway, at both a
+one-day and a ten-day horizon, on 17,000 events across 1,600 sessions at ~11
+per session. That last number matters as much as the ratio: it is the case-set
+shape §3.3 says the evaluator needs.
+
+**Earnings-type announcements are real but fast.** 1.15–1.20 at one day,
+gone by ten (0.97–1.01). Whatever the news does, it is spent almost
+immediately. That is a materially worse proposition than it looks, because a
+0.40% round trip against a one-day move is a far larger hurdle than against a
+ten-day one.
+
+**Block deals are the mirror image** — outcomes after a negotiated block are
+*calmer* than normal at the session-only level (0.82–0.89). Small sample and it
+does not survive matching cleanly, so it is noted rather than claimed.
+
+**Flat at every horizon and every matching level**, which was the surprise:
+Acquisition (0.94), Press Release (0.96), Credit Rating (0.98), Investor
+Presentation (1.00), Allotment of Securities (0.96), Disclosure under SEBI
+Takeover Regulations (1.03). These are precisely the announcement types the
+"an LLM can read the context" thesis leans on hardest.
+
+## What this changes
+
+The ranking argued earlier today put earnings first and deals second. **The
+data reverses it.** Bulk deals are the only family that is simultaneously
+large, well-shaped, robust to the obvious confound, and alive at a horizon
+where transaction costs are survivable.
+
+Two cautions that the gate cannot address and this addendum does not claim
+otherwise. Dispersion is not predictability — the fanning may be ordinary
+volatility clustering around flow. And a further confound beyond volatility and
+liquidity (deals co-occurring with news) has not been excluded.
+
+## Data state — the corporate-event pull
+
+| source | rows | point-in-time usable | coverage |
+| --- | ---: | ---: | --- |
+| deals | 341,532 | 162,633 | 2020-01→2026-08, 3,453 symbols, 98.8/session |
+| announcements | 1,623,117 | 996,956 | 2020-01→2026-08, 2,632 symbols, 605/session |
+| financial_result_filings | 1,330 | 510 | **8 symbols only** |
+
+"Usable" means `first_tradable_session` resolved; the remainder predate the
+price tape. Every join above is on `first_tradable_session`, so the first
+actionable session's own move is excluded from every window.
+
+**The filings table is a pilot, not a pull.** 8 symbols cannot support anything,
+and the announcement subjects are a poor substitute for it — "Financial Result
+Updates" is a notification category, not the filing. If the earnings family is
+to be tested at all, that pull has to be finished first.
+
+---
+
+# Addendum — what a bulk deal actually is (2026-08-22)
+
+Still label-free. The event layer, the client classification and the dispersion
+gate below read no outcome mean, compared no arms and spent no dispatch. The
+family is registered as [[H043]].
+
+## The file does not describe what it appears to describe
+
+`data/normalized/deals.parquet`, bulk rows with a resolved first tradable
+session — 113,380 of them:
+
+| | share |
+| --- | ---: |
+| client-name-days that are near-flat round trips | **40.4%** |
+| total bulk volume done by those flat clients | **58.6%** |
+| rows from the top-20 clients | 38.0% |
+| of those top-20 rows, share that are round trips | 83.2% |
+| name-days carrying both a BUY and a SELL | 72% |
+
+The top of the client list is Graviton Research Capital, HRTI, NK Securities
+Research, QE Securities and XTX Markets — market makers whose intraday turnover
+crosses the 0.5% reporting threshold and whose overnight position is zero.
+Reading "a large buyer appeared" off those rows is reading liquidity provision
+as information. The share is rising: 24.5% of rows in 2020, 40.7% in 2026.
+
+## Splitting the file removes most of the result
+
+Control matched on session, point-in-time volatility quintile and liquidity
+quintile throughout.
+
+| subset | h=1 | h=10 | n | per session |
+| --- | ---: | ---: | ---: | ---: |
+| all bulk, as reported | 1.386 | 1.225 | 15,373 | 11.2 |
+| round-trip only | 1.323 | 1.218 | 12,331 | 9.0 |
+| directional | 1.431 | 1.384 | 3,042 | 2.9 |
+| — accumulation | 1.489 | 1.364 | 1,666 | 2.1 |
+| — distribution | 1.344 | 1.478 | 1,359 | 1.9 |
+| ~CONTROL random | 1.035 | 1.006 | 27,000 | 16.5 |
+
+Every figure above is on the partitioned frame `research_data.frame.load_events`
+returns, with purged boundary events dropped — which is why the counts are
+smaller than the raw file's.
+
+**A session whose only bulk activity was a market maker crossing its own book
+is followed by outcomes 20% more dispersed than matched controls.** No
+positioning was disclosed. So most of yesterday's headline is an attention or
+volume effect that survived matching on volatility and liquidity — which is a
+caution about the gate as much as about the family.
+
+What survives is the increment: **1.384 for directional flow against 1.218 for
+round-trip sessions at h=10.** That is the hypothesis, and it makes round-trip
+sessions the correct control. A test against the matched panel would clear
+easily and prove nothing.
+
+Two things worth noticing in the split. Distribution fans outcomes out more
+than accumulation at h=10 (1.489 against 1.273) — large sellers, not large
+buyers, mark the uncertain situations. And the tradeable event set is a quarter
+the size of the headline: 3,042 events, not 15,373.
+
+## The lookahead this family invites
+
+The client classification is what makes the event mean anything, and the
+obvious implementation of it reads the future — labelling a 2021 deal by a
+client's 2025 behaviour. `client_profile` is expanding and shifted, a client
+with fewer than ten prior sessions is `unknown` rather than assumed, and
+`tests/test_bulk_deals.py` asserts both, including that the first session of any
+client has no profile at all. This is H015 in a new costume and it would not
+have announced itself.
+
+## Shipped
+
+`src/research/families/bulk_deals/` — `events.py` with the point-in-time client
+book, profile and event construction. `tests/test_bulk_deals.py`, 10 tests.
+`alpha_eval/spread.check` gained `match_on`, with a test that a fake family
+drawn only from jumpy names scores 1.79 unmatched and 1.00 matched.
+
+**Nothing here is a directional result and none of it may be read as one.**
+
+---
+
+# Addendum — is the bulk-deal test worth commissioning? (2026-08-22)
+
+Still no sample spent. Everything below is dispersion, structure, or simulation.
+
+## Two design questions, settled
+
+**Does a bulk deal beat simply knowing volume was high?** Yes, at ten days.
+Adding an abnormal-volume quintile to the matching barely moves it:
+
+| event set | +vol+liq | + also abnormal volume |
+| --- | ---: | ---: |
+| all bulk days | 1.225 | 1.176 |
+| round-trip only | 1.218 | 1.195 |
+| directional | 1.384 | **1.458** |
+
+At h=1 volume explains most of it (directional falls 1.592 → 1.341). At h=10 it
+explains none. **Round-trip days survive volume matching too (1.195)** — so the
+earlier characterisation of them as noise was wrong, and market-maker presence
+carries something beyond volume. It is simply weaker than directional flow.
+
+**Head to head on bulk-deal days only, directional against round-trip:**
+
+| arm | h=1 | h=10 |
+| --- | ---: | ---: |
+| directional | 1.202 | 1.284 |
+| — accumulation | 1.147 | **1.021** |
+| — distribution | 1.092 | **1.331** |
+
+**At ten days the entire increment is distribution.** Accumulation is 1.021 —
+indistinguishable from the round-trip control it is measured against. Large
+sellers mark the situations that separate; large buyers do not.
+
+## A correction to this morning's block arithmetic
+
+PLAN.md quotes `independent_blocks = sessions / horizon`. For a *paired*
+contrast that is too harsh: pairing inside the session cancels the market
+factor, which carries most of the overlap.
+
+A first attempt to measure the residue used a placebo — random events with the
+real per-session counts — and read a lag-1 autocorrelation of +0.020 at h=10
+against +0.900 for a full overlap. **That reading was an artefact.** Random
+reassignment destroys event-set persistence, and persistence is precisely what
+carries the correlation. The honest measurement is structural and needs no
+outcome at all:
+
+| lag (sessions) | share of distribution names recurring |
+| ---: | ---: |
+| 1 | **0.190** |
+| 2 | 0.140 |
+| 5 | 0.095 |
+| 10 | 0.050 |
+
+34% of distribution events have another on the same symbol within 14 days; 46%
+of symbols appear exactly once. So the overlap share is ~0.19 — neither of the
+extremes. `alpha_eval.spread.event_persistence` measures it, with tests at both
+ends.
+
+## The power of the test, at the measured persistence
+
+Simulated on the real session structure — the actual sessions, the actual event
+and control counts on each — against the bar frozen this morning (≥60 bps and
+|t| ≥ 2.5):
+
+| true edge | 50 | 75 | 100 | 150 | 200 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **distribution** (1,363 events, 734 sessions) | 10% | 27% | **46%** | 86% | 99% |
+| directional (3,042 events, 1,032 sessions) | 18% | 46% | **70%** | 99% | 100% |
+
+**The test detects 150 bps and is a coin flip at 100.** Realistic selection
+edges are 20–80 bps. Run today, a null result would be uninformative — which is
+the worst possible outcome, because it costs the sample and settles nothing.
+
+## What changes that, and it is already on disk
+
+122,293 bulk deals from **2004–2019** sit in the file with `session_status =
+before_tape`, across 3,914 sessions and 2,359 symbols — against 113,380 usable
+deals over 1,645 sessions today. Building the legacy price panel roughly
+doubles the events and **triples the sessions**, which is what power depends
+on: 734 paired sessions becomes ~2,500, and the detectable edge falls by about
+1.8x. A 100 bps effect goes from a coin flip to near-certain, and 50–75 bps
+comes into range for the first time in this project's history.
+
+The fit is lucky and worth stating: this family needs **only OHLCV and volume**.
+The legacy archive has no delivery percentage and no VWAP, which rules out most
+of the lab's other work — and rules out none of this.
+
+**Recommendation: do not spend the sample yet. Build the legacy panel first.**
+It costs no sample, the raw data is local, and it is the difference between a
+test that cannot answer the question and one that can.
+
+---
+
+# Addendum — the counterparty, and the pre-2020 panel (2026-08-22)
+
+No sample spent. Taxonomy and panel construction read no outcome at all.
+
+## Who is actually on the other side
+
+`bulk_deals.clients` classifies the free-text counterparty name. 29,123 raw
+names collapse to 11,084 entities after normalisation — the same firm appears
+as `QE SECURITIES LLP` / `QE SECURITIES`, and as `ASIT C MEHTA INVESTMENT
+INTERMEDIATES` / `INTERRMEDIATES` / `INTERRM`. That is not tidiness:
+`client_profile` needs ten prior sessions before it classifies anyone, so an
+entity split across three spellings can carry thirty sessions and be `unknown`
+in all three.
+
+| type | rows | share | entities |
+| --- | ---: | ---: | ---: |
+| individual | 34,885 | 36.3% | 8,274 |
+| **prop_hft** | 34,034 | **35.4%** | **27** |
+| corporate | 11,687 | 12.1% | 1,068 |
+| broker | 8,697 | 9.0% | 288 |
+| unknown | 2,871 | 3.0% | 720 |
+| foreign_portfolio | 2,221 | 2.3% | 287 |
+| **mutual_fund** | 867 | **0.9%** | 218 |
+| insurance | 348 | 0.4% | 42 |
+| promoter_related | 299 | 0.3% | 124 |
+
+**Twenty-seven entities are 35% of the file.** Institutional investment — the
+thing the disclosure is imagined to reveal — is 0.9%. The counterparty in a
+bulk deal is overwhelmingly a market maker or a wealthy individual, not a fund.
+
+**The taxonomy does not sharpen the test, and that is a negative result worth
+recording.** Splitting distribution events by seller type at h=10:
+
+| net seller | ratio | n | per session |
+| --- | ---: | ---: | ---: |
+| individual | 1.195 | 2,568 | 2.49 |
+| corporate | 0.971 | 826 | 1.50 |
+| broker | 1.301 | 324 | 1.22 |
+| foreign_portfolio | 0.457 | 231 | 1.16 |
+| mutual_fund | 0.572 | 166 | 1.08 |
+
+Only the individual arm clears the two-per-session floor at which a
+within-session dispersion is readable at all, and it reads *below* the unsplit
+distribution figure of 1.331. Every institutional category is too small to say
+anything. The taxonomy answers the counterparty question and buys no power.
+
+## The pre-2020 panel
+
+**The premise that blocked this was wrong.** NSE's corporate-actions endpoint
+was assumed to start in 2020 because that is where the local cache started. It
+serves **2003** onward. 26,222 legacy actions are now on disk, including 416
+splits and 391 bonuses, and the legacy panel is reconciled by the same
+two-source rule as the modern one rather than adjusted off the tape.
+
+**Two construction errors, both caught by measuring rather than reading.**
+
+*Ratios too close to 1.0.* A first canonical list included 4:5 and 5:4, and
+"adjusted" 5,722 ordinary 20–25% sessions into corporate actions. That does not
+lose data, it manufactures it, and nothing downstream could have seen it. The
+list is now split: only ratios a normal session cannot imitate are ever
+adjusted; 3:5 through 5:3 are marked and left alone.
+
+*A parser gap.* 299 of 416 legacy splits — 72% — carried a stated ratio that
+`parse_subject` could not read, because the pre-2020 feed writes `Fv Split
+Rs.10/- To Rs.2/` where the modern feed writes `... Per Share To ...`. Fixing
+it took matched events from 519 to 773 and unparsed from 374 to 77. **The fix
+changes zero modern events and 297 legacy ones**, so every finding resting on
+`daily_bars_adj.parquet` is unaffected.
+
+Result, 10-day windows, share of rows per bin (×1e5):
+
+| daily return | legacy | legacy, quarantined windows dropped | modern |
+| --- | ---: | ---: | ---: |
+| (−52%, −48%] | 11.6 | **2.4** | 1.3 |
+| (−48%, −42%] | 9.0 | 4.9 | 0.3 |
+| (−35%, −25%] | 60.1 | 17.8 | 5.7 |
+
+7,316,207 bars, 1995–2019, 2.5% of rows lost to quarantine. The 1:2 split zone
+falls from nine times the modern rate to about twice it.
+
+**This panel is not yet at the modern panel's standard and must not be quoted
+as if it were.** After cleaning, the left tail still runs 2–3x the modern rate.
+Some of that is genuine — 2008, thinner small caps, wider bands — and some is
+probably residual corporate actions. Enough to build features on; **not yet
+enough to trust a dispersion measurement from**, which is precisely what a
+spurious fat tail corrupts. Validating it is the next step, and the deals it
+would unlock still need `pipelines/events.py` re-run against the extended tape
+before their `first_tradable_session` resolves.
+
+## A file I broke and restored
+
+`fetch_actions` writes `corporate_actions.parquet` as a side effect. Calling it
+for 2003–2019 overwrote the modern actions with legacy-only rows. Caught by the
+row count, fixed by re-running over the full 2003–today range from the intact
+JSON cache; the file now holds 41,456 actions and 700 of 703 splits carry a
+ratio. `daily_bars_adj.parquet` was never rebuilt and never changed.
+
+---
+
+# Addendum — the out-of-sample check, and two things it broke (2026-08-22)
+
+The 2005-2019 era was opened for the first time. Still second moments only; no
+outcome mean read, no dispatch spent, H043 still frozen.
+
+## The extension worked
+
+`corporate_actions` reaches 2003, the parser fix explains 297 more legacy
+splits, and `events.build_deals` accepts a session calendar. Passing it the
+combined 2005+ tape resolves the deals that had been stranded:
+
+| | before | after |
+| --- | ---: | ---: |
+| usable bulk deals | 113,380 | **234,520** |
+| sessions | 1,645 | **5,351** |
+
+## The out-of-sample check cannot be performed, and that is the finding
+
+| era | directional vs round-trip | accumulation | distribution | per session |
+| --- | ---: | ---: | ---: | ---: |
+| 2005-2019 | 0.743 | 0.807 | 0.685 | 1.61 |
+| 2020-2026 | 1.240 | 1.003 | 1.310 | 3.14 |
+
+Read naively that is a reversal. It is not, because **the estimator does not
+work on the older era.** Random events carrying the real per-session counts:
+
+| era | null dispersion | sd | range |
+| --- | ---: | ---: | --- |
+| 2005-2019 | **1.148** | **0.245** | 0.781 – 1.510 |
+| 2020-2026 | 1.061 | 0.063 | 0.939 – 1.152 |
+
+The legacy null is four times noisier and its own mean sits at 1.148. The
+"reversal" at 0.685 is 1.9 sd below that — indistinguishable from noise. The
+cause is the readability floor this lab already has: 1.6 directional events per
+session, under the 2.0 a within-session dispersion needs. Lowering the
+liquidity floor to 0.25 cr and 0.1 cr does not fix it (1.79 and 1.87 per
+session).
+
+**So the 2005-2019 era cannot check this family, at any liquidity floor, with
+this contrast.** It is not spent — nothing was concluded from it — but it is
+not the confirmation the earlier addendum expected it to be, and the argument
+that the legacy panel makes this family testable was wrong for this design.
+
+## The null is 1.06, not 1.00
+
+Every dispersion figure this project has quoted was read against a random draw
+of *arbitrary* group size. Against random events with the **real** per-session
+counts — thin groups, as the family actually has — the modern null is 1.061
+with sd 0.063. So the headline 1.240 is about 3 sd, not the 4 the raw ratio
+suggests. Nothing is overturned; everything is smaller than it read.
+
+## The narrowing to distribution is withdrawn
+
+H043 was narrowed this morning to sell-side flow, on 1.331 for distribution
+against 1.021 for accumulation. Varying the liquidity floor — a parameter
+nobody had varied:
+
+| liquidity floor | directional | accumulation | distribution |
+| --- | ---: | ---: | ---: |
+| 1.00 cr | 1.240 | 1.003 | **1.310** |
+| 0.25 cr | 1.233 | 1.026 | **1.200** |
+| 0.10 cr | 1.238 | 0.969 | **1.075** |
+
+**`directional` is flat across all three; `distribution` collapses from 1.310
+to 1.075 and meets the null.** The sell-side narrowing was fitting the 1-crore
+floor, registered as a pre-registration four hours after it was chosen and
+before it had been varied once. That is the H024 disease at small scale, caught
+by varying a parameter rather than by any insight, and it is exactly what
+`PLAN.md` §7 warns about the case format: *every one of those is a parameter
+nobody has varied.*
+
+**What survives** is the unnarrowed claim: directional flow, either sign, at
+1.233-1.240 against a 1.061 null, stable across every floor tested. Modest,
+robust, and about 3 sd — which is a far weaker thing than this morning's table
+implied.
+
+---
+
+# Addendum — the separation screen, and what a bulk deal turns out to be (2026-08-23)
+
+The first moment was read, on `train` only, under the design registered in
+HYPOTHESES.md ("H043 pre-flight") **before the screen was run**. Eleven
+features, three liquidity floors, two horizons, sixty-six readings, all of them
+below. No dispatch spent; `validation`, `test` and `forward` untouched.
+
+The question was the one left standing after the withdrawal: directional flow
+fans outcomes out at 1.24 against a 1.06 null, and fanning out pays nothing
+unless something says *which* names went which way. **Does any simple coded
+feature separate outcomes within directional days?**
+
+## First, a feature that was measuring a corporate action
+
+`deal_vs_close_pct` compared a raw deal price against a **back-adjusted**
+close. In any name that later split or bonused, the adjusted close is the deal
+price divided by the factor, so the feature returned the factor. On the train
+directional set: 24.9% of events sit in a name carrying a later adjustment,
+17.7% of premiums read beyond ±20% against 1.1% once both legs are raw, and
+the median premium falls from **+1.82% to 0.00%**. The whole apparent premium
+was the adjustment. Bulk deals print, on median, exactly at the close.
+
+`_scale` now demands `close_raw` and `med_vol_raw` by name and raises on the
+adjusted columns; `report.context` supplies both spaces and takes the
+liquidity floor as an argument, because a floor that can only be changed by
+editing a module constant is a floor nobody varies.
+
+## The screen: nine of eleven features are inside the null band
+
+Excess over the built null, in basis points of forward excess return. The null
+re-points each event at a same-session name matched on volatility, liquidity
+and volume-surprise quintile, keeps the event's features, and is centred on
+its own mean — the matching means a volatility feature partly reproduces
+itself in its own null, and reading a raw spread against a band assumed to sit
+at zero would credit the feature with what the matching already contains.
+
+h=10, the family's horizon:
+
+| feature | 0.10 cr | 0.25 cr | 1.00 cr | band |
+| --- | ---: | ---: | ---: | ---: |
+| **vol20** | **−561** | **−536** | **−444** | 172 / 196 / 271 |
+| premium_pct | −419 | −380 | −162 | ” |
+| net_flow_signed | −291 | −190 | −260 | ” |
+| direction_sign | −152 | −77 | −122 | ” |
+| value_vs_turnover | +54 | −55 | −177 | ” |
+| volx | −19 | −73 | −260 | ” |
+| round_trip_share | +114 | +45 | −75 | ” |
+| mom20 | +1 | +73 | −308 | ” |
+| net_flow_abs | +30 | −38 | +59 | ” |
+| dir_clients | +12 | −7 | −47 | ” |
+| premium_signed | −22 | +19 | +114 | ” |
+
+The band is the 95th percentile of the **largest absolute spread across all
+eleven features** per null draw, which is what an eleven-feature screen has to
+clear. Two features clear it at every floor with a stable sign: `vol20`, and
+`premium_pct` at h=1 (−184 / −149 / −107 against a band of 57 / 62 / 72).
+
+**Every feature that describes the deal itself is inside the band.** Net flow
+against normal volume, deal value against normal turnover, how many clients
+printed, how much of the day was market making, and the direction of the flow
+— the one the hypothesis is named after — separate nothing.
+
+## Then the two survivors were asked whether they are about the deal
+
+Three populations, same sessions, same statistic. The rung that matters is the
+middle one: a round-trip day is a day when a prop desk crossed its own book
+and went home flat. A large print happened; **no position was disclosed.**
+
+`premium_pct`, top-minus-bottom tercile, bps:
+
+| population | h=1 | h=10 | n |
+| --- | ---: | ---: | ---: |
+| no deal, magnitude-matched | −12 to −23 | −6 to +10 | ~1,000,000 |
+| round-trip bulk day | −68 to −130 | −216 to −399 | 5,940–8,165 |
+| directional bulk day | −107 to −184 | −162 to −419 | 1,179–1,801 |
+
+`vol20`, same three:
+
+| population | h=1 | h=10 |
+| --- | ---: | ---: |
+| no deal | −1 to +6 | −15 to +59 |
+| round-trip bulk day | −31 to −80 | −227 to −457 |
+| directional bulk day | −90 to −129 | −444 to −561 |
+
+**Both survivors are already at full strength on days when nobody took a
+position.** The round-trip arm carries five to eight times the sample, so its
+readings are the better-measured of the two, and the directional increment
+over it is inside the noise at every floor — at 1.00 cr and h=10 the
+directional premium reads *smaller* (−162) than the round-trip one (−216).
+
+## What this means for H043
+
+H043 does not claim that bulk-deal days are unusual. It claims that
+**directional** flow adds something over round-trip flow, and that the
+addition is findable. The screen was the cheapest possible test of the second
+half, and the answer is that nothing about the disclosed position separates
+outcomes — while two things that have nothing to do with the position separate
+them identically whether a position was disclosed or not.
+
+That is the same shape as the finding that split the file in the first place:
+round-trip days carried the dispersion, and now round-trip days carry the
+separation too. The counterparty story — a promoter selling, a fund forced out
+— is not what this file is measuring.
+
+## The power statement, which is the other half of a null
+
+At 1,179–1,801 events over ~500 train sessions, the eleven-feature band is
+**±57 to ±72 bps at h=1 and ±172 to ±271 bps at h=10.** Nothing smaller is
+visible here at all. A 500-case replay carries a third of the events and its
+judge cannot be run at 200 permutations, so its detectable magnitude is worse
+than this by a wide margin. **A feature this screen cannot see is not a
+feature a replay could have found**, which is what makes a null here decisive
+rather than merely disappointing.
+
+## One thing worth keeping, and it belongs to somebody else
+
+A bulk print that lands far from the close is followed by continuation — the
+name keeps moving the way it moved between the print and the close — at
+−68 to −184 bps at h=1, five to eight times its magnitude-matched deal-free
+twin (−12 to −23 bps on a million rows). It is coded, it is cheap, it needs no
+judge, and **it is not H043**: it is strongest on the arm H043 excludes. Under
+the distillation rule it is a quantitative idea found nearby and must be
+registered as its own hypothesis rather than credited to this family. Two
+known contaminants to clean first: the event session is D+1 by construction
+(NSE publishes after the close; 76% at a one-session gap), so the feature
+spans a day and a half of realised return, and a name that goes ex-split
+inside that gap still produces a spurious ±100% premium.
+
+---
+
+# Addendum — H044 survives its train cleanup (2026-08-23)
+
+**SUPERSEDED later on 2026-08-23 by the execution check below.** The table is
+retained as the registered close-to-close diagnostic, not as executable alpha.
+
+`validation`, `test` and `forward` were not read. H044's final exploration was
+registered in HYPOTHESES.md before this run: pool all bulk events, remove
+corporate-action gaps, subtract an exact same-length no-deal twin inside each
+session, and demand more than 40 bps at all three liquidity floors both with
+and without premiums beyond 10%.
+
+## Two pieces of the apparent edge were real contaminants
+
+First, `all_vwap` and `dir_vwap` were means of client-level prices. A one-share
+print therefore received the same weight as a million-share print. They are now
+`sum(value) / sum(quantity)`, asserted by `tests/test_bulk_deals.py`.
+
+Second, the no-deal twin's previous VWAP was initially shifted *after* the
+liquidity filter. If a name failed the floor on the immediately previous
+session, the shift jumped to an older row and silently compared a multi-session
+move with the event's one-session move. Previous raw VWAP and adjustment factor
+are now fixed on the full tape before filtering, also under regression test.
+
+The corporate-action quarantine removes any event whose adjustment factor is
+missing or changes between the deal print and first-tradable close, or whose
+reconciliation record lands in that interval. It removed 31–43 event
+symbol-sessions depending on the liquidity floor. The twin receives the
+corresponding factor-change quarantine.
+
+## The exact twin explains some continuation, not most of it
+
+Basis points of next-session excess return, equal-weighted over sessions that
+carry both event tails and both twin tails:
+
+| floor | extreme cap | event top−bottom | twin top−bottom | event−twin | DK t | paired sessions |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1.00 cr | none | −93.4 | −19.6 | **−73.8** | −3.22 | 526 |
+| 1.00 cr | 10% | −85.5 | −14.9 | **−70.6** | −3.12 | 516 |
+| 0.25 cr | none | −104.7 | −25.9 | **−78.8** | −4.58 | 604 |
+| 0.25 cr | 10% | −94.7 | −21.4 | **−73.3** | −4.65 | 587 |
+| 0.10 cr | none | −107.2 | −31.8 | **−75.4** | −4.61 | 628 |
+| 0.10 cr | 10% | −120.7 | −26.4 | **−94.3** | −3.31 | 617 |
+
+The same-length ordinary move carries 15–32 bps of continuation, so the bulk
+print is not merely a renamed short-horizon momentum feature. After subtracting
+that twin, 71–94 bps remains, in the registered direction and above the 40-bps
+cost floor in every cell. Removing `|premium| > 10%` does not weaken it.
+
+This is the point to stop. The result is still a train finding, but it is now a
+specific one rather than a contaminated one: **a large bulk print far from the
+next tradable close contains an incremental next-day continuation signal.**
+HYPOTHESES.md freezes the 1-crore validation test at the train cuts −1.7510% /
++2.1473%, with a joint −40-bps and t≤−2 bar. No validation outcome has been
+opened.
+
+---
+
+# Addendum — H044 fails when the trade is made executable (2026-08-23)
+
+`validation`, `test` and `forward` remain untouched.
+
+Two different clocks had been called "next day". The first implementation
+also shifted outcomes after filtering the liquid universe. For 25 of 7,177
+clean 1-crore events, a row falling below the floor pushed the exit forward by
+a median 18 calendar days. Computing the next row on the full tape changes the
+primary event-minus-twin increment from −73.8 to **−54.0 bps** (t=−2.86).
+Small in count and large in influence; the corrected close-to-close diagnostic
+still survives, so this is not the rejection.
+
+The rejection is that the diagnostic buys its entry with hindsight. The
+feature is `deal_vwap_D / close_D+1`: it does not exist until D+1 has closed.
+The close→next-close outcome assumes the trade entered at the same completed
+close used to decide it. At the earliest executable price, D+2 open, the
+event-specific continuation is gone:
+
+| outcome | event top−bottom | twin top−bottom | increment | DK t | paired sessions |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| corrected close→next close | −72.4 | −18.4 | **−54.0** | −2.86 | 527 |
+| next open→close | +23.6 | +17.7 | **+5.8** | +0.35 | 527 |
+
+The executable estimate is noise and points in the opposite direction. Gross
+open→close return is −71.0 bps for the purported long tail and +41.7 bps for
+shorting the purported down tail. The latter is below the lab's 40-bps cost
+floor once sessions receive equal portfolio weight; the train book loses after
+costs. H044 is **REJECTED at train** and its frozen validation test is
+withdrawn without being run.

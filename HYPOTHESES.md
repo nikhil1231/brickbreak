@@ -2137,3 +2137,372 @@ anonymised arm.
 **Until this has been run, every discretionary finding in this lab carries an
 asterisk,** and `PLAN.md` §6 lists it as the stage that gates belief in the
 rest.
+
+
+## H043 — Directional overnight bulk flow separates outcomes; the reported deal does not
+
+Status: **REJECTED at pre-flight, 2026-08-23, without spending a case.** The
+separation screen registered below was run on `train` under its own rules and
+found that nothing describing the disclosed position separates outcomes, while
+the two features that do separate outcomes do so at full strength on
+round-trip days where no position was disclosed at all. The claim was never
+"bulk-deal days are unusual" — it was that *directional* flow adds a findable
+increment over round-trip flow, and that is the half that failed. FINDINGS.md,
+2026-08-23. No dispatch was spent; `validation`, `test` and `forward` are
+untouched and the family costs the sample budget nothing.
+
+Registered 2026-08-22. Pre-registered before any directional test.
+`conditions-on` nothing; it is a fresh family.
+
+Family: `bulk_deals`. **Kind of work: label-free so far.** The event layer,
+the point-in-time client classification and the dispersion gate have all been
+run. No outcome mean has been read and no dispatch has been spent.
+
+**The claim.** When a client who takes positions — as distinct from a market
+maker who ends the session flat — accumulates or distributes a name through a
+disclosed bulk deal, the ten-day outcomes of that name separate more than for
+size-, volatility- and liquidity-matched names in the same session, **and more
+than for names whose only bulk activity that session was round-trip flow.**
+
+**Why the second clause is the hypothesis and the first is not.** The
+dispersion gate found bulk deals fanning outcomes out at 1.217 over a matched
+control at h=10 (FINDINGS.md, 2026-08-22). Splitting the file destroys most of
+that story:
+
+| subset | h=1 | h=10 | n | per session |
+| --- | ---: | ---: | ---: | ---: |
+| all bulk, as reported | 1.386 | 1.225 | 15,373 | 11.2 |
+| round-trip only | 1.323 | **1.218** | 12,331 | 9.0 |
+| directional | 1.431 | **1.384** | 3,042 | 2.9 |
+| — accumulation | 1.489 | 1.364 | 1,666 | 2.1 |
+| — distribution | 1.344 | 1.478 | 1,359 | 1.9 |
+
+**Round-trip sessions carry almost the whole headline number.** A day on which
+the only bulk activity was Graviton crossing its own book is followed by
+outcomes 20% more dispersed than matched controls, and no positioning
+information was disclosed at all. Most of "bulk deals predict dispersion" is an
+attention or volume effect that survived matching on volatility and liquidity.
+
+What is left is an increment: 1.384 against 1.218 at h=10. That increment is the
+hypothesis, and the correct control is therefore **round-trip sessions**, not
+the market and not the matched panel. A test run against the panel would clear
+easily and would have proved nothing.
+
+**Why it is worth the sample.** The counterparty question, which [[H041]]
+records as genuinely unanswered for a discretionary judgement, has an actual
+answer here. A promoter selling into a block, a fund forced out by redemptions,
+an anchor exiting at lock-up — these are participants trading for reasons other
+than believing the price is wrong, and they are disclosed by regulation with a
+timestamp. That is the cleanest mechanism this project has had.
+
+**What would falsify it.** Directional flow shows no dispersion increment over
+round-trip sessions once matched, or the increment exists but the outcome
+separation is not predictable from anything — coded or judged — at a magnitude
+clearing the 40 bps round trip.
+
+**The trap this family sets, recorded now.** The client classification is what
+makes the event mean anything, and the obvious implementation of it reads the
+future: labelling a 2021 deal by a client's 2025 behaviour. `client_profile` is
+expanding and shifted, a client with fewer than ten prior sessions is `unknown`
+rather than assumed, and `tests/test_bulk_deals.py` asserts both. This is the
+H015 lookahead in a new costume and it would not have announced itself.
+
+**The narrowing to distribution is WITHDRAWN, 2026-08-22, same day.** It was
+registered on 1.331 against 1.021 at a 1-crore liquidity floor, and that floor
+had never been varied. At 0.25 cr distribution reads 1.200 and at 0.10 cr it
+reads 1.075 against a null of 1.061 — it meets the null. `directional`, either
+sign, reads 1.240 / 1.233 / 1.238 across the same three floors. **The primary
+claim reverts to directional flow of either sign**; accumulation and
+distribution are descriptive splits, not the hypothesis. Recorded rather than
+quietly rewritten, because a narrowing chosen on one parameter setting and
+called a pre-registration is the H024 failure in miniature.
+
+Also corrected: every dispersion figure below was read against a null of 1.00.
+Against random events carrying the *real* per-session counts the modern null is
+**1.061 (sd 0.063)**, so 1.240 is ~3 sd rather than the 4 the raw ratio implies.
+
+**Superseded narrowing, kept for the record:** Head to head against
+round-trip days on the same sessions, accumulation reads 1.021 at h=10 and
+distribution 1.331. The whole increment is on the sell side, so the primary
+claim is about **distribution only** and accumulation is a declared secondary.
+Registering the narrowing here rather than discovering it after a result.
+
+**Power, and why the test is not yet worth commissioning.** Simulated on the
+real session structure at the measured event persistence (overlap share 0.19),
+against the frozen bar:
+
+| true edge | 50 | 75 | 100 | 150 | 200 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| distribution | 10% | 27% | **46%** | 86% | 99% |
+| directional | 18% | 46% | 70% | 99% | 100% |
+
+A realistic selection edge is 20-80 bps. **A null today would settle nothing
+and would cost the sample doing it.** The 2004-2019 deals already on disk —
+122,293 of them over 3,914 sessions — triple the session count once the legacy
+price panel exists, which is the difference between a coin flip at 100 bps and
+a decisive answer. That build is the precondition, and it spends no sample.
+
+**Sample shape.** 8,664 directional symbol-sessions over 1,405 sessions, 6.8
+per session before the liquidity filter and 2.9 after — above the two-per-session
+floor `validate_sample_adequacy` requires, and roughly 120 independent blocks at
+h=10, comfortably above `MIN_INDEPENDENT_BLOCKS`. Accumulation and distribution
+are near-balanced at 4,378 and 4,191.
+
+### H043 pre-flight — the separation screen, registered before it was run
+
+Registered 2026-08-23, **before any first moment was read anywhere in this
+family**. Everything H043 has produced so far is a second moment; this is the
+first thing in the family that looks at the sign of an outcome, and it is
+therefore the first thing capable of being fitted. So the whole design is
+fixed here, in advance, and reported in full afterwards whatever it says.
+
+**The question.** Within directional bulk-deal days — the one arm that
+survived the withdrawal, 1.233-1.240 dispersion against a 1.061 null —
+**does any simple coded feature separate the outcomes?** The family's only
+surviving claim is that outcomes after these events fan out. Fanning out is
+not tradeable by itself; something has to say *which* names went which way.
+
+**Why this is the right thing to spend nothing on.** If a coded feature
+separates them, the family has a mechanism to hand a judge and the replay is
+worth commissioning. If nothing separates them at a magnitude the replay could
+ever have detected, the replay cannot detect it either — 1,208 events beat 500
+cases — and the family is finished without a case being dispatched.
+
+**Partition: `train` only.** `validation`, `test` and `forward` are not read.
+The dispersion work ran unpartitioned, which was defensible for a second
+moment and is not defensible here.
+
+**The eleven features, fixed now.** Flow: `net_flow_signed` (net directional
+quantity over trailing median raw volume), `net_flow_abs`, `value_vs_turnover`
+(deal value over a normal day's turnover). Price: `premium_pct` (deal VWAP
+against the same session's raw close), `premium_signed` (the same, signed by
+the direction of the flow, so that a buyer paying up and a seller taking a
+discount are the same sign). Structure: `dir_clients`, `round_trip_share`,
+`direction_sign`. Context: `volx` (the session's own volume against normal),
+`vol20`, `mom20`. Nothing else is added afterwards; a twelfth feature invented
+after seeing these eleven is a new test and is registered as one.
+
+**The statistic.** Terciles of the feature over the directional set, top minus
+bottom, in **basis points of ten-day excess return**, with a Driscoll-Kraay
+standard error at `lags = horizon - 1`. Reported alongside it, because the
+family's claim is a dispersion claim: the ratio of top-tercile to
+bottom-tercile mean |excess|, which asks whether the feature finds *where* the
+fan-out lives even if it cannot say which way.
+
+**The null is built, not assumed.** For each of 200 draws, every event keeps
+its features and is re-pointed at a random non-event name from the same
+session matched on the volatility, liquidity and volume-surprise quintile —
+the same matching `spread.check` uses. That yields the distribution of the
+statistic when the features are attached to nothing, and in particular the
+distribution of the **largest absolute spread across all eleven features**,
+which is what an eleven-feature screen has to clear rather than the
+single-feature band. This lab has already measured that a corrected |t|
+over-rejects 13.3% of the time at this block count; a built null is the only
+kind worth quoting here.
+
+**Swept, not chosen: liquidity floor at 1.00 / 0.25 / 0.10 crore, horizon at
+1 and 10.** Six configurations, sixty-six feature readings, every one of them
+reported. The distribution narrowing died because a floor was never varied.
+
+**The decision rule, fixed in advance.** A feature separates outcomes if it
+(a) clears the 95th percentile of the null max-|spread| band, (b) carries the
+same sign at all three liquidity floors, and (c) exceeds 40 bps at h=10, the
+round-trip cost. All three, or the answer is no.
+
+**What a null buys.** Not "there is nothing here" — "there is nothing here
+larger than X", where X is the null band, and X is then the honest ceiling on
+what the replay could have found. That number is the deliverable when the
+answer is no.
+
+
+### H043 pre-flight — the result
+
+Run 2026-08-23 exactly as registered: eleven features, three floors, two
+horizons, `train` only, sixty-six readings all reported in FINDINGS.md.
+
+**Nine of eleven features sit inside the eleven-feature null band, including
+every feature that describes the deal** — net flow against normal volume, deal
+value against normal turnover, client count, round-trip share, and the
+direction of the flow itself.
+
+**The two that clear it are not about the deal.** Trailing volatility and the
+deal's distance from the close both reproduce at full strength on round-trip
+days, on five to eight times the sample:
+
+| | h=1, directional | h=1, round-trip | h=10, directional | h=10, round-trip |
+| --- | ---: | ---: | ---: | ---: |
+| premium_pct | −107 to −184 | −68 to −130 | −162 to −419 | −216 to −399 |
+| vol20 | −90 to −129 | −31 to −80 | −444 to −561 | −227 to −457 |
+
+**The band, which is the power statement.** ±57 to ±72 bps at h=1 and ±172 to
+±271 bps at h=10 on 1,179–1,801 events. A 500-case replay carries a third of
+that and would see less. The null is therefore a ceiling on what the replay
+could have found, not merely an absence of evidence — which was the point of
+running the screen before commissioning one.
+
+**A correction made after the first run and disclosed rather than folded in.**
+The registration said the null band was the distribution of the statistic with
+the features attached to nothing; the first implementation read the raw spread
+against a band assumed to be centred on zero. Because a control is matched on
+the volatility quintile, a volatility feature partly reproduces itself in its
+own null, so the band is now centred on the null's own mean and the reported
+number is the excess over it. The decision rule did not change. Uncentred,
+`premium_pct` would have cleared at h=10 as well.
+
+**Also fixed, and it invalidated a feature rather than blurring it:**
+`deal_vs_close_pct` was comparing a raw deal price against a back-adjusted
+close, and in a name that later split it returned the split factor. The median
+premium fell from +1.82% to 0.00% once both legs were raw.
+
+
+## H044 — A bulk print far from the close is followed by continuation
+
+Status: **REJECTED AT THE TRAIN EXECUTION GATE; validation unopened,
+2026-08-23.** The close-to-close diagnostic survived after its horizon was
+corrected, but the feature requires the completed close and therefore cannot
+trade at that close. From the first executable entry, the next session's open,
+the event-minus-twin increment is +5.8 bps with t=0.35 — the registered
+negative continuation is absent — and the 40-bps-cost portfolios lose money.
+Registered 2026-08-23, from the wreckage of [[H043]] and explicitly *not*
+inherited from it. `conditions-on` nothing.
+
+**The claim.** On a session following a disclosed bulk deal, the distance
+between the deal's print price and the session's raw close ranks the next
+day's excess return: a name that has fallen below the print keeps falling, one
+that has risen above it keeps rising. **The direction of the flow is not part
+of the claim and neither is the identity of the client** — it holds on
+round-trip days, which is precisely why it cannot be credited to H043.
+
+**Why it is registered separately rather than as an H043 result.** PLAN.md §2.2
+names this cell: a rule carrying an edge without reproducing the hypothesis it
+was found under is a new quantitative idea found nearby, and crediting it to
+the family that produced it is how a rejected family gets resurrected by its
+own residue. H043 is rejected. This inherits none of its argument, none of its
+mechanism and none of its priors.
+
+**The evidence so far, all on `train`.** Top-minus-bottom tercile, h=1:
+−68 to −130 bps on round-trip days (n=5,983–8,165), −107 to −184 on
+directional days (n=1,179–1,801), against −12 to −23 bps for the
+magnitude-matched deal-free twin on ~1,000,000 rows. Stable in sign across
+all three liquidity floors. It is a **coded** rule with no judge in it, so it
+belongs to the signal path and the case budget is not the resource it needs.
+
+**Two contaminants to clean before it is scored anywhere.** NSE publishes bulk
+deals after the close, so the first tradable session is D+1 in 100% of rows
+and the feature spans a day and a half of realised return rather than an
+execution concession — the comparison against a same-length deal-free window
+is therefore mandatory, not optional. And a name going ex-split inside that
+gap produces a spurious ±100% premium that lands in an extreme tercile.
+
+**What would falsify it.** The effect disappears once the deal-free
+magnitude-matched twin is subtracted at the same horizon and the same
+thresholds, or it fails to clear 40 bps net of the round trip, or it does not
+survive `validation`.
+
+### H044 train cleanup — registered before the run
+
+Registered 2026-08-23 before reading any additional H044 outcome. This is the
+last exploration step. It either rejects H044 on `train`, or freezes a test
+that may later be dispatched to `validation`; it does not read `validation`,
+`test` or `forward`.
+
+**Population and feature.** Pool every bulk-deal symbol-session; client type
+and flow direction are not selection variables. At each liquidity floor
+(1.00 / 0.25 / 0.10 crore), compute
+`100 * (all_deal_vwap_D / close_raw_D+1 - 1)`, where D+1 is the first tradable
+session after publication. The one-session excess outcome begins at that D+1
+close. This makes the entry timing explicit: it is continuation after the
+feature becomes observable, not a concession captured at the deal print.
+
+**Corporate-action quarantine.** Drop an event if the tape's adjustment factor
+changes between the deal date and the first-tradable close, or if the
+reconciliation table places a corporate action in that interval. The primary
+is also repeated after dropping `|premium| > 10%`; a result that needs those
+extremes does not proceed.
+
+**The twin.** On non-event names from the same sessions, use
+`100 * (vwap_raw_D / close_raw_D+1 - 1)`: the same-length realised move with no
+bulk print. Derive the lower and upper tercile cuts from the clean event set
+once per floor, then apply those exact numeric thresholds to both populations.
+Do not re-tercile the twin into an easier comparison.
+
+**The statistic.** Within each session carrying both tails in both arms,
+compute `(event top - event bottom) - (twin top - twin bottom)` in next-day
+excess return. Sessions, not rows, receive equal weight. Report the component
+spreads, the paired increment, its Driscoll-Kraay t-statistic at lag zero, the
+number of paired sessions, and the frozen cuts.
+
+**Decision.** The registered direction is negative. To remain alive, the
+paired increment must be negative, exceed 40 bps in absolute value at all
+three liquidity floors, and do the same after the 10% extreme-value exclusion.
+Anything else rejects H044 on `train`. If it clears, freeze the 1-crore cuts
+and the same 40-bps rule before anyone opens `validation`.
+
+### H044 train cleanup — result and freeze
+
+**SUPERSEDED 2026-08-23 by the execution check below.** Kept because this is
+what the registered close-to-close diagnostic first reported; it is not an
+executable result.
+
+Run 2026-08-23 as registered, on `train` only. One implementation correction
+preceded the final run: event VWAP had been a mean of client prices rather than
+`sum(value) / sum(quantity)`. A one-share print therefore had the same weight
+as a million-share print. The code and regression test now use the disclosed
+quantity; every number below is from the corrected implementation.
+
+| floor | cap | cuts, % | event | twin | paired increment | t | sessions |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1.00 cr | none | −1.751 / +2.147 | −93.4 | −19.6 | **−73.8 bps** | −3.22 | 526 |
+| 1.00 cr | 10% | −1.505 / +2.063 | −85.5 | −14.9 | **−70.6 bps** | −3.12 | 516 |
+| 0.25 cr | none | −1.889 / +2.187 | −104.7 | −25.9 | **−78.8 bps** | −4.58 | 604 |
+| 0.25 cr | 10% | −1.636 / +2.060 | −94.7 | −21.4 | **−73.3 bps** | −4.65 | 587 |
+| 0.10 cr | none | −1.937 / +2.238 | −107.2 | −31.8 | **−75.4 bps** | −4.61 | 628 |
+| 0.10 cr | 10% | −1.666 / +2.089 | −120.7 | −26.4 | **−94.3 bps** | −3.31 | 617 |
+
+The no-deal twin explains a real minority of the headline continuation, but
+not most of it. The increment clears the registered 40-bps floor in the stated
+direction in every cell, including after the extreme-value exclusion. Between
+31 and 43 event symbol-sessions per floor were quarantined for a factor change,
+an unresolved factor, or a reconciled corporate action in the print-to-entry
+gap. **H044 survives exploration.** This is not a finding of alpha until an
+unseen partition agrees.
+
+**WITHDRAWN — do not run this validation test.** The intended frozen test used
+the 1.00-crore population,
+the identical action quarantine and same-session no-deal twin, h=1, and the
+train cuts **−1.7510% / +2.1473%**. Do not compute validation terciles. The
+primary statistic is the equal-weight session-paired increment. PASS requires
+both `increment <= −40 bps` and Driscoll-Kraay `t <= −2.0`; otherwise REJECT.
+The `|premium| <= 10%` row is reported as a sensitivity using the same frozen
+primary cuts and does not replace the primary. As of this freeze,
+`validation`, `test` and `forward` have not been read for H044.
+
+### H044 execution check — rejection
+
+Run 2026-08-23 on `train` only, before opening the frozen validation test.
+
+**A horizon bug first.** `report.panel(liquid, 1)` shifted after the liquidity
+floor was applied. When the next row fell below the floor it silently exited on
+a later row and still called that h=1. Only 25 of 7,177 clean 1-crore events
+were affected (0.35%), but their median extra gap was 18 calendar days and they
+were extreme enough to move the paired increment from −73.8 to **−54.0 bps**
+(t=−2.86). `h044_cleanup` now constructs the next row on the full tape before
+filtering. The corrected close-to-close result still clears its registered
+diagnostic bar at every floor; this correction alone does not reject it.
+
+**The rejection is execution timing.** `premium_pct` contains the completed
+D+1 close. A decision using it cannot also enter at that close. The earliest
+honest entry is D+2 open, so the executable one-session question is D+2
+open→close. On the frozen 1-crore tails:
+
+| outcome | event top−bottom | twin top−bottom | event−twin | t | sessions |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| corrected D+1 close→D+2 close | −72.4 | −18.4 | **−54.0** | −2.86 | 527 |
+| executable D+2 open→close | +23.6 | +17.7 | **+5.8** | +0.35 | 527 |
+
+The registered continuation not only falls inside noise after an executable
+entry; its point estimate changes sign. The long tail earns −71.0 bps gross
+open→close and the short tail +41.7 bps gross. At the project's 40-bps round
+trip, neither supports the claimed two-sided signal, and the equal-weight
+short-only train book is negative after costs. **H044 is rejected without
+opening `validation`; the withdrawn cuts must not be dispatched.**
