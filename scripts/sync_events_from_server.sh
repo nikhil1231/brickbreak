@@ -7,7 +7,7 @@
 # the availability timestamps depend on the local trading calendar and a
 # table built against a staler tape would silently disagree with the panel.
 set -eu
-SERVER="${1:-user@server}"
+SERVER="${1:-hp-ts}"
 cd "$(dirname "$0")/.."
 mkdir -p data/raw/deals data/raw/announcements data/raw/filings data/raw/xbrl data/metadata
 

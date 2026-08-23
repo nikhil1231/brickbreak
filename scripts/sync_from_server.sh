@@ -2,7 +2,7 @@
 # Pull opening-tick data + manifest down from the server. Safe to re-run:
 # rsync only transfers what changed, so run it again after a pull completes.
 set -eu
-SERVER="${1:-user@server}"
+SERVER="${1:-hp-ts}"
 cd "$(dirname "$0")/.."
 mkdir -p data/normalized/opening_1s data/metadata
 rsync -az --stats "$SERVER:~/brickbreak/data/normalized/opening_1s/" data/normalized/opening_1s/ \

@@ -70,6 +70,30 @@ def opening_ticks(files: Iterable[Path]) -> pd.DataFrame:
     return pd.concat((pd.read_parquet(path) for path in paths), ignore_index=True)
 
 
+def bulk_1515_bars() -> pd.DataFrame:
+    """Load the fixed 15:15 Breeze windows used by event studies."""
+    from .pipelines import bulk_intraday
+    return bulk_intraday.load_bars()
+
+
+def bulk_1515_manifest() -> pd.DataFrame:
+    """Load attempted fixed-window requests, including empty/error rows."""
+    from .pipelines import bulk_intraday
+    return bulk_intraday.load_manifest()
+
+
+def h047_design() -> pd.DataFrame:
+    """Load the frozen event/control pairs for H047."""
+    from .pipelines import bulk_intraday
+    return bulk_intraday.load_design()
+
+
+def bulk_1515_nifty_daily() -> pd.DataFrame:
+    """Load the Breeze NIFTY daily bars used to exit fixed-window studies."""
+    from .pipelines import bulk_intraday
+    return bulk_intraday.load_nifty_daily()
+
+
 def candidate_panel() -> pd.DataFrame:
     return pd.read_parquet(CANDIDATE_PANEL)
 
@@ -125,6 +149,9 @@ def xbrl_manifest() -> pd.DataFrame:
 __all__ = [
     "announcements",
     "behaviour_panel",
+    "bulk_1515_bars",
+    "bulk_1515_manifest",
+    "bulk_1515_nifty_daily",
     "candidate_labels",
     "candidate_panel",
     "corporate_action_reconciliation",
@@ -132,6 +159,7 @@ __all__ = [
     "deals",
     "entry_window_grid",
     "financial_result_filings",
+    "h047_design",
     "opening_features",
     "opening_manifest",
     "opening_ticks",

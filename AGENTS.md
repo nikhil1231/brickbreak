@@ -617,9 +617,16 @@ but nothing new should be built in that shape.
 - All Breeze traffic goes through `src/research_data/sources/breeze.py` (throttle, 429 retry,
   call logging to `data/metadata/api_calls.jsonl`).
 - Verify empirically rather than trusting docs; that has repeatedly paid off.
-- Long pulls run on the server (`user@server`) under tmux via
-  `scripts/run_pull.sh`; resumable from the manifest. Watch the **log timestamp**,
-  not the process list — a hung pull never exits and the supervisor cannot see it.
+- **Any data pull estimated to take more than five minutes runs on the remote
+  laptop, never in the local agent session.** Connect through Tailscale using
+  the local SSH alias `hp-ts` (`ssh hp-ts`); keep the actual Tailscale IP in
+  `~/.ssh/config`, not in repository documentation. Start the pull inside a
+  named `tmux` session, make it resumable from a manifest/checkpoint, and write
+  progress to a durable log/status file. Verify the tmux session, a fresh log
+  timestamp and a moving checkpoint before considering the handoff successful.
+  Watch the **log timestamp**, not merely the process list — a hung pull can
+  remain alive while making no progress. The existing opening-data supervisor
+  is `scripts/run_pull.sh`; use the same pattern for new long-running pulls.
 - The corporate-event equivalent is `scripts/run_events.sh` ->
   `scripts/server_events.py`, status in `data/metadata/events_pull_status.json`,
   pulled back with `scripts/sync_events_from_server.sh`. Only the filings +
