@@ -21,8 +21,9 @@ is reachable only through `research_data`.
 """
 from __future__ import annotations
 
-import importlib.util
+import ast
 import json
+import math
 import traceback
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -30,6 +31,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import pandas as pd
+import numpy as np
 
 from ..core import config
 from . import agent, gate, preflight, worktree
@@ -346,9 +348,87 @@ print(f"OK: {out.notna().sum():,} of {len(df):,} rows scored")
 FORBIDDEN_PREFIXES = ("fwd_ret_", "excess_ret_")
 FORBIDDEN_SCORES = ("sector", "size_tier", "size_tier_rank", "is_etf")
 
+_SAFE_IMPORTS = {"pandas": pd, "numpy": np, "math": math}
+_FORBIDDEN_CALL_NAMES = {
+    "open", "eval", "exec", "compile", "__import__", "getattr", "setattr",
+    "delattr", "globals", "locals", "vars", "input", "breakpoint",
+}
+_FORBIDDEN_ATTRIBUTE_CALLS = {
+    "load", "loads", "save", "savez", "fromfile", "memmap", "urlopen",
+    "to_csv", "to_pickle", "to_parquet", "to_json", "to_excel", "to_hdf",
+    "to_sql", "to_feather", "to_orc", "to_stata", "to_clipboard",
+}
+_SAFE_BUILTINS = {
+    name: getattr(__import__("builtins"), name)
+    for name in (
+        "abs", "all", "any", "bool", "dict", "enumerate", "float", "int",
+        "isinstance", "len", "list", "max", "min", "range", "round", "set",
+        "sorted", "str", "sum", "tuple", "zip", "ValueError", "TypeError",
+    )
+}
+
+
+def _audit_signal_source(source: str) -> tuple[ast.Module, dict[str, Any]]:
+    """Accept a small numerical function, not arbitrary agent-authored Python.
+
+    A prompt saying "do not read files" is not a capability boundary.  The
+    authored source is executed in the trusted harness, so imports, dynamic
+    attribute access and I/O methods are rejected before ``exec``.
+    """
+    try:
+        tree = ast.parse(source, filename="signal.py")
+    except SyntaxError as exc:
+        raise JobError(f"signal.py is not valid Python: {exc}") from exc
+
+    aliases: dict[str, Any] = {"pd": pd, "np": np, "math": math}
+    functions = [node for node in tree.body
+                 if isinstance(node, ast.FunctionDef) and node.name == "compute"]
+    if not functions:
+        raise JobError("signal.py defines no compute() function")
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name not in _SAFE_IMPORTS:
+                    raise JobError(f"signal.py imports forbidden module {alias.name!r}")
+                aliases[alias.asname or alias.name] = _SAFE_IMPORTS[alias.name]
+        elif isinstance(node, ast.FunctionDef):
+            if node.name != "compute" or node.decorator_list:
+                raise JobError("signal.py may define only an undecorated compute()")
+        elif (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
+              and isinstance(node.value.value, str)):
+            continue
+        else:
+            raise JobError(
+                "signal.py may contain only pandas/numpy/math imports and compute()")
+    if len(functions) != 1:
+        raise JobError("signal.py must define exactly one compute() function")
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.ImportFrom, ast.ClassDef, ast.AsyncFunctionDef,
+                             ast.Global, ast.Nonlocal)):
+            raise JobError(f"signal.py contains forbidden syntax {type(node).__name__}")
+        if isinstance(node, ast.Name) and node.id in _FORBIDDEN_CALL_NAMES:
+            raise JobError(f"signal.py references forbidden name {node.id!r}")
+        if isinstance(node, ast.Attribute) and node.attr.startswith("_"):
+            raise JobError("signal.py may not access private or dunder attributes")
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in _FORBIDDEN_CALL_NAMES:
+                raise JobError(f"signal.py calls forbidden function {node.func.id!r}")
+            if isinstance(node.func, ast.Attribute):
+                attr = node.func.attr
+                if attr.startswith("read_") or attr in _FORBIDDEN_ATTRIBUTE_CALLS:
+                    raise JobError(f"signal.py calls forbidden I/O method {attr!r}")
+
+    executable = ast.Module(
+        body=[node for node in tree.body if not isinstance(node, ast.Import)],
+        type_ignores=tree.type_ignores,
+    )
+    ast.fix_missing_locations(executable)
+    return executable, aliases
+
 
 def load_signal_fn(path: Path) -> Callable[[pd.DataFrame], pd.Series]:
-    """Import `compute` from an agent-written signal file, with a source audit.
+    """Load `compute` from an agent-written signal file in restricted globals.
 
     The source check is a cheap first pass, not the guarantee — the guarantee
     is that the harness never hands the frame's forward-label columns to the
@@ -363,12 +443,10 @@ def load_signal_fn(path: Path) -> Callable[[pd.DataFrame], pd.Series]:
                 f"signal.py references {bad!r}, a forward label. Refusing to "
                 f"score a signal built from the outcome.")
 
-    spec = importlib.util.spec_from_file_location("job_signal", path)
-    if spec is None or spec.loader is None:
-        raise JobError(f"cannot load {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    fn = getattr(mod, "compute", None)
+    executable, aliases = _audit_signal_source(src)
+    namespace: dict[str, Any] = {"__builtins__": _SAFE_BUILTINS, **aliases}
+    exec(compile(executable, str(path), "exec"), namespace)  # noqa: S102
+    fn = namespace.get("compute")
     if fn is None:
         raise JobError("signal.py defines no compute() function")
     return fn
@@ -463,7 +541,9 @@ def run_job(
         sample = df.head(sample_rows).copy()
 
         jb.enter("preparing worktree")
-        wt = worktree.create(job_id)
+        # The worker receives the explicit label-free sample only.  A linked
+        # data store plus Bash would make the outcome firewall voluntary.
+        wt = worktree.create(job_id, link_data=False)
         jb.worktree_path = str(wt.path)
         jb.commit = wt.commit
         prompt = build_prompt(spec, list(df.columns), question=question)
@@ -472,7 +552,9 @@ def run_job(
 
         res = (agent_fn(prompt, wt.path) if agent_fn else
                agent.run_agent(prompt, cwd=wt.path, timeout_s=timeout_s,
-                               max_turns=max_turns, model=model, cli=cli,
+                               max_turns=max_turns,
+                               allowed_tools=("Write", "Edit"),
+                               model=model, cli=cli,
                                provider=provider))
         jb.agent_turns = res.num_turns
         jb.agent_cost_usd = res.cost_usd

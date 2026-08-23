@@ -369,7 +369,9 @@ def main(argv=None) -> int:
     disc_p = sub.add_parser("discover", help="scout novel mechanism dossiers across economic lenses")
     disc_p.add_argument("--lens", default="market_structure", choices=("market_structure", "participant_constraints", "external_research", "data_catalogue", "graveyard_branch"))
     disc_p.add_argument("--hint", default="", help="domain or economic hint")
-    disc_p.add_argument("--hypothesis", default="H_PROP", help="hypothesis ID")
+    disc_p.add_argument(
+        "--hypothesis", default=None,
+        help="existing hypothesis ID; omitted dossiers remain provisional until qualify")
     disc_p.add_argument("--family", default="general", help="family name")
     disc_p.add_argument("--provider", choices=("claude", "codex"), default="claude")
     disc_p.add_argument("--output", default=None,
@@ -378,8 +380,47 @@ def main(argv=None) -> int:
 
     att_p = sub.add_parser("attack", help="attack a mechanism dossier across council critics")
     att_p.add_argument("dossier_file", help="path to mechanism dossier JSON file")
-    att_p.add_argument("--save", action="store_true", help="save adjudication output to disk")
+    att_p.add_argument("--provider", choices=("auto", "claude", "codex"),
+                       default="auto", help="independent reviewer lane")
+    att_p.add_argument(
+        "--deterministic-only", action="store_true",
+        help="explicitly skip the independent model critic (diagnostics/tests only)")
+    att_p.add_argument("--output", default=None, help="adjudication JSON path")
     att_p.set_defaults(fn=council.cmd_attack)
+
+    qual_p = sub.add_parser(
+        "qualify", help="author a signal and run outcome-free structural gates")
+    qual_p.add_argument("adjudication_file", help="approved JSON emitted by attack")
+    qual_p.add_argument("--signal", required=True, help="frozen signal name")
+    qual_p.add_argument(
+        "--signal-file", default=None,
+        help="use supplied compute(df) source instead of spending a model call")
+    qual_p.add_argument("--provider", choices=("claude", "codex"), default="claude")
+    qual_p.add_argument("--model", default=None)
+    qual_p.add_argument("--dataset-version", default="v1")
+    qual_p.add_argument("--timeout", type=int, default=1800)
+    qual_p.add_argument("--max-turns", type=int, default=40)
+    qual_p.add_argument("--output", default=None, help="qualification JSON path")
+    qual_p.set_defaults(fn=council.cmd_qualify)
+
+    comp_p = sub.add_parser(
+        "compile", help="freeze a passed qualification into a one-shot contract")
+    comp_p.add_argument("qualification", help="qualification path or ID")
+    comp_p.add_argument("--reviewer", default="human_owner")
+    comp_p.add_argument("--cost-bps", type=float, default=40.0)
+    comp_p.add_argument("--capacity-inr", type=float, default=1_000_000.0)
+    comp_p.add_argument("--min-t", type=float, default=2.5)
+    comp_p.add_argument("--output", default=None, help="contract JSON path")
+    comp_p.set_defaults(fn=council.cmd_compile)
+
+    exec_p = sub.add_parser(
+        "execute", help="run one frozen contract through the evaluation vault")
+    exec_p.add_argument("contract", help="contract path or ID")
+    exec_p.add_argument("--confirm-outcome-access", action="store_true",
+                        help="confirm spending the registered sample access")
+    exec_p.add_argument("--enroll-forward", action="store_true",
+                        help="enroll only if the registered result is SUCCESS")
+    exec_p.set_defaults(fn=council.cmd_execute)
 
     prb_p = sub.add_parser("probe-data", help="run diagnostic micro-probe on raw market data file")
     prb_p.add_argument("file", help="path to parquet or csv data file")

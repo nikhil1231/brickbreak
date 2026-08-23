@@ -34,7 +34,10 @@ def research_store(tmp_path, monkeypatch):
                       ("EXPLORATIONS_DIR", "explorations"),
                       ("SIGNALS_DIR", "signals"),
                       ("EVIDENCE_DIR", "evidence"),
-                      ("SUGGESTIONS_DIR", "suggestions")):
+                      ("SUGGESTIONS_DIR", "suggestions"),
+                      ("PREFLIGHTS_DIR", "preflights"),
+                      ("QUEUE_DIR", "queue"),
+                      ("BATCHES_DIR", "batches")):
         monkeypatch.setattr(store, name, store_dir / sub)
     monkeypatch.setattr(ledger_mod, "LEDGER_PATH", store_dir / "ledger.json")
     monkeypatch.setattr(

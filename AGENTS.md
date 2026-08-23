@@ -79,20 +79,21 @@ Two rules that hold from now on, whatever the migration state:
   direct read. Three of this project's four lookaheads entered through ad-hoc
   parquet access.
 
-**The lab, end to end:** `python -m src.cli suggest` reads the research inbox —
-what to test next, proposed against the whole ledger and the graveyard so
-nothing already tested returns in new words (`--new` regenerates the three
-slots, `--refresh Sxxx` replaces one; reading costs nothing, generating spends
-a model call). `python -m src.cli plan "<idea>"` proposes an
-experiment; `python -m src.cli job --hypothesis H0xx --question "..." --signal
-name --provider claude|codex [--model MODEL]` runs one in an isolated worktree
-with the selected coding agent; `jobs`,
-`forward`, `burden` and `serve` inspect the results. The worker writes exactly
-one file — `job/signal.py` with `compute(df) -> Series` — and the harness runs
-from the canonical checkout, never from the worktree, so an agent cannot loosen
-the evaluation it is judged by. Claude remains the default. Install and log in
-to at least one supported CLI: `npm install -g @anthropic-ai/claude-code` then
-`claude`, or `npm install -g @openai/codex` then `codex login`.
+**The signal lab, end to end:** use the research-director path:
+`discover --provider claude|codex` writes a provisional mechanism dossier;
+`attack DOSSIER.json` sends it to an independent provider and preserves both
+model and deterministic dissents; `qualify ADJUDICATION.json --signal NAME`
+authors the signal in an empty, tool-free directory and freezes the E0
+structural and signal preflights; `compile QUALIFICATION --reviewer NAME`
+creates the immutable experiment contract and multiplicity batch; and only
+`execute CONTRACT --confirm-outcome-access` crosses the outcome firewall. A
+contract is one-shot: rerunning it is refused. `forward`, `burden`, `exposure`
+and `serve` inspect results. The older `suggest`, `plan`, `job`, `queue`,
+`preregister` and `explore` commands remain compatibility plumbing while their
+UI callers migrate; do not begin new research through them. Claude and Codex
+are the supported subscription lanes. Install and log in to at least one:
+`npm install -g @anthropic-ai/claude-code` then `claude`, or
+`npm install -g @openai/codex` then `codex login`.
 
 **The discretionary loop, end to end.** `python -m src.cli opportunity "<idea>"
 --hypothesis H0xx` freezes an experiment definition — generator, case budget,
@@ -638,6 +639,6 @@ but nothing new should be built in that shape.
   host, because a backfill that discovers this on request 6,000 leaves a
   directory of empty payloads indistinguishable from "this symbol has no
   filings".
-- `.venv/bin/python -m pytest tests/ -q` — keep green (571 tests). Tests marked
+- `.venv/bin/python -m pytest tests/ -q` — keep green. Tests marked
   `network` hit live NSE and are deselected by default; run with `-m network`.
   Leakage tests are part of the suite, not optional extras.

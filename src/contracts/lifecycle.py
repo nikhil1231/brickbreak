@@ -147,3 +147,38 @@ class LifecycleTracker:
             "current_state": self.current_state.value,
             "history": [r.to_dict() for r in self.history],
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LifecycleTracker:
+        """Restore a tracker while re-validating every recorded transition."""
+        tracker = cls(entity_id=str(data["entity_id"]))
+        for raw in data.get("history", []):
+            expected_from = LifecycleState(raw["from_state"])
+            if tracker.current_state != expected_from:
+                raise IllegalLifecycleTransitionError(
+                    f"Lifecycle history for {tracker.entity_id!r} is discontinuous: "
+                    f"expected {tracker.current_state.value}, found {expected_from.value}"
+                )
+            tracker.transition(
+                LifecycleState(raw["to_state"]),
+                actor=str(raw["actor"]),
+                input_hashes=tuple(raw.get("input_hashes", ())),
+                exposure_level=str(raw.get("exposure_level", "E0")),
+                reason=str(raw["reason"]),
+                tokens_spent=int(raw.get("tokens_spent", 0)),
+                cash_cost_usd=float(raw.get("cash_cost_usd", 0.0)),
+            )
+            # Preserve the original audit time rather than the restoration time.
+            tracker.history[-1] = StateTransitionRecord(
+                **{
+                    **tracker.history[-1].__dict__,
+                    "timestamp": str(raw.get("timestamp", tracker.history[-1].timestamp)),
+                }
+            )
+        declared = LifecycleState(data.get("current_state", tracker.current_state.value))
+        if declared != tracker.current_state:
+            raise IllegalLifecycleTransitionError(
+                f"Lifecycle current_state {declared.value} does not match history "
+                f"ending at {tracker.current_state.value}"
+            )
+        return tracker

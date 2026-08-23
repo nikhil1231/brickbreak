@@ -4,6 +4,11 @@ from __future__ import annotations
 from .data_contract import DataContract, SourceFieldDef
 from .dossier import DossierDissent, MechanismDossier
 from .experiment_contract import ExperimentContract
+from .qualification import (
+    QualificationArtifact,
+    QualificationValidationError,
+    source_hash,
+)
 from .lifecycle import (
     IllegalLifecycleTransitionError,
     LifecycleState,
@@ -18,6 +23,9 @@ __all__ = [
     "DataContract",
     "SourceFieldDef",
     "ExperimentContract",
+    "QualificationArtifact",
+    "QualificationValidationError",
+    "source_hash",
     "LifecycleState",
     "LifecycleTracker",
     "StateTransitionRecord",

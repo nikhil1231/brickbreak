@@ -222,6 +222,19 @@ class TestSignalContract:
         df = pd.DataFrame({"ret_20d": [1.0, 2.0, 3.0]})
         assert list(fn(df)) == [1.0, 2.0, 3.0]
 
+    @pytest.mark.parametrize("source, message", [
+        ("import os\ndef compute(df):\n    return df.iloc[:, 0]\n", "forbidden module"),
+        ("import pandas as pd\ndef compute(df):\n    return pd.read_pickle('/tmp/x')\n", "I/O method"),
+        ("import pandas as pd\nx = 1\ndef compute(df):\n    return df.iloc[:, 0]\n", "only pandas"),
+        ("import pandas as pd\ndef compute(df):\n    return df.__class__\n", "private or dunder"),
+    ])
+    def test_agent_signal_source_cannot_gain_filesystem_or_dynamic_capabilities(
+            self, tmp_path, source, message):
+        p = tmp_path / "signal.py"
+        p.write_text(source)
+        with pytest.raises(job.JobError, match=message):
+            job.load_signal_fn(p)
+
     def test_prompt_hides_the_forward_labels(self):
         spec = ExperimentSpec(hypothesis_id="H024", question="q",
                               signal_name="s")

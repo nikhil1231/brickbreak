@@ -54,6 +54,8 @@ def run_exploration(
     batch_id: str = "",
     batch_hash: str = "",
     enforce_exposure: bool = True,
+    panel: pd.DataFrame | None = None,
+    exposure_source_id: str = "",
 ) -> dict[str, Any]:
     """Executes one complete, clean exploration end-to-end."""
     t0 = time.time()
@@ -66,12 +68,13 @@ def run_exploration(
         gate.enforce_dispatch_gate(spec, custom_policy=gate_policy)
 
     # 2. Safe data loading through research_data
-    df = frame.load_daily_panel(
+    df = (panel.copy() if panel is not None else frame.load_daily_panel(
         version=spec.dataset_version,
         partition=spec.partition,
         asof_open=True,
         include_context=True,
-    )
+    ))
+    assert_no_forward_labels(df, context="signal compute input")
 
     # 3. Compute the candidate signal before constructing any outcome. Source
     # scanning catches an obvious ``df['fwd_ret_...']`` reference, but it
@@ -91,7 +94,8 @@ def run_exploration(
 
     # Outcome construction begins only after the signal is fixed.
     if enforce_exposure:
-        gate.reserve_outcome_access(spec, source_id=exp_id, batch_id=batch_id)
+        gate.reserve_outcome_access(
+            spec, source_id=exposure_source_id or exp_id, batch_id=batch_id)
     for h in spec.horizons:
         df[f"fwd_ret_{h}d_pct"] = frame.forward_return(
             df, horizon=h, version=spec.dataset_version, bars=bars

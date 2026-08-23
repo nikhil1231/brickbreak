@@ -46,6 +46,18 @@ class ExperimentContract:
     proposer: str
     reviewer: str
     abort_conditions: tuple[str, ...]
+    # Version-2 execution identity.  Version 1 objects remain readable for the
+    # archived pilot, while every newly compiled contract must freeze these.
+    contract_version: int = 1
+    qualification_id: str = ""
+    qualification_hash: str = ""
+    signal_name: str = ""
+    signal_definition: str = ""
+    pass_criterion: dict[str, float] = field(default_factory=dict)
+    falsification_condition: str = ""
+    parameter_neighbourhood: tuple[str, ...] = ()
+    search_wide_null: str = ""
+    permitted_result_readings: tuple[str, ...] = ()
     created_at: str = field(
         default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
@@ -97,6 +109,26 @@ class ExperimentContract:
         if self.proposer == self.reviewer:
             raise ExperimentContractValidationError(
                 "proposer and reviewer must be separate entities (PLAN §3.3)")
+        if self.contract_version not in (1, 2):
+            raise ExperimentContractValidationError("unsupported contract_version")
+        if self.contract_version >= 2:
+            for name, value in (
+                ("qualification_id", self.qualification_id),
+                ("qualification_hash", self.qualification_hash),
+                ("signal_name", self.signal_name),
+                ("signal_definition", self.signal_definition),
+                ("falsification_condition", self.falsification_condition),
+                ("search_wide_null", self.search_wide_null),
+            ):
+                if not str(value).strip():
+                    raise ExperimentContractValidationError(
+                        f"version-2 contract requires {name}")
+            if not self.pass_criterion:
+                raise ExperimentContractValidationError(
+                    "version-2 contract requires a pass_criterion")
+            if not self.permitted_result_readings:
+                raise ExperimentContractValidationError(
+                    "version-2 contract requires permitted_result_readings")
 
     @property
     def contract_hash(self) -> str:
@@ -112,13 +144,17 @@ class ExperimentContract:
         data["baselines"] = list(self.baselines)
         data["requested_outcome_columns"] = list(self.requested_outcome_columns)
         data["abort_conditions"] = list(self.abort_conditions)
+        data["parameter_neighbourhood"] = list(self.parameter_neighbourhood)
+        data["permitted_result_readings"] = list(self.permitted_result_readings)
         return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ExperimentContract:
         d = dict(data)
         expected_hash = d.pop("contract_hash", None)
-        for k in ("horizons", "baselines", "requested_outcome_columns", "abort_conditions"):
+        for k in ("horizons", "baselines", "requested_outcome_columns",
+                  "abort_conditions", "parameter_neighbourhood",
+                  "permitted_result_readings"):
             if k in d and isinstance(d[k], (list, tuple)):
                 d[k] = tuple(d[k])
         contract = cls(**d)

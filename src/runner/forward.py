@@ -22,6 +22,8 @@ evidence is recorded without anyone having to remember to do it.
 from __future__ import annotations
 
 import json
+import hashlib
+import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -54,6 +56,20 @@ class Registration:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    @property
+    def identity_hash(self) -> str:
+        payload = {
+            "signal_name": self.signal_name,
+            "hypothesis_id": self.hypothesis_id,
+            "source": self.source,
+            "primary_horizon": self.primary_horizon,
+            "dataset_version": self.dataset_version,
+            "kind": self.kind,
+            "replay_id": self.replay_id,
+        }
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 def _load() -> list[Registration]:
@@ -107,6 +123,17 @@ def register(signal_name: str, hypothesis_id: str, source: str,
     regs = _load()
     for r in regs:
         if r.signal_name == signal_name and r.hypothesis_id == hypothesis_id:
+            candidate = Registration(
+                signal_name=signal_name, hypothesis_id=hypothesis_id,
+                source=source, primary_horizon=primary_horizon,
+                dataset_version=dataset_version,
+                registered_from_exploration=exploration_id,
+                kind=kind, replay_id=replay_id,
+            )
+            if candidate.identity_hash != r.identity_hash:
+                raise ValueError(
+                    f"forward identity {signal_name!r}/{hypothesis_id!r} is already "
+                    "registered with different frozen semantics")
             return r
     reg = Registration(signal_name=signal_name, hypothesis_id=hypothesis_id,
                        source=source, primary_horizon=primary_horizon,
@@ -159,12 +186,11 @@ def register_replay(replay_id: str, hypothesis_id: str,
 
 
 def _compute_from_source(source: str, df: pd.DataFrame) -> pd.Series:
-    ns: dict[str, Any] = {}
-    exec(compile(source, "<registered_signal>", "exec"), ns)   # noqa: S102
-    fn = ns.get("compute")
-    if fn is None:
-        raise ValueError("registered source defines no compute()")
-    return fn(df)
+    from .job import load_signal_fn
+    with tempfile.TemporaryDirectory(prefix="brickbreak_forward_") as tmp:
+        path = Path(tmp) / "signal.py"
+        path.write_text(source)
+        return load_signal_fn(path)(df)
 
 
 def accrue(version: str = "v1", save: bool = True) -> dict[str, Any]:
@@ -180,15 +206,24 @@ def accrue(version: str = "v1", save: bool = True) -> dict[str, Any]:
                                 asof_open=True, include_context=True)
     out = []
     for reg in regs:
+        if reg.kind == "replay":
+            out.append({
+                "signal": reg.signal_name,
+                "note": "replay forward accrual uses the discretionary adapter",
+            })
+            continue
         h = reg.primary_horizon
         d = df.copy()
-        d[f"fwd_ret_{h}d_pct"] = frame.forward_return(d, horizon=h,
-                                                      version=version)
         try:
+            # Freeze the score before constructing any forward outcome.  A
+            # registered function receives the same label-free capability as
+            # a fresh experiment function.
             d[reg.signal_name] = _compute_from_source(reg.source, d)
         except Exception as exc:                       # noqa: BLE001
             out.append({"signal": reg.signal_name, "error": str(exc)})
             continue
+        d[f"fwd_ret_{h}d_pct"] = frame.forward_return(d, horizon=h,
+                                                      version=version)
 
         ic = diagnostics.rank_ic(d, reg.signal_name, f"fwd_ret_{h}d_pct",
                                  horizon=h)

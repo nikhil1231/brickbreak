@@ -59,13 +59,14 @@ import numpy as np
 
 
 def adjudicate_dossier(dossier: MechanismDossier,
-                       existing_claims: Sequence[dict[str, str]] | None = None
+                       existing_claims: Sequence[dict[str, str]] | None = None,
+                       additional_reviews: Sequence[CriticReview] = (),
                        ) -> AdjudicationResult:
     """Evaluate a dossier across all council critics and adjudicate approval."""
     r_econ = review_economic_mechanism(dossier)
     r_leak = review_leakage_and_pit(dossier)
     r_power = review_power_and_costs(dossier)
-    reviews = (r_econ, r_leak, r_power)
+    reviews = (r_econ, r_leak, r_power, *tuple(additional_reviews))
 
     novelty = check_dossier_novelty(dossier, existing_claims)
 

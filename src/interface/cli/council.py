@@ -15,13 +15,21 @@ from ...contracts import (
     LifecycleTracker,
     MechanismDossier,
 )
+from ...contracts.compiler import (
+    compile_qualification,
+    load_qualification,
+    save_contract,
+)
 from ...core import config
 from ...council import (
+    HOSTILE_REVIEW_SYSTEM_PROMPT,
     SCOUT_SYSTEM_PROMPT,
     ScoutLens,
     adjudicate_dossier,
+    build_hostile_review_prompt,
     build_scout_prompt,
     parse_dossier_json,
+    parse_hostile_review,
 )
 from ...data_broker import (
     create_approval_card,
@@ -88,7 +96,8 @@ def cmd_discover(args: argparse.Namespace) -> int:
         dossier = parse_dossier_json(
             resp,
             dossier_id=f"DOS_{lens.value.upper()[:4]}_{response_id}",
-            hypothesis_id=getattr(args, "hypothesis", "H_PROP"),
+            hypothesis_id=(getattr(args, "hypothesis", None)
+                           or f"PROP_{response_id}"),
             family=getattr(args, "family", "general"),
             proposer=f"{provider.value}:scout_{lens.value}",
         )
@@ -119,7 +128,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
 
 
 def cmd_attack(args: argparse.Namespace) -> int:
-    """Run council critics (economic, leakage, power) and adjudicate a dossier."""
+    """Run an independent model critic plus deterministic safety critics."""
     dossier_path = Path(args.dossier_file)
     if not dossier_path.exists():
         print(f"[-] Dossier file {dossier_path} not found")
@@ -129,7 +138,38 @@ def cmd_attack(args: argparse.Namespace) -> int:
     dossier = MechanismDossier.from_dict(dossier_dict)
 
     print(f"[*] Attacking dossier {dossier.dossier_id} across council critics...")
-    adj = adjudicate_dossier(dossier)
+    extra_reviews = ()
+    reviewer_provider = None
+    # Direct Python callers from the pre-director interface do not carry the
+    # new provider fields.  Keep those deterministic; the public CLI always
+    # carries an explicit provider/auto choice and therefore performs the
+    # independent review unless --deterministic-only is stated.
+    deterministic_only = getattr(
+        args, "deterministic_only", not hasattr(args, "provider"))
+    if not deterministic_only:
+        proposer_provider = None
+        proposer_name = dossier.proposer.split(":", 1)[0]
+        try:
+            proposer_provider = ProviderType(proposer_name)
+        except ValueError:
+            pass
+        preferred_arg = getattr(args, "provider", "auto")
+        preferred = None if preferred_arg == "auto" else ProviderType(preferred_arg)
+        try:
+            response, reviewer_provider = route_council_call(
+                SubscriptionPool(),
+                role=ProviderRole.CRITIC,
+                prompt=build_hostile_review_prompt(dossier),
+                system_prompt=HOSTILE_REVIEW_SYSTEM_PROMPT,
+                preferred_provider=preferred,
+                proposer_provider=proposer_provider,
+            )
+            extra_reviews = (parse_hostile_review(
+                response, provider=reviewer_provider.value),)
+        except (ProviderError, ValueError) as exc:
+            print(f"[-] Independent hostile review failed without fallback: {exc}")
+            return 1
+    adj = adjudicate_dossier(dossier, additional_reviews=extra_reviews)
 
     print(f"\nVerdict: {adj.verdict}")
     print(f"Approved: {adj.approved} (Priority Score: {adj.priority_score:.2f})")
@@ -138,12 +178,107 @@ def cmd_attack(args: argparse.Namespace) -> int:
     for d in adj.all_dissents:
         print(f"  - [{d.severity.upper()}] {d.reviewer_role}: {d.objection}")
 
-    if args.save:
-        out_path = dossier_path.with_name(f"{dossier.dossier_id}_adjudicated.json")
-        out_path.write_text(json.dumps(adj.to_dict(), indent=2) + "\n")
-        print(f"[+] Saved adjudication to {out_path}")
+    output_arg = getattr(args, "output", None)
+    out_path = (Path(output_arg) if output_arg else
+                dossier_path.with_name(f"{dossier.dossier_id}_adjudicated.json"))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(adj.to_dict(), indent=2) + "\n")
+    print(f"[+] Saved adjudication to {out_path}")
 
     return 0 if adj.approved else 2
+
+
+def cmd_qualify(args: argparse.Namespace) -> int:
+    """Author and freeze a signal after label-free structural checks."""
+    from ...runner.qualification import qualify_adjudication
+
+    adjudication_path = Path(args.adjudication_file)
+    if not adjudication_path.exists():
+        print(f"[-] Adjudication file {adjudication_path} not found")
+        return 1
+    try:
+        adjudication = json.loads(adjudication_path.read_text())
+        supplied_source = (Path(args.signal_file).read_text()
+                           if getattr(args, "signal_file", None) else None)
+        artifact, path = qualify_adjudication(
+            adjudication,
+            signal_name=args.signal,
+            provider=args.provider,
+            model=args.model,
+            signal_source=supplied_source,
+            dataset_version=args.dataset_version,
+            timeout_s=args.timeout,
+            max_turns=args.max_turns,
+            output_path=Path(args.output) if args.output else None,
+        )
+    except Exception as exc:
+        print(f"[-] Qualification failed: {type(exc).__name__}: {exc}")
+        return 1
+
+    verdict = "PASSED" if artifact.approved else "REJECTED"
+    print(f"\n=== QUALIFICATION {verdict} ===")
+    print(f"ID: {artifact.qualification_id} (Hash: {artifact.qualification_hash})")
+    print(f"Hypothesis: {artifact.mechanism_dossier.hypothesis_id}")
+    print(f"Signal: {artifact.signal_name} ({artifact.signal_source_hash})")
+    print(f"Independent blocks: {artifact.structural_gate['estimated_independent_blocks']}")
+    print(f"MDE: {artifact.structural_gate['min_detectable_effect_bps']} bps")
+    for reason in artifact.rejection_reasons:
+        print(f"  - {reason}")
+    print(f"Saved: {path}")
+    return 0 if artifact.approved else 2
+
+
+def cmd_compile(args: argparse.Namespace) -> int:
+    """Compile a passed qualification into a frozen one-shot contract."""
+    try:
+        qualification = load_qualification(args.qualification)
+        contract, lifecycle, batch = compile_qualification(
+            qualification,
+            reviewer=args.reviewer,
+            cost_round_trip_bps=args.cost_bps,
+            capacity_limit_inr=args.capacity_inr,
+            min_significance_t=args.min_t,
+        )
+        canonical_path = save_contract(contract, lifecycle)
+        path = canonical_path
+        if args.output:
+            path = save_contract(contract, lifecycle, Path(args.output))
+    except Exception as exc:
+        print(f"[-] Compile failed: {type(exc).__name__}: {exc}")
+        return 1
+    print("\n=== EXPERIMENT CONTRACT FROZEN ===")
+    print(f"ID: {contract.contract_id} (Hash: {contract.contract_hash})")
+    print(f"Batch: {batch.batch_id} (Hash: {batch.batch_hash})")
+    print(f"Outcome access: {contract.exposure_level_incurred} on {contract.partition}")
+    print(f"Magnitude bar: {contract.min_magnitude_bps} bps")
+    print(f"Saved: {path}")
+    if path != canonical_path:
+        print(f"Canonical: {canonical_path}")
+    print(f"Run explicitly with: python -m src.cli execute {contract.contract_id} "
+          "--confirm-outcome-access")
+    return 0
+
+
+def cmd_execute(args: argparse.Namespace) -> int:
+    """Spend one registered outcome access on a frozen contract."""
+    if not args.confirm_outcome_access:
+        print("[-] Refusing to reveal outcomes without --confirm-outcome-access")
+        return 2
+    from ...runner.director import execute_contract
+    try:
+        payload, path = execute_contract(
+            args.contract, enroll_forward=args.enroll_forward)
+    except Exception as exc:
+        print(f"[-] Contract execution failed: {type(exc).__name__}: {exc}")
+        return 1
+    result = payload["result"]
+    print("\n=== REGISTERED RESULT ===")
+    print(f"Contract: {payload['contract_id']}")
+    print(f"Verdict: {result['failure_class']}")
+    print(result["interpretation"])
+    print(f"Manifest: {result['manifest']['hash']}")
+    print(f"Saved: {path}")
+    return 0
 
 
 def cmd_data_probe(args: argparse.Namespace) -> int:

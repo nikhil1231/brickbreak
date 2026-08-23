@@ -262,6 +262,7 @@ def run_agent(
         cmd = [
             exe, "exec", "--json", "--ephemeral",
             "--ignore-user-config",
+            "--skip-git-repo-check",
             "--sandbox", sandbox,
             "-c", 'approval_policy="never"',
         ]
