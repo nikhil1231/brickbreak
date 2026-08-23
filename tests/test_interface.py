@@ -343,3 +343,67 @@ def test_json_safe_leaves_ordinary_values_alone():
     from src.interface.backend import _json_safe
     payload = {"a": 1, "b": "x", "c": [1, 2, 3], "d": None, "e": True}
     assert _json_safe(payload) == payload
+
+
+def test_cli_exposure_status(capsys):
+    from src.interface.cli import council
+    args = argparse.Namespace()
+    res = council.cmd_exposure_status(args)
+    assert res == 0
+    captured = capsys.readouterr()
+    assert "RESEARCH EXPOSURE LEDGER" in captured.out
+
+
+def test_cli_data_probe(tmp_path, capsys):
+    from src.interface.cli import council
+    import pandas as pd
+    p = tmp_path / "sample.csv"
+    pd.DataFrame({"date": ["2021-01-04", "2021-01-05"], "val": [1, 2]}).to_csv(p, index=False)
+
+    args = argparse.Namespace(file=str(p), source_name="Sample", date_col="date", sample_size=100)
+    res = council.cmd_data_probe(args)
+    assert res == 0
+    captured = capsys.readouterr()
+    assert "MICRO-PROBE: Sample" in captured.out
+
+
+def test_cli_attack_dossier(tmp_path, capsys):
+    from src.contracts.dossier import MechanismDossier
+    from src.interface.cli import council
+
+    dos = MechanismDossier(
+        dossier_id="DOS_CLI_TEST",
+        hypothesis_id="H099",
+        family="test_fam",
+        claim="Test claim for attack CLI",
+        population="NIFTY 500",
+        expected_horizon_days=10,
+        observable_facts=("Fact 1",),
+        interpretation="Interp",
+        causal_chain="Causal chain explanation",
+        counterparty="Counterparty name",
+        counterparty_persistence_rationale="Persistence reason",
+        competing_explanations=("Comp 1", "Comp 2"),
+        strongest_baseline="Baseline",
+        unique_predictions=("Pred 1",),
+        natural_falsifiers=("Falsifier 1",),
+        confounds=(),
+        capacity_notes="Capacity",
+        min_effect_bps=50.0,
+        nearest_hypothesis_ids=(),
+        required_observations_absent=(),
+        memory_risk_classification="anon",
+        forward_confirmation_path="fwd",
+        proposer="scout",
+        hostile_reviewer="critic",
+    )
+    p = tmp_path / "dossier.json"
+    p.write_text(json.dumps(dos.to_dict()))
+
+    args = argparse.Namespace(dossier_file=str(p), save=True)
+    res = council.cmd_attack(args)
+    assert res == 0
+    captured = capsys.readouterr()
+    assert "Attacking dossier" in captured.out
+    assert "Verdict: APPROVED" in captured.out
+

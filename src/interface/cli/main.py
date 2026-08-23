@@ -9,7 +9,7 @@ import argparse
 import sys
 
 from ...core import config
-from . import data, discretionary, lab as iface_cli, opening_window
+from . import council, data, discretionary, lab as iface_cli, opening_window
 
 
 def _add_family_commands(sub: argparse._SubParsersAction) -> None:
@@ -362,6 +362,31 @@ def main(argv=None) -> int:
     # baselines -> outcomes -> report.
     # -----------------------------------------------------------------------
     discretionary.register(sub)
+
+    # -----------------------------------------------------------------------
+    # AI Research Director (PLAN.md): Council, Broker, Firewall
+    # -----------------------------------------------------------------------
+    disc_p = sub.add_parser("discover", help="scout novel mechanism dossiers across economic lenses")
+    disc_p.add_argument("--lens", default="market_structure", choices=("market_structure", "participant_constraints", "external_research", "data_catalogue", "graveyard_branch"))
+    disc_p.add_argument("--hint", default="", help="domain or economic hint")
+    disc_p.add_argument("--hypothesis", default="H_PROP", help="hypothesis ID")
+    disc_p.add_argument("--family", default="general", help="family name")
+    disc_p.set_defaults(fn=council.cmd_discover)
+
+    att_p = sub.add_parser("attack", help="attack a mechanism dossier across council critics")
+    att_p.add_argument("dossier_file", help="path to mechanism dossier JSON file")
+    att_p.add_argument("--save", action="store_true", help="save adjudication output to disk")
+    att_p.set_defaults(fn=council.cmd_attack)
+
+    prb_p = sub.add_parser("probe-data", help="run diagnostic micro-probe on raw market data file")
+    prb_p.add_argument("file", help="path to parquet or csv data file")
+    prb_p.add_argument("--source-name", default=None, help="name of data source")
+    prb_p.add_argument("--date-col", default="date", help="date column name")
+    prb_p.add_argument("--sample-size", type=int, default=500, help="max rows to sample")
+    prb_p.set_defaults(fn=council.cmd_data_probe)
+
+    exp_l_p = sub.add_parser("exposure", help="view research outcome exposure ledger and weekly quotas")
+    exp_l_p.set_defaults(fn=council.cmd_exposure_status)
 
     srv_p = sub.add_parser("serve", help="launch the primary backend and web application")
     srv_p.add_argument("--port", type=int, default=8080, help="port to listen on (default 8080)")
