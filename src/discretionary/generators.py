@@ -254,7 +254,7 @@ def contraction_breakout(panel: pd.DataFrame, **overrides: Any) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def sample(candidates: pd.DataFrame, n: int, strategy: str = "stratified_by_session",
-           seed: int = 0) -> pd.DataFrame:
+           seed: int = 0, min_per_session: float = 2.0) -> pd.DataFrame:
     """Cut a broad candidate set down to the case budget.
 
     One model call per case makes the full set unaffordable — a broad generator
@@ -276,11 +276,15 @@ def sample(candidates: pd.DataFrame, n: int, strategy: str = "stratified_by_sess
     indicators that have not warmed up yet.
     """
     if strategy == "all" or n >= len(candidates):
-        return candidates.reset_index(drop=True)
+        out = candidates.reset_index(drop=True)
+        _refuse_degenerate_shape(out, min_per_session)
+        return out
     rng = np.random.default_rng(seed)
     if strategy == "random":
         idx = rng.choice(len(candidates), size=n, replace=False)
-        return candidates.iloc[np.sort(idx)].reset_index(drop=True)
+        out = candidates.iloc[np.sort(idx)].reset_index(drop=True)
+        _refuse_degenerate_shape(out, min_per_session)
+        return out
     if strategy != "stratified_by_session":
         raise GeneratorError(f"unknown sample strategy {strategy!r}")
 
@@ -306,4 +310,36 @@ def sample(candidates: pd.DataFrame, n: int, strategy: str = "stratified_by_sess
         if not added:
             break
         depth += 1
-    return candidates.loc[sorted(picked)].reset_index(drop=True)
+    out = candidates.loc[sorted(picked)].reset_index(drop=True)
+    _refuse_degenerate_shape(out, min_per_session)
+    return out
+
+
+def _refuse_degenerate_shape(sampled: pd.DataFrame, min_per_session: float) -> None:
+    """A draw of one case per session cannot measure anything. Caught here.
+
+    `excess_lift` is takes against the pool *of the same session*, so a session
+    holding one case compares that case with itself and contributes an exact
+    zero. Round-robin over sorted sessions reaches every session before any
+    session gets a second pick, and `train` holds 749 sessions against a
+    500-case budget — so the default draw lands exactly on the degenerate
+    shape, and does so silently, reporting 0.0 bps and a populated report.
+
+    Verified against a planted 300 bps edge: 0.0 bps measured at 1 case per
+    session, 166 at 2, 234 at 3. Raised rather than warned, because the failure
+    is toward the null and therefore indistinguishable by inspection from the
+    honest answer the lab expects.
+    """
+    if sampled.empty or "date" not in sampled.columns:
+        return
+    per = len(sampled) / max(sampled["date"].nunique(), 1)
+    if per < min_per_session:
+        raise GeneratorError(
+            f"the draw put {per:.2f} cases in each of "
+            f"{sampled['date'].nunique()} sessions, below the "
+            f"{min_per_session} the session-paired contrast needs. Spreading "
+            f"n cases over n sessions makes every per-session contrast "
+            f"degenerate and the measured lift identically zero. Either draw "
+            f"more cases or, at the same token cost, concentrate them: ~8 "
+            f"cases across ~63 sessions has 99% power against a 150 bps edge "
+            f"where 1 across 500 has none at all.")

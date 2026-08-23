@@ -31,6 +31,44 @@ the opportunities it was given*. A definition that names only the first two is
 accepted — it is a legitimate weaker claim — but `evaluate` reports all three
 regardless, so the weaker bar cannot hide the stronger answer.
 
+SIGNIFICANCE IS NOT OPTIONAL, AND THE REASON IS A MEASURED NUMBER
+The plan of 2026-08-22 concluded that a bar in basis points is safe where a bar
+in t is not, on the evidence that 60 coin-flip selectors cleared a bps bar
+2% of the time and a t bar 13%. That measurement was taken against a simulated
+world whose 10-day excess returns have a 3.0% standard deviation.
+
+The real figure, measured on `data/normalized/daily_bars_adj.parquet` at this
+module's own 1-crore liquidity floor, is **7.9%** — and 22% before trimming.
+At 7.9% the conclusion inverts. The sampling distribution of `excess_lift_bps`
+on a 500-case replay has a standard deviation of ~92 bps, so a 60 bps threshold
+sits *inside* the noise:
+
+    false alarms on a pure-noise selector, 8 cases/session, real dispersion
+
+    sessions  cases  blocks   bps only   bps + |t|>2   bps + |t|>2.5
+          63    504       4        13%            4%              2%
+         125   1000       9         9%            3%              2%
+         250   2000      18         8%            2%              2%
+
+A magnitude bar alone admits one selector in eight that has no edge at all. A
+significance bar alone over-rejects for the reason the plan gives — the block
+count is small and no correction invents observations. **Neither is safe; the
+conjunction is.** So `validate_pass_criterion` now requires one of each, and
+`DEFAULT_PASS_CRITERION` carries `min_excess_lift_t`.
+
+THE POOL CONTRAST IS ATTENUATED BY THE SHAPE OF THE CASE SET
+`excess_lift` compares takes against the pool *of the same session*, and the
+pool contains the takes. Within a session holding k cases of which m are taken,
+
+    take_mean - pool_mean  =  (1 - m/k) x (take_mean - skip_mean)
+
+so the metric is scaled by a factor the case set decides and the bar does not
+know about. At k=1 the factor is zero and the measured lift is identically zero
+however large the true edge — which is exactly what the default sampler
+produces, because `sample` round-robins one case per session and `train` holds
+749 sessions against a 500-case budget. `evaluate` reports `pool_attenuation`
+and `validate_sample_adequacy` refuses the degenerate shape.
+
 THE DECIDER IS NOT FROZEN THE WAY A FUNCTION IS
 A signal is code: run it twice on the same frame and it is the same test. A
 decider is a *prompt version, a model, and a case set*, and changing any of the
@@ -72,7 +110,17 @@ MIN_MEANINGFUL: dict[str, float] = {
     # Confidence that does not predict is not confidence. The slope is of mean
     # excess on stated confidence, in bps per unit; a flat selector scores 0.
     "min_calibration_slope_bps": 20.0,
+    # A magnitude bar alone is only safe when the sampling distribution of the
+    # measured lift is narrow relative to it, and on this data it is not. See
+    # SIGNIFICANCE_IS_NOT_OPTIONAL below.
+    "min_excess_lift_t": 2.0,
 }
+
+# Keys that state "the effect is big enough to act on". At least one must be
+# named, or the bar is a significance test and H039 applies.
+_MAGNITUDE_KEYS = frozenset(k for k in MIN_MEANINGFUL if k.endswith("_bps"))
+# Keys that state "the effect is distinguishable from noise at this sample".
+_SIGNIFICANCE_KEYS = frozenset(("min_excess_lift_t",))
 
 
 def validate_pass_criterion(criterion: dict[str, float]) -> None:
@@ -81,6 +129,23 @@ def validate_pass_criterion(criterion: dict[str, float]) -> None:
         raise OpportunityValidationError(
             "no pass criterion. Freeze one before any case is judged, in units "
             "of the effect — a bar written after the result is not a bar.")
+
+    if not (set(criterion) & _MAGNITUDE_KEYS):
+        raise OpportunityValidationError(
+            f"the bar names no magnitude criterion. A bar made only of "
+            f"significance is the H039 error: on a case-budgeted sample a "
+            f"t-statistic clears 1.96 on noise far more often than 5% of the "
+            f"time. Name at least one of {sorted(_MAGNITUDE_KEYS)}.")
+
+    if not (set(criterion) & _SIGNIFICANCE_KEYS):
+        raise OpportunityValidationError(
+            f"the bar names no significance criterion. A bar made only of "
+            f"magnitude is the mirror error and it is the larger one here: "
+            f"measured at 7.9% dispersion, the sampling distribution of "
+            f"`excess_lift_bps` on a 500-case replay has a standard deviation "
+            f"of ~92 bps, so a 60 bps threshold is inside the noise and 13-21% "
+            f"of pure-noise selectors clear it. Name "
+            f"{sorted(_SIGNIFICANCE_KEYS)} as well.")
 
     unknown = [k for k in criterion if k not in MIN_MEANINGFUL]
     if unknown:
@@ -106,10 +171,53 @@ def validate_pass_criterion(criterion: dict[str, float]) -> None:
                 f"bar you would act on.")
 
 
+def validate_sample_adequacy(independent_blocks: int | None,
+                             cases_per_session: float | None) -> list[str]:
+    """Reasons this sample cannot carry a verdict. Empty means it can.
+
+    Returned rather than raised: a replay that has already been judged should
+    still produce its report, with the verdict class saying why the report is
+    not evidence.
+    """
+    reasons = []
+    if cases_per_session is not None and cases_per_session < 2.0:
+        reasons.append(
+            f"{cases_per_session:.2f} cases per session. `excess_lift_bps` is "
+            f"takes against the pool *of the same session*, so at one case per "
+            f"session a take is compared with itself and the measured lift is "
+            f"identically zero however large the true edge is. Verified: a "
+            f"planted 300 bps edge reads 0.0 bps at 1/session, 166 at 2/session "
+            f"and 234 at 3/session. Concentrate the draw: ~8 cases across "
+            f"~63 sessions beats 1 case across 500 at the same token cost.")
+    if independent_blocks is not None and independent_blocks < MIN_INDEPENDENT_BLOCKS:
+        reasons.append(
+            f"{independent_blocks} independent blocks, below the "
+            f"{MIN_INDEPENDENT_BLOCKS} at which any bar was calibrated to hold. "
+            f"Below this the measured lift is too dispersed for a magnitude "
+            f"bar and the corrected t is too over-rejecting for a significance "
+            f"bar; neither is rescued by combining them.")
+    return reasons
+
+
 DEFAULT_PASS_CRITERION: dict[str, float] = {
     "min_excess_lift_bps": 60.0,
     "min_lift_over_baseline_bps": 30.0,
+    "min_excess_lift_t": 2.5,
 }
+
+# The sample below which no bar behaves, in independent blocks (sessions
+# carrying both arms, divided by the holding horizon). Measured, not chosen:
+# under the conjunction bar above, at measured dispersion, over 250 seeds,
+#
+#     blocks   cases   null selectors that cleared the bar
+#          4     504                                 8.8%
+#          9    1000                                 3.2%
+#         18    2000                                 2.4%
+#
+# Eight is where it crosses 5%. Below it neither the magnitude term nor the
+# significance term nor their conjunction controls the false-alarm rate, and
+# a 500-case replay of the shape PLAN.md 3.1 sizes sits underneath.
+MIN_INDEPENDENT_BLOCKS = 8
 
 # The context blocks a case may carry. Named here rather than in `case` so that
 # a definition can be validated without building anything.

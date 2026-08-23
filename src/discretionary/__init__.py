@@ -37,4 +37,4 @@ spends the sample exactly like an exploration does and is counted the same way.
 from __future__ import annotations
 
 __all__ = ["opportunity", "generators", "case", "prompt", "decision",
-           "decider", "providers"]
+           "decider", "providers", "distil"]

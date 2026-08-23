@@ -166,6 +166,30 @@ class Parsed:
 _FV = re.compile(
     r"from\s*(?:rs|re)?\.?\s*([\d.]+)\s*/?-?\s*per\s*share\s*to\s*(?:rs|re)?\.?\s*([\d.]+)",
     re.I)
+# The pre-2020 feed writes the same event without "per share" and sometimes
+# without "from": "Fv Split Rs.10/- To Rs.2/", "Face Value Split From Rs 10 To
+# Re 1". 299 of the 416 legacy splits — 72% — fell through on this alone, which
+# left their price steps unexplained and their windows quarantined. The
+# currency prefix is mandatory here where it is optional above, so that a bare
+# "1 to 2" in some unrelated sentence cannot match.
+_FV_LEGACY = re.compile(
+    r"(?:from\s*)?(?:rs|re)\.?\s*([\d.]+)\s*/?\s*-?\s*(?:per\s*share\s*)?"
+    r"to\s*(?:rs|re)\.?\s*([\d.]+)",
+    re.I)
+
+
+def _face_value_change(text: str) -> tuple[float, float] | None:
+    """Old and new face value, from either the modern or the legacy phrasing."""
+    for rx in (_FV, _FV_LEGACY):
+        m = rx.search(text)
+        if m:
+            try:
+                old_fv, new_fv = float(m.group(1)), float(m.group(2))
+            except ValueError:
+                continue
+            if old_fv > 0 and new_fv > 0:
+                return old_fv, new_fv
+    return None
 # "Bonus 1:1", "Bonus 1: 1", "Rights 13:118 @ Premium Rs 308/-".
 # Decimals are real: NSE writes "Rights 1:11.10".
 _RATIO = re.compile(r"(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)")
@@ -185,19 +209,19 @@ def parse_subject(subject: str) -> Parsed:
     u = t.upper()
 
     if "SPLIT" in u or "SUB-DIVISION" in u or "SUB DIVISION" in u:
-        m = _FV.search(t)
-        if m:
-            old, new = float(m.group(1)), float(m.group(2))
-            if old > 0 and new > 0:
-                return Parsed("SPLIT", new / old, f"face value {old} -> {new}")
+        fv = _face_value_change(t)
+        if fv:
+            old_fv, new_fv = fv
+            return Parsed("SPLIT", new_fv / old_fv,
+                          f"face value {old_fv} -> {new_fv}")
         return Parsed("SPLIT", None, "unparsed face-value change")
 
     if "CONSOLIDAT" in u:
-        m = _FV.search(t)
-        if m:
-            old, new = float(m.group(1)), float(m.group(2))
-            if old > 0 and new > 0:
-                return Parsed("CONSOLIDATION", new / old, f"face value {old} -> {new}")
+        fv = _face_value_change(t)
+        if fv:
+            old_fv, new_fv = fv
+            return Parsed("CONSOLIDATION", new_fv / old_fv,
+                          f"face value {old_fv} -> {new_fv}")
         return Parsed("CONSOLIDATION", None, "unparsed face-value change")
 
     if "BONUS" in u:

@@ -38,7 +38,7 @@ REGISTRY_PATH = config.METADATA_DIR / "research_store" / "forward_registry.json"
 
 @dataclass
 class Registration:
-    """A signal promoted to the forward lane."""
+    """A signal, distilled rule, or replay promoted to the forward lane."""
     signal_name: str
     hypothesis_id: str
     source: str                       # the compute() that defines it
@@ -47,6 +47,8 @@ class Registration:
     registered_at: str = field(
         default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     registered_from_exploration: str = ""
+    kind: str = "signal"              # "signal", "distilled_rule", "replay"
+    replay_id: str = ""
     last_accrued_session: str = ""
     n_evidence: int = 0
 
@@ -99,7 +101,8 @@ def status(version: str = "v1") -> dict[str, Any]:
 
 def register(signal_name: str, hypothesis_id: str, source: str,
              primary_horizon: int = 10, dataset_version: str = "v1",
-             exploration_id: str = "") -> Registration:
+             exploration_id: str = "", kind: str = "signal",
+             replay_id: str = "") -> Registration:
     """Enrol a signal so forward evidence accrues without anyone remembering."""
     regs = _load()
     for r in regs:
@@ -108,10 +111,51 @@ def register(signal_name: str, hypothesis_id: str, source: str,
     reg = Registration(signal_name=signal_name, hypothesis_id=hypothesis_id,
                        source=source, primary_horizon=primary_horizon,
                        dataset_version=dataset_version,
-                       registered_from_exploration=exploration_id)
+                       registered_from_exploration=exploration_id,
+                       kind=kind, replay_id=replay_id)
     regs.append(reg)
     _save(regs)
     return reg
+
+
+def register_distilled_rule(rule_name: str, expression: str, rule_hash: str,
+                            hypothesis_id: str, primary_horizon: int = 10,
+                            dataset_version: str = "v1") -> Registration:
+    """Register a distilled rule into the forward lane."""
+    src = (
+        f"def compute(df):\n"
+        f"    import pandas as pd\n"
+        f"    selected = df.query({expression!r}, engine='python')\n"
+        f"    s = pd.Series(0.0, index=df.index)\n"
+        f"    s.loc[selected.index] = 1.0\n"
+        f"    return s\n"
+    )
+    return register(
+        signal_name=f"distil_{rule_name}",
+        hypothesis_id=hypothesis_id,
+        source=src,
+        primary_horizon=primary_horizon,
+        dataset_version=dataset_version,
+        exploration_id=f"distil:{rule_hash}",
+        kind="distilled_rule",
+    )
+
+
+def register_replay(replay_id: str, hypothesis_id: str,
+                    primary_horizon: int = 10, dataset_version: str = "v1"
+                    ) -> Registration:
+    """Register a discretionary replay identity for forward tracking."""
+    return register(
+        signal_name=f"replay:{replay_id}",
+        hypothesis_id=hypothesis_id,
+        source="",
+        primary_horizon=primary_horizon,
+        dataset_version=dataset_version,
+        exploration_id=f"replay:{replay_id}",
+        kind="replay",
+        replay_id=replay_id,
+    )
+
 
 
 def _compute_from_source(source: str, df: pd.DataFrame) -> pd.Series:

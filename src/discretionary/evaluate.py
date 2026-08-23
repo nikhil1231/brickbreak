@@ -46,7 +46,8 @@ from ..alpha_eval.backtest import COST_PCT_ROUND_TRIP
 from ..alpha_eval import diagnostics
 from ..runner import burden as burden_mod
 from .decision import AI_DECIDER, Decision
-from .opportunity import MIN_MEANINGFUL, OpportunityDef
+from .opportunity import (MIN_MEANINGFUL, OpportunityDef,
+                          validate_sample_adequacy)
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +200,15 @@ def evaluate(decisions: list[Decision], outcomes: pd.DataFrame,
             report["ai"][f"pool_{name}"] = round(float(ai[name].mean()), 3)
 
     # -- 2. the contrasts MISSION §7 names --------------------------------
+    # How much the pool contrast is scaled down by the takes being inside the
+    # pool. Exact, not assumed: the mean of (1 - m/k) over sessions that carry
+    # at least one take. 0.0 means the contrast cannot express any edge.
+    _shape = ai.assign(_took=took).groupby("date")["_took"].agg(["sum", "size"])
+    _shape = _shape[_shape["sum"] > 0]
+    report["pool_attenuation"] = (
+        round(float((1.0 - _shape["sum"] / _shape["size"]).mean()), 3)
+        if len(_shape) else None)
+
     all_true = pd.Series(np.ones(len(ai), dtype=bool))
     contrasts = {
         "take_vs_skip": session_paired_contrast(
@@ -352,7 +362,14 @@ def _by_tag(ai: pd.DataFrame, value_col: str, lags: int,
 def _headline(report: dict[str, Any]) -> dict[str, Any]:
     c = report["contrasts"]
     best = c.get("ai_vs_best_baseline", {})
+    cps = report["n_cases"] / max(report["n_sessions"], 1)
     return {
+        # The shape of the case set, because it scales the headline metric.
+        # take_vs_pool = (1 - m/k) x take_vs_skip within a session of k cases
+        # of which m were taken, so a bar in bps means a different thing at
+        # every shape and means nothing at all at k=1.
+        "cases_per_session": round(cps, 2),
+        "pool_attenuation": report.get("pool_attenuation"),
         "take_rate_pct": report["ai"]["take_rate_pct"],
         "n_taken": report["ai"]["n_taken"],
         "taken_mean_excess_bps": round(
@@ -390,6 +407,14 @@ def _verdict(report: dict[str, Any], defn: OpportunityDef) -> dict[str, Any]:
         "min_take_vs_skip_bps": hl.get("take_vs_skip_bps"),
         "min_lift_over_baseline_bps": hl.get("lift_over_baseline_bps"),
         "min_calibration_slope_bps": hl.get("calibration_slope_bps"),
+        # Absolute: a bar is about distinguishability, and a large negative t
+        # is not evidence for the selector, so it only counts when the lift
+        # itself is positive.
+        "min_excess_lift_t": (abs(hl["excess_lift_t"])
+                              if hl.get("excess_lift_t") is not None
+                              and np.isfinite(hl["excess_lift_t"])
+                              and (hl.get("excess_lift_bps") or 0) > 0
+                              else None),
     }
     checks = []
     for key, bar in defn.pass_criterion.items():
@@ -399,9 +424,20 @@ def _verdict(report: dict[str, Any], defn: OpportunityDef) -> dict[str, Any]:
                        "passed": ok})
     passed = bool(checks) and all(c["passed"] for c in checks)
 
+    inadequate = validate_sample_adequacy(
+        hl.get("independent_blocks"), hl.get("cases_per_session"))
+
+    # Order matters: a selector that took nothing has a more specific and more
+    # useful diagnosis than "the shape is wrong", and every shape is wrong when
+    # there are no takes to pair.
     if not report["ai"]["n_taken"]:
         cls, statement = "INSUFFICIENT_SAMPLE", (
             "the selector took nothing, so there is no selection to evaluate")
+    elif inadequate:
+        passed = False
+        cls, statement = "INADEQUATE_SAMPLE_SHAPE", (
+            "this replay cannot carry a verdict, whatever it measured: "
+            + " ".join(inadequate))
     elif passed:
         cls, statement = "SUCCESS", (
             f"selection beat the pool it was drawn from by "
@@ -427,13 +463,13 @@ def _verdict(report: dict[str, Any], defn: OpportunityDef) -> dict[str, Any]:
         "sample_caveat": (
             f"{hl.get('effective_sessions')} sessions carried both arms at a "
             f"{report['primary_horizon']}-session horizon — about "
-            f"{hl.get('independent_blocks')} independent blocks. The "
-            f"t-statistics are session-clustered and Hansen-Hodrick corrected, "
-            f"but neither correction invents independent observations: measured "
-            f"on a null selector at this block count the corrected |t| still "
-            f"exceeds 1.96 about 13% of the time, not 5%. That is why the bar "
-            f"is denominated in basis points rather than in t — magnitude is "
-            f"what this lab is short of, and a bar in bps rejected the same "
-            f"null selectors 98% of the time. Do not promote on the "
-            f"t-statistic alone."),
+            f"{hl.get('independent_blocks')} independent blocks, at "
+            f"{hl.get('cases_per_session')} cases per session and a pool "
+            f"attenuation of {hl.get('pool_attenuation')}. Neither the session "
+            f"clustering nor the Hansen-Hodrick correction invents independent "
+            f"observations. Measured at the real 7.9% dispersion of 10-day "
+            f"excess returns, a bar in basis points alone admits 13% of "
+            f"pure-noise selectors at this block count and a bar in t alone "
+            f"admits 23%; only the conjunction holds, at 2%. Both are "
+            f"required, and neither is evidence without the other."),
     }
