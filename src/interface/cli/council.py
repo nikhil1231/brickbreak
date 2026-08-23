@@ -109,23 +109,21 @@ def cmd_attack(args: argparse.Namespace) -> int:
 
 def cmd_data_probe(args: argparse.Namespace) -> int:
     """Run generic micro-probe on a raw data file."""
-    import pandas as pd
+    from ...research_data.frame import load_raw_file_slice
     p = Path(args.file)
     if not p.exists():
         print(f"[-] File {p} not found")
         return 1
 
-    if p.suffix == ".parquet":
-        df = pd.read_parquet(p)
-    elif p.suffix == ".csv":
-        df = pd.read_csv(p)
-    else:
-        print(f"[-] Unsupported file format {p.suffix}")
+    try:
+        df = load_raw_file_slice(p, nrows=args.sample_size or 500)
+    except Exception as exc:
+        print(f"[-] Failed to load {p}: {exc}")
         return 1
 
     probe = run_source_micro_probe(
         source_name=args.source_name or p.stem,
-        sample_df=df.head(args.sample_size or 500),
+        sample_df=df,
         date_col=args.date_col or "date",
     )
 

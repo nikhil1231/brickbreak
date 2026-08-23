@@ -507,3 +507,19 @@ def load_events(
     logger.info(f"load_events: kind={kind} {len(df):,} rows, "
                 f"version={version}, partition={partition}, asof={asof}")
     return df.reset_index(drop=True)
+
+
+def load_raw_file_slice(file_path: Path | str, nrows: int | None = None) -> pd.DataFrame:
+    """Read a raw file slice for probing and diagnostics inside the data package."""
+    p = Path(file_path)
+    if not p.exists():
+        raise FileNotFoundError(f"File {p} does not exist")
+
+    if p.suffix == ".parquet":
+        df = pd.read_parquet(p)
+        return df.head(nrows) if nrows is not None else df
+    elif p.suffix == ".csv":
+        return pd.read_csv(p, nrows=nrows)
+    else:
+        raise ValueError(f"Unsupported file format {p.suffix!r}")
+
