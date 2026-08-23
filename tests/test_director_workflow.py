@@ -84,6 +84,10 @@ def test_reviewed_dossier_compiles_and_executes_exactly_once(
     assert contract.contract_version == 2
     assert batch.batch_hash
 
+    with pytest.raises(ValueError, match="already has a frozen contract"):
+        compiler.compile_qualification(
+            artifact, reviewer="another_independent_reviewer")
+
     monkeypatch.setattr(
         director.frame, "load_daily_panel", lambda **kwargs: panel.copy())
     calls = []

@@ -40,6 +40,37 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> Path:
     return path
 
 
+def _claim_qualification(qualification_id: str,
+                         contract_id: str) -> Path:
+    """Atomically prevent two contracts from wrapping the same frozen signal."""
+    CONTRACTS_DIR.mkdir(parents=True, exist_ok=True)
+    for path in CONTRACTS_DIR.glob("*.json"):
+        try:
+            raw = json.loads(path.read_text())
+            if not isinstance(raw, dict):
+                raise ValueError(f"contract file {path} is not a JSON object")
+            if raw.get("contract", {}).get("qualification_id") == qualification_id:
+                raise ValueError(
+                    f"qualification {qualification_id} already has a frozen contract")
+        except (OSError, json.JSONDecodeError, AttributeError) as exc:
+            raise ValueError(
+                f"cannot verify prior contracts while {path} is unreadable") from exc
+
+    claim = CONTRACTS_DIR / f".{qualification_id}.claim"
+    try:
+        fd = os.open(claim, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError as exc:
+        raise ValueError(
+            f"qualification {qualification_id} already has a frozen contract") from exc
+    with os.fdopen(fd, "w") as handle:
+        json.dump({"qualification_id": qualification_id,
+                   "contract_id": contract_id}, handle)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    return claim
+
+
 def save_qualification(artifact: QualificationArtifact,
                        path: Path | None = None) -> Path:
     target = path or QUALIFICATIONS_DIR / f"{artifact.qualification_id}.json"
@@ -183,7 +214,16 @@ def compile_qualification(
         batch_hash=compute_batch_hash(specs),
         status="preregistered",
     )
-    store.save_batch(batch)
+    claim = _claim_qualification(qualification.qualification_id,
+                                 contract.contract_id)
+    try:
+        store.save_batch(batch)
+        # Persist while the atomic claim is held. Callers may save the same
+        # immutable payload again, but no second contract can be created.
+        save_contract(contract, lifecycle)
+    except Exception:
+        claim.unlink(missing_ok=True)
+        raise
     return contract, lifecycle, batch
 
 

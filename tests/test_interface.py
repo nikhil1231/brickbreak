@@ -98,6 +98,40 @@ class TestInterfaceAPI:
         assert {p["id"] for p in data["providers"]} == {"claude", "codex"}
         assert all(p["models"] for p in data["providers"])
 
+    def test_director_state_is_mounted_on_primary_backend(self, server,
+                                                           monkeypatch):
+        payload = {
+            "dossiers": [], "adjudications": [], "qualifications": [],
+            "contracts": [], "executions": [],
+            "exposure": {"weekly_used": 1, "weekly_ceiling": 5,
+                         "allowed": True, "total_records": 1},
+        }
+        monkeypatch.setattr(backend.director_api, "state", lambda: payload)
+        url = f"http://127.0.0.1:{server.server_address[1]}/api/director"
+        response = urllib.request.urlopen(url)
+        assert response.status == 200
+        assert json.loads(response.read().decode("utf-8")) == payload
+
+    def test_director_stage_dispatches_through_primary_backend(self, server,
+                                                               monkeypatch):
+        captured = {}
+
+        def fake_dispatch(path, payload):
+            captured.update(path=path, payload=payload)
+            return {"dossier": {"dossier_id": "DOS_API"}}
+
+        monkeypatch.setattr(backend.director_api, "dispatch_post", fake_dispatch)
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_address[1]}/api/director/discover",
+            data=json.dumps({"lens": "market_structure"}).encode(),
+            headers={"Content-Type": "application/json"}, method="POST")
+        response = urllib.request.urlopen(request)
+        assert response.status == 200
+        assert captured == {
+            "path": "/api/director/discover",
+            "payload": {"lens": "market_structure"},
+        }
+
     def test_create_hypothesis_registers_server_assigned_id(self, server,
                                                               monkeypatch):
         saved = []
@@ -406,4 +440,3 @@ def test_cli_attack_dossier(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "Attacking dossier" in captured.out
     assert "Verdict: APPROVED" in captured.out
-

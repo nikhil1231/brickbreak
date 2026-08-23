@@ -1,510 +1,462 @@
-import React, { useEffect, useState } from 'react';
-import { fetchHypotheses, fetchProviders, runExploration } from '../../services/api';
-import { ExplorationResult, Hypothesis, ProviderCatalogue, Suggestion } from '../../types';
-import { SuggestionDeck } from './SuggestionDeck';
-import { ExplorationStatus } from './ExplorationStatus';
-import { Badge } from '../common/Badge';
-import { MetricBox } from '../common/MetricBox';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  Badge,
+  Box,
+  Button,
+  Checkbox,
+  Code,
+  Divider,
+  Grid,
+  Group,
+  List,
   Paper,
+  Progress,
+  Select,
+  SimpleGrid,
+  Stack,
   Text,
   TextInput,
   Textarea,
-  Select,
-  Button,
-  SimpleGrid,
-  Group,
-  Stack,
-  Alert,
-  Code,
-  List,
   ThemeIcon,
-  Box,
-  Badge as MantineBadge,
-  SegmentedControl,
 } from '@mantine/core';
 import {
-  IconPlayerPlay,
-  IconArrowRight,
-  IconHash,
-  IconAlertCircle,
+  IconAlertTriangle,
+  IconCheck,
+  IconFlask,
+  IconLock,
+  IconRefresh,
+  IconRobot,
+  IconShieldCheck,
   IconSparkles,
 } from '@tabler/icons-react';
 
+import { fetchProviders } from '../../services/api';
+import { fetchDirectorState, runDirectorStage } from '../../services/directorApi';
+import type {
+  DirectorAdjudication,
+  DirectorContract,
+  DirectorDossier,
+  DirectorExecution,
+  DirectorQualification,
+  DirectorState,
+  ProviderCatalogue,
+} from '../../types/director';
+
+type BusyStage = 'discover' | 'attack' | 'qualify' | 'compile' | 'execute' | null;
+
+const emptyState: DirectorState = {
+  dossiers: [],
+  adjudications: [],
+  qualifications: [],
+  contracts: [],
+  executions: [],
+  exposure: { weekly_used: 0, weekly_ceiling: 0, allowed: true, total_records: 0 },
+};
+
+function objectValue(value: unknown, keys: string[]): string {
+  if (!value || typeof value !== 'object') return '—';
+  const record = value as Record<string, unknown>;
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null) return String(record[key]);
+  }
+  return '—';
+}
+
+const StageBadge = ({ done, label }: { done: boolean; label: string }) => (
+  <Badge color={done ? 'teal' : 'gray'} variant={done ? 'light' : 'outline'}>
+    {done ? '✓ ' : ''}{label}
+  </Badge>
+);
+
 export const ExploreConsole: React.FC = () => {
-  const [mode, setMode] = useState<'new' | 'continue'>('new');
-  const [hypId, setHypId] = useState<string>('');
-  const [hypotheses, setHypotheses] = useState<Hypothesis[]>([]);
-  const [question, setQuestion] = useState<string>('');
-  const [signalName, setSignalName] = useState<string>('');
-  const [partition, setPartition] = useState<string>('train');
-  const [provider, setProvider] = useState<string>('claude');
-  const [model, setModel] = useState<string>('');
+  const [state, setState] = useState<DirectorState>(emptyState);
   const [providers, setProviders] = useState<ProviderCatalogue | null>(null);
-  const [providerError, setProviderError] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [result, setResult] = useState<ExplorationResult | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [lens, setLens] = useState('market_structure');
+  const [family, setFamily] = useState('discovery');
+  const [hint, setHint] = useState('');
+  const [provider, setProvider] = useState('claude');
+  const [signalName, setSignalName] = useState('candidate_signal');
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState<BusyStage>(null);
   const [error, setError] = useState<string | null>(null);
-  const [launchingIds, setLaunchingIds] = useState<string[]>([]);
-  const [inboxReload, setInboxReload] = useState<number>(0);
+
+  const reload = async (preferredId?: string) => {
+    const next = await fetchDirectorState();
+    setState(next);
+    setSelectedId((current) => {
+      const wanted = preferredId || current;
+      return next.dossiers.some((item) => item.dossier_id === wanted)
+        ? wanted!
+        : next.dossiers[0]?.dossier_id || null;
+    });
+  };
 
   useEffect(() => {
     const controller = new AbortController();
-
-    // Existing hypotheses are available as lineage parents and for the
-    // explicit "continue existing" workflow. New ideas remain the default.
-    fetchHypotheses(controller.signal)
-      .then((hyps) => {
-        setHypotheses(hyps);
-        const preferred = hyps.find((item) => item.id === 'H026') || hyps[0];
-        if (preferred) {
-          setHypId(preferred.id);
-        }
-      })
-      .catch((err: Error) => {
-        if (err.name !== 'AbortError') {
-          setError(`Could not load the hypothesis ledger: ${err.message}`);
-        }
-      });
-
-    // Fetch LLM providers
-    fetchProviders(controller.signal)
-      .then((catalogue) => {
+    Promise.all([fetchDirectorState(controller.signal), fetchProviders(controller.signal)])
+      .then(([director, catalogue]) => {
+        setState(director);
         setProviders(catalogue);
-        const preferred =
-          catalogue.providers.find((item) => item.id === catalogue.default_provider && item.available) ||
-          catalogue.providers.find((item) => item.available);
-        if (preferred) {
-          setProvider(preferred.id);
-          setModel(preferred.default_model || '');
-        }
+        setSelectedId(director.dossiers[0]?.dossier_id || null);
+        const preferred = catalogue.providers.find(
+          (item) => item.id === catalogue.default_provider && item.available,
+        ) || catalogue.providers.find((item) => item.available);
+        if (preferred) setProvider(preferred.id);
       })
-      .catch((err: Error) => {
-        // Unmounting aborts these fetches. Reporting that as a provider
-        // failure put "signal is aborted without reason" under the picker.
-        if (err.name !== 'AbortError') {
-          setProviderError(err.message);
-        }
+      .catch((reason: Error) => {
+        if (reason.name !== 'AbortError') setError(reason.message);
       });
-
     return () => controller.abort();
   }, []);
 
-  const selectedProvider = providers?.providers.find((item) => item.id === provider);
-  const selectedHypothesis = hypotheses.find((item) => item.id === hypId);
-  const hypothesisChoices = hypotheses.map((item) => ({
+  const dossier = state.dossiers.find((item) => item.dossier_id === selectedId) || null;
+  const adjudication = useMemo<DirectorAdjudication | null>(
+    () => state.adjudications.find((item) => item.dossier?.dossier_id === selectedId) || null,
+    [selectedId, state.adjudications],
+  );
+  const qualification = useMemo<DirectorQualification | null>(
+    () => state.qualifications.find((item) => item.dossier?.dossier_id === selectedId) || null,
+    [selectedId, state.qualifications],
+  );
+  const contract = useMemo<DirectorContract | null>(
+    () => state.contracts.find((item) => item.qualification_id === qualification?.qualification_id) || null,
+    [qualification, state.contracts],
+  );
+  const execution = useMemo<DirectorExecution | null>(
+    () => state.executions.find((item) => item.contract_id === contract?.contract_id) || null,
+    [contract, state.executions],
+  );
+
+  const providerOptions = (providers?.providers || []).map((item) => ({
     value: item.id,
-    label: `${item.id} — ${item.title}`,
-  }));
-  const providerChoices = (providers?.providers || []).map((item) => ({
-    value: item.id,
-    label: `${item.label}${item.available ? '' : ' (not installed)'}`,
+    label: `${item.label}${item.available ? '' : ' (unavailable)'}`,
     disabled: !item.available,
   }));
-  const modelChoices = (selectedProvider?.models || []).map((item) => ({
-    value: item.id || '__default__',
-    label: item.label,
-  }));
+  const exposurePercent = state.exposure.weekly_ceiling
+    ? Math.min(100, (state.exposure.weekly_used / state.exposure.weekly_ceiling) * 100)
+    : 0;
 
-  const handleLaunch = async () => {
-    if (mode === 'continue' && !selectedHypothesis) {
-      setError('Choose a registered hypothesis before launching an exploration.');
-      return;
-    }
-    if (!question.trim()) {
-      setError(mode === 'new' ? 'Write a testable hypothesis.' : 'Provide an exploration question.');
-      return;
-    }
-    setLoading(true);
+  const run = async (stage: Exclude<BusyStage, null>, payload: Record<string, unknown>) => {
+    setBusy(stage);
     setError(null);
-    setInboxReload((n) => n + 1);
     try {
-      if (mode === 'new') {
-        const res = await runExploration({
-          idea: question.trim(),
-          hypothesis_id: '',
-          question: '',
-          signal_name: '',
-          partition: 'train',
-          provider,
-          model: model || undefined,
-        });
-        setResult(res);
-        setHypId(res.hypothesis_id);
-        setMode('continue');
-        setSignalName(res.signal_name);
-        try {
-          setHypotheses(await fetchHypotheses());
-        } catch {
-          /* the new entry is durable; refresh on next mount */
-        }
-      } else {
-        const res = await runExploration({
-          hypothesis_id: hypId,
-          question,
-          signal_name: signalName || `${hypId.toLowerCase()}_signal`,
-          partition,
-          provider,
-          model: model || undefined,
-        });
-        setResult(res);
-      }
-    } catch (err: any) {
-      if (mode === 'new' && err.hypothesisId) {
-        setHypId(err.hypothesisId);
-        setMode('continue');
-        try {
-          setHypotheses(await fetchHypotheses());
-        } catch {
-          /* the registered entry appears on the next refresh */
-        }
-        setError(`${err.hypothesisId} was registered, but its first exploration failed: ${err.message}`);
-      } else {
-        setError(err.message || 'Exploration failed');
-      }
+      const response = await runDirectorStage<Record<string, any>>(stage, payload);
+      const preferred = response.dossier?.dossier_id
+        || response.adjudication?.dossier?.dossier_id
+        || selectedId
+        || undefined;
+      await reload(preferred);
+      if (stage === 'execute') setConfirmed(false);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      await reload().catch(() => undefined);
     } finally {
-      setLoading(false);
-      setInboxReload((n) => n + 1);
+      setBusy(null);
     }
   };
 
-  // Playing a suggestion dispatches it and then leaves it alone. The form is
-  // deliberately untouched: the run is already under way, so pre-filling the
-  // box with its question invites launching the same thing twice, and the
-  // Explorations list is where its progress belongs. Several can be in
-  // flight at once — the server runs each in its own thread.
-  const handlePlaySuggestion = async (suggestion: Suggestion) => {
-    setLaunchingIds((ids) => [...ids, suggestion.id]);
-    setError(null);
-    setInboxReload((n) => n + 1);
-    try {
-      const res = await runExploration({
-        hypothesis_id: suggestion.hypothesis_id || '',
-        suggestion_id: suggestion.id,
-        question: suggestion.question,
-        signal_name: suggestion.signal_name,
-        partition,
-        provider,
-        model: model || undefined,
-      });
-      setResult(res);
-      try {
-        setHypotheses(await fetchHypotheses());
-      } catch {
-        /* the exploration still ran; the picker refreshes on next mount */
-      }
-    } catch (err: any) {
-      setError(err.message || 'Exploration failed');
-    } finally {
-      setLaunchingIds((ids) => ids.filter((id) => id !== suggestion.id));
-      setInboxReload((n) => n + 1);
-    }
-  };
-
-  const pc = result?.evaluation?.predictive_content?.primary_ic;
-  const q = result?.evaluation?.quantiles;
+  const discover = () => run('discover', { lens, family, hint, provider });
+  const attack = (item: DirectorDossier) => run('attack', {
+    dossier_id: item.dossier_id,
+    provider: 'auto',
+  });
+  const qualify = (item: DirectorDossier) => run('qualify', {
+    dossier_id: item.dossier_id,
+    signal_name: signalName,
+    provider,
+    dataset_version: 'v1',
+  });
 
   return (
-    <Box p="xl" style={{ maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Hero Exploration Form */}
-      <Paper
-        p="xl"
-        radius="lg"
-        mb="xl"
-        bg="#161b22"
-        style={{
-          border: '1px solid var(--border)',
-          boxShadow: '0 8px 30px rgba(0, 0, 0, 0.4)',
-        }}
-      >
-        <Group justify="space-between" align="center" mb="lg">
+    <Box p="xl" style={{ maxWidth: 1280, margin: '0 auto' }}>
+      <Group justify="space-between" align="flex-start" mb="xl">
+        <Box>
           <Group gap="sm">
-            <ThemeIcon size="lg" radius="md" variant="gradient" gradient={{ from: 'blue.5', to: 'cyan.4', deg: 135 }}>
-              <IconSparkles size={18} />
+            <ThemeIcon size="lg" radius="md" variant="gradient" gradient={{ from: 'violet', to: 'cyan' }}>
+              <IconRobot size={19} />
             </ThemeIcon>
-            <div>
-              <Text size="lg" fw={700} c="white" style={{ letterSpacing: '-0.02em' }}>
-                {mode === 'new' ? 'Explore a New Hypothesis' : 'Continue Existing Research'}
-              </Text>
-              <Text size="xs" c="dimmed">
-                {mode === 'new'
-                  ? 'Describe the idea; planning infers the research design and registers it.'
-                  : 'Keep the durable hypothesis unchanged and ask a narrower follow-up question.'}
-              </Text>
-            </div>
+            <Text size="xl" fw={750} c="white">AI Research Director</Text>
           </Group>
-
-          <SegmentedControl
-            size="xs"
-            value={mode}
-            data={[
-              { label: 'New hypothesis', value: 'new' },
-              { label: 'Continue existing', value: 'continue' },
-            ]}
-            onChange={(value) => {
-              const nextMode = value as 'new' | 'continue';
-              setMode(nextMode);
-              setError(null);
-              setResult(null);
-              if (nextMode === 'new') {
-                setQuestion('');
-                setSignalName('');
-              } else if (selectedHypothesis) {
-                setQuestion(selectedHypothesis.statement);
-                setSignalName(`${selectedHypothesis.id.toLowerCase()}_signal`);
-              }
-            }}
-          />
-        </Group>
-
-        {/* Hero Input Element */}
-        <Stack gap="md">
-          {mode === 'continue' && (
-            <>
-              <Select
-                label="Registered hypothesis"
-                description="Selecting an entry does not edit its durable statement."
-                placeholder="Choose a registered hypothesis"
-                searchable
-                value={hypId || null}
-                data={hypothesisChoices}
-                onChange={(value) => {
-                  const next = hypotheses.find((item) => item.id === value);
-                  if (!next) return;
-                  setHypId(next.id);
-                  setQuestion(next.statement);
-                  setSignalName(`${next.id.toLowerCase()}_signal`);
-                }}
-              />
-              {selectedHypothesis && (
-                <Paper p="md" radius="md" bg="#0d1117" style={{ border: '1px solid var(--border)' }}>
-                  <Group justify="space-between" mb="xs">
-                    <Text size="xs" fw={700} tt="uppercase" c="dimmed">Durable hypothesis — read only</Text>
-                    <Group gap="xs">
-                      <MantineBadge color="gray" variant="light">{selectedHypothesis.family}</MantineBadge>
-                      <MantineBadge color="blue" variant="light">{selectedHypothesis.status}</MantineBadge>
-                    </Group>
-                  </Group>
-                  <Text size="sm" c="white">{selectedHypothesis.statement}</Text>
-                  <Text size="xs" c="dimmed" mt="xs">{selectedHypothesis.rationale}</Text>
-                </Paper>
-              )}
-            </>
-          )}
-
-          <Textarea
-            label={mode === 'continue' ? 'Exploration question' : undefined}
-            description={mode === 'continue'
-              ? 'You may narrow the experiment here; the hypothesis above remains unchanged.'
-              : undefined}
-            placeholder={mode === 'new'
-              ? 'e.g. Does volume dry-up during consolidation predict stronger breakouts?'
-              : 'What additional aspect of this hypothesis should this run test?'}
-            minRows={mode === 'new' ? 7 : 4}
-            autosize
-            maxRows={10}
-            value={question}
-            onChange={(e) => setQuestion(e.currentTarget.value)}
-            styles={{
-              input: {
-                fontSize: '16px',
-                lineHeight: '1.6',
-                padding: '16px 18px',
-                background: '#0d1117',
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
-                color: '#ffffff',
-                transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-              },
-            }}
-          />
-
-          {/* Secondary Controls Grid */}
-          <SimpleGrid cols={{ base: 1, sm: 2, md: mode === 'new' ? 2 : 4 }} spacing="md" mt="xs">
-            {mode === 'continue' && (
-              <TextInput
-                label="Signal Name"
-                size="xs"
-                value={signalName}
-                onChange={(e) => setSignalName(e.currentTarget.value)}
-              />
-            )}
-            {mode === 'continue' && (
-              <Select
-                label="Data Partition"
-                size="xs"
-                value={partition}
-                onChange={(v) => setPartition(v || 'train')}
-                data={[
-                  { label: 'train (exploration)', value: 'train' },
-                  { label: 'validation (intermediate tune)', value: 'validation' },
-                  { label: 'test (shuffled holdout)', value: 'test' },
-                  { label: 'forward (chronological live lane)', value: 'forward' },
-                ]}
-              />
-            )}
-            <Select
-              label="LLM Provider"
-              size="xs"
-              value={provider}
-              data={providerChoices}
-              disabled={!providers}
-              error={providerError}
-              onChange={(value) => {
-                const next = value || 'claude';
-                setProvider(next);
-                const option = providers?.providers.find((item) => item.id === next);
-                setModel(option?.default_model || '');
-              }}
-            />
-            <Select
-              label="Model"
-              size="xs"
-              value={model || '__default__'}
-              data={modelChoices}
-              disabled={!selectedProvider?.available}
-              onChange={(value) => setModel(value === '__default__' ? '' : (value || ''))}
-            />
-          </SimpleGrid>
-
-          {/* Prominent Launch Button */}
-          <Button
-            leftSection={<IconPlayerPlay size={18} />}
-            color="blue"
-            size="lg"
-            radius="md"
-            mt="sm"
-            fullWidth
-            loading={loading}
-            disabled={
-              !selectedProvider?.available ||
-              !question.trim() ||
-              (mode === 'continue' && !selectedHypothesis)
-            }
-            onClick={handleLaunch}
-            style={{
-              fontWeight: 650,
-              fontSize: '15px',
-              letterSpacing: '0.01em',
-              boxShadow: '0 4px 14px rgba(88, 166, 255, 0.25)',
-            }}
-          >
-            {mode === 'new' ? 'Plan & Launch Exploration' : 'Launch Follow-up Exploration'}
-          </Button>
-        </Stack>
-      </Paper>
-
-      <ExplorationStatus reloadToken={inboxReload + launchingIds.length} />
-
-      {/* The inbox proposes *new* hypotheses, so it belongs under the console
-          in both modes — gating it behind "continue existing" hides it in the
-          very view where a fresh idea is being chosen. */}
-      <SuggestionDeck
-        provider={provider}
-        model={model}
-        providerAvailable={!!selectedProvider?.available}
-        reloadToken={inboxReload}
-        onPlay={handlePlaySuggestion}
-      />
+          <Text size="sm" c="dimmed" mt="xs" maw={760}>
+            Generate mechanisms without outcomes, attack them independently, check the signal's
+            distribution, then freeze exactly one outcome-bearing experiment.
+          </Text>
+        </Box>
+        <Button variant="subtle" leftSection={<IconRefresh size={16} />} onClick={() => reload()}>
+          Refresh
+        </Button>
+      </Group>
 
       {error && (
-        <Alert icon={<IconAlertCircle size={16} />} title="Exploration Failed" color="red" mb="lg" radius="md">
+        <Alert color="red" icon={<IconAlertTriangle size={17} />} title="Director stopped" mb="lg">
           {error}
         </Alert>
       )}
 
-      {/* Results Section */}
-      {result && (
-        <Paper p="lg" radius="md">
+      <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="lg" mb="lg">
+        <Paper p="lg" radius="md" style={{ border: '1px solid var(--border)' }}>
           <Group justify="space-between" mb="sm">
-            <Group gap="sm">
-              <Text size="md" fw={700} c="white">
-                Exploration Result ({result.hypothesis_id})
-              </Text>
-              <Badge status={result.failure_class} size="lg" />
-            </Group>
-            {result.runtime_seconds != null && (
-              <Text size="xs" c="dimmed">
-                {result.provider || result.manifest?.provider_used}/
-                {result.model || result.manifest?.model_used || 'cli-default'} · Runtime: {result.runtime_seconds}s
-              </Text>
-            )}
+            <Text fw={700}>Weekly sample budget</Text>
+            <Badge color={state.exposure.allowed ? 'teal' : 'red'}>
+              {state.exposure.weekly_used}/{state.exposure.weekly_ceiling} E1/E2
+            </Badge>
           </Group>
-
-          <Alert
-            variant="light"
-            color={result.failure_class === 'VALIDATED' || result.failure_class === 'PROMISSING' ? 'teal' : 'blue'}
-            radius="md"
-            mb="md"
-          >
-            <Text size="sm" fw={500}>
-              {result.interpretation}
+          <Progress value={exposurePercent} color={exposurePercent >= 100 ? 'red' : 'blue'} mb="xs" />
+          <Text size="xs" c="dimmed">
+            Discovery, criticism and distribution checks are E0. Only Execute reveals outcomes.
+          </Text>
+        </Paper>
+        <Paper p="lg" radius="md" style={{ border: '1px solid var(--border)' }}>
+          <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Current lane</Text>
+          <Group gap="xs" mt="sm" wrap="wrap">
+            <StageBadge done={!!dossier} label="Dossier" />
+            <StageBadge done={!!adjudication} label="Attack" />
+            <StageBadge done={!!qualification} label="E0 qualify" />
+            <StageBadge done={!!contract} label="Frozen" />
+            <StageBadge done={!!execution} label="Revealed" />
+          </Group>
+        </Paper>
+        <Paper p="lg" radius="md" style={{ border: '1px solid var(--border)' }}>
+          <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Safety boundary</Text>
+          <Group gap="sm" mt="sm" align="flex-start" wrap="nowrap">
+            <IconShieldCheck size={22} color="var(--mantine-color-teal-5)" />
+            <Text size="xs">
+              The scout and signal author cannot read labels. The canonical harness—not the model—runs the frozen code.
             </Text>
-          </Alert>
+          </Group>
+        </Paper>
+      </SimpleGrid>
 
-          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mb="md">
-            <SimpleGrid cols={2} spacing="sm">
-              <MetricBox
-                label="Mean Rank IC"
-                value={pc?.mean_ic != null ? pc.mean_ic.toFixed(4) : '—'}
-                highlight={pc?.mean_ic != null && pc.mean_ic > 0.03 ? 'green' : 'none'}
-              />
-              <MetricBox
-                label="IC t-statistic"
-                value={pc?.t_stat != null ? pc.t_stat.toFixed(2) : '—'}
-                highlight={pc?.t_stat != null && Math.abs(pc.t_stat) >= 2.0 ? 'green' : 'none'}
-              />
-              <MetricBox
-                label="Q5 - Q1 Spread"
-                value={q?.q5_spread_bps != null ? `${q.q5_spread_bps.toFixed(0)} bps` : '—'}
-              />
-              <MetricBox
-                label="Monotonicity"
-                value={q?.q5_monotonicity != null ? q.q5_monotonicity.toFixed(3) : '—'}
-              />
-            </SimpleGrid>
+      <Paper p="xl" radius="md" mb="lg" style={{ border: '1px solid var(--border)' }}>
+        <Group justify="space-between" mb="md">
+          <Box>
+            <Text fw={700}>1. Generate a mechanism dossier</Text>
+            <Text size="xs" c="dimmed">A high-level proposal grounded in available point-in-time features and the graveyard.</Text>
+          </Box>
+          <IconSparkles size={21} color="var(--mantine-color-violet-4)" />
+        </Group>
+        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
+          <Select label="Scout lens" value={lens} onChange={(value) => setLens(value || 'market_structure')} data={[
+            { value: 'market_structure', label: 'Market structure' },
+            { value: 'behavioural', label: 'Behavioural' },
+            { value: 'information_flow', label: 'Information flow' },
+            { value: 'forced_flow', label: 'Forced / constrained flow' },
+          ]} />
+          <TextInput label="Family" value={family} onChange={(event) => setFamily(event.currentTarget.value)} />
+          <Select label="Subscription lane" value={provider} data={providerOptions} onChange={(value) => setProvider(value || 'claude')} />
+        </SimpleGrid>
+        <Textarea
+          label="Optional direction"
+          placeholder="A market behaviour or data source worth exploring—leave blank for a wider search."
+          value={hint}
+          onChange={(event) => setHint(event.currentTarget.value)}
+          minRows={2}
+          mt="md"
+        />
+        <Button mt="md" leftSection={<IconSparkles size={16} />} loading={busy === 'discover'} onClick={discover} disabled={!providers}>
+          Generate outcome-blind dossier
+        </Button>
+      </Paper>
 
-            <Stack gap="xs">
-              <Group gap={6}>
-                <IconHash size={14} color="var(--mantine-color-dimmed)" />
-                <Text size="xs" fw={700} tt="uppercase" c="dimmed">
-                  Immutable Manifest Hash
-                </Text>
-              </Group>
-              <Code block style={{ fontSize: '11px', maxHeight: '140px', overflowY: 'auto' }}>
-                {JSON.stringify(result.manifest, null, 2)}
-              </Code>
-            </Stack>
-          </SimpleGrid>
-
-          {/* Suggested Next Moves */}
-          {result.suggested_next_moves && result.suggested_next_moves.length > 0 && (
-            <Box mt="md" pt="md" style={{ borderTop: '1px solid var(--border)' }}>
-              <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">
-                Suggested Next Moves
-              </Text>
-              <List
-                spacing="xs"
-                size="sm"
-                icon={
-                  <ThemeIcon color="blue" size={18} radius="xl">
-                    <IconArrowRight size={12} />
-                  </ThemeIcon>
-                }
+      <Grid gap="lg">
+        <Grid.Col span={{ base: 12, lg: 3 }}>
+        <Paper p="md" radius="md" style={{ border: '1px solid var(--border)', height: '100%' }}>
+          <Text fw={700} mb="sm">Dossiers</Text>
+          <Stack gap="xs">
+            {state.dossiers.length === 0 && <Text size="sm" c="dimmed">No dossiers yet.</Text>}
+            {state.dossiers.map((item) => (
+              <Button
+                key={item.dossier_id}
+                variant={item.dossier_id === selectedId ? 'light' : 'subtle'}
+                color={item.has_data_gap ? 'yellow' : 'blue'}
+                justify="flex-start"
+                h="auto"
+                py="sm"
+                onClick={() => { setSelectedId(item.dossier_id); setConfirmed(false); }}
               >
-                {result.suggested_next_moves.map((m, idx) => (
-                  <List.Item key={idx}>
-                    <Text size="xs">
-                      <strong style={{ color: 'var(--text-bright)' }}>{m.action}</strong>{' '}
-                      <span style={{ color: 'var(--mantine-color-blue-4)' }}>({m.relation})</span>: {m.rationale}
-                    </Text>
-                  </List.Item>
-                ))}
-              </List>
-            </Box>
+                <Box style={{ textAlign: 'left', whiteSpace: 'normal' }}>
+                  <Text size="xs" fw={700}>{item.dossier_id}</Text>
+                  <Text size="xs" lineClamp={2}>{item.claim}</Text>
+                </Box>
+              </Button>
+            ))}
+          </Stack>
+        </Paper>
+        </Grid.Col>
+
+        <Grid.Col span={{ base: 12, lg: 9 }}>
+        <Paper p="xl" radius="md" style={{ border: '1px solid var(--border)', height: '100%' }}>
+          {!dossier ? (
+            <Stack align="center" py={60}>
+              <IconFlask size={34} color="var(--mantine-color-dimmed)" />
+              <Text c="dimmed">Generate a dossier to begin.</Text>
+            </Stack>
+          ) : (
+            <Stack gap="lg">
+              <Box>
+                <Group justify="space-between" align="flex-start">
+                  <Box maw={780}>
+                    <Text size="xs" c="dimmed">{dossier.dossier_id} · {dossier.family} · {dossier.expected_horizon_days} sessions</Text>
+                    <Text size="lg" fw={700} mt={4}>{dossier.claim}</Text>
+                    <Text size="sm" c="dimmed" mt="xs">Population: {dossier.population}</Text>
+                  </Box>
+                  <Badge color={dossier.has_data_gap ? 'yellow' : 'teal'}>
+                    {dossier.has_data_gap ? 'data gap' : 'data available'}
+                  </Badge>
+                </Group>
+              </Box>
+
+              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                <Box>
+                  <Text size="xs" tt="uppercase" c="dimmed" fw={700}>Mechanism</Text>
+                  <Text size="sm" mt={5}>{dossier.causal_chain}</Text>
+                </Box>
+                <Box>
+                  <Text size="xs" tt="uppercase" c="dimmed" fw={700}>Persistent counterparty</Text>
+                  <Text size="sm" mt={5}>{dossier.counterparty}: {dossier.counterparty_persistence_rationale}</Text>
+                </Box>
+              </SimpleGrid>
+
+              <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
+                <Box>
+                  <Text size="xs" tt="uppercase" c="dimmed" fw={700}>Unique predictions</Text>
+                  <List size="xs" mt="xs">{dossier.unique_predictions.map((item) => <List.Item key={item}>{item}</List.Item>)}</List>
+                </Box>
+                <Box>
+                  <Text size="xs" tt="uppercase" c="dimmed" fw={700}>Alternatives</Text>
+                  <List size="xs" mt="xs">{dossier.competing_explanations.map((item) => <List.Item key={item}>{item}</List.Item>)}</List>
+                </Box>
+                <Box>
+                  <Text size="xs" tt="uppercase" c="dimmed" fw={700}>Falsifiers</Text>
+                  <List size="xs" mt="xs">{dossier.natural_falsifiers.map((item) => <List.Item key={item}>{item}</List.Item>)}</List>
+                </Box>
+              </SimpleGrid>
+
+              {dossier.has_data_gap && (
+                <Alert color="yellow" icon={<IconAlertTriangle size={17} />} title="Collect data before qualification">
+                  {dossier.required_observations_absent.join('; ')}
+                </Alert>
+              )}
+
+              <Divider />
+              <Box>
+                <Group justify="space-between" mb="sm">
+                  <Box>
+                    <Text fw={700}>2. Independent hostile review</Text>
+                    <Text size="xs" c="dimmed">Automatically routes away from the proposing provider when possible.</Text>
+                  </Box>
+                  {!adjudication && (
+                    <Button variant="light" loading={busy === 'attack'} onClick={() => attack(dossier)}>
+                      Attack dossier
+                    </Button>
+                  )}
+                </Group>
+                {adjudication && (
+                  <Alert color={adjudication.approved ? 'teal' : 'red'} icon={adjudication.approved ? <IconCheck size={17} /> : <IconAlertTriangle size={17} />}>
+                    <Text fw={650}>{adjudication.approved ? 'Approved for E0 qualification' : 'Rejected before sample spend'}</Text>
+                    <Text size="xs" mt={4}>{adjudication.verdict}</Text>
+                    {adjudication.all_dissents.length > 0 && (
+                      <List size="xs" mt="xs">
+                        {adjudication.all_dissents.map((item, index) => (
+                          <List.Item key={`${item.reviewer_role}-${index}`}>{item.severity}: {item.objection}</List.Item>
+                        ))}
+                      </List>
+                    )}
+                  </Alert>
+                )}
+              </Box>
+
+              {adjudication?.approved && !dossier.has_data_gap && (
+                <>
+                  <Divider />
+                  <Box>
+                    <Group justify="space-between" align="flex-end" gap="md">
+                      <Box style={{ flex: 1 }}>
+                        <Text fw={700}>3. Author and qualify the signal (E0)</Text>
+                        <Text size="xs" c="dimmed" mb="sm">Runs determinism, coverage, concentration, breadth and independent-block checks without constructing returns.</Text>
+                        <TextInput label="Signal name" value={signalName} onChange={(event) => setSignalName(event.currentTarget.value)} disabled={!!qualification} />
+                      </Box>
+                      {!qualification && (
+                        <Button loading={busy === 'qualify'} onClick={() => qualify(dossier)} disabled={!signalName.trim()}>
+                          Run E0 qualification
+                        </Button>
+                      )}
+                    </Group>
+                    {qualification && (
+                      <Alert mt="md" color={qualification.approved ? 'teal' : 'red'}>
+                        <Group justify="space-between"><Text fw={650}>{qualification.approved ? 'E0 gates passed' : 'E0 gates failed'}</Text><Code>{qualification.signal_source_hash}</Code></Group>
+                        <SimpleGrid cols={{ base: 1, sm: 3 }} mt="sm">
+                          <Text size="xs">Coverage: {objectValue(qualification.preflight, ['coverage', 'coverage_fraction'])}</Text>
+                          <Text size="xs">Independent blocks: {objectValue(qualification.structural_gate, ['estimated_independent_blocks', 'independent_blocks'])}</Text>
+                          <Text size="xs">Dominant date: {objectValue(qualification.preflight, ['max_date_share', 'dominant_date_share'])}</Text>
+                        </SimpleGrid>
+                        {!qualification.approved && <Text size="xs" mt="xs">{qualification.rejection_reasons.join('; ')}</Text>}
+                      </Alert>
+                    )}
+                  </Box>
+                </>
+              )}
+
+              {qualification?.approved && (
+                <>
+                  <Divider />
+                  <Box>
+                    <Group justify="space-between">
+                      <Box>
+                        <Text fw={700}>4. Freeze the experiment contract</Text>
+                        <Text size="xs" c="dimmed">Locks the population, signal hash, horizon, baselines, costs and pass bar.</Text>
+                      </Box>
+                      {!contract && (
+                        <Button variant="light" leftSection={<IconLock size={16} />} loading={busy === 'compile'} onClick={() => run('compile', { qualification_id: qualification.qualification_id })}>
+                          Freeze contract
+                        </Button>
+                      )}
+                    </Group>
+                    {contract && (
+                      <Paper p="md" mt="sm" bg="#0d1117">
+                        <Group justify="space-between"><Code>{contract.contract_id}</Code><Badge>{contract.exposure_level_incurred}</Badge></Group>
+                        <Text size="xs" mt="xs">Bar: {contract.min_magnitude_bps} bps and t ≥ {contract.min_significance_t}; horizon {contract.horizons.join(', ')} sessions.</Text>
+                      </Paper>
+                    )}
+                  </Box>
+                </>
+              )}
+
+              {contract && !execution && (
+                <>
+                  <Divider />
+                  <Alert color="orange" icon={<IconLock size={17} />} title="5. One-shot outcome reveal">
+                    <Text size="xs" mb="sm">This spends the finite historical sample. The full registered report is persisted even if the signal fails.</Text>
+                    <Checkbox
+                      checked={confirmed}
+                      onChange={(event) => setConfirmed(event.currentTarget.checked)}
+                      label={`I intend to spend one ${contract.exposure_level_incurred} attempt on ${contract.contract_id}`}
+                    />
+                    <Button color="orange" mt="md" loading={busy === 'execute'} disabled={!confirmed || !state.exposure.allowed} onClick={() => run('execute', { contract_id: contract.contract_id, confirm_outcome_access: true })}>
+                      Execute frozen experiment
+                    </Button>
+                  </Alert>
+                </>
+              )}
+
+              {execution && (
+                <>
+                  <Divider />
+                  <Alert color={(execution as any).status === 'succeeded' ? 'teal' : 'red'} title="Outcome-bearing execution recorded">
+                    <Text size="sm">Status: {String((execution as any).status || 'unknown')}</Text>
+                    <Code block mt="sm" style={{ maxHeight: 360, overflow: 'auto', fontSize: 11 }}>
+                      {JSON.stringify((execution as any).result || execution, null, 2)}
+                    </Code>
+                  </Alert>
+                </>
+              )}
+            </Stack>
           )}
         </Paper>
-      )}
+        </Grid.Col>
+      </Grid>
     </Box>
   );
 };

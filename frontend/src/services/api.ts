@@ -8,10 +8,7 @@ import {
   LedgerData,
   CatalogueData,
   ProviderCatalogue,
-  ExplorationResult,
   CompareResult,
-  SuggestionInbox,
-  JobsResponse,
 } from '../types';
 
 const API_BASE = '';
@@ -112,93 +109,6 @@ export async function fetchCatalogue(signal?: AbortSignal): Promise<CatalogueDat
 export async function fetchProviders(signal?: AbortSignal): Promise<ProviderCatalogue> {
   const res = await fetch(`${API_BASE}/api/providers`, { signal });
   if (!res.ok) throw new Error(`Failed to fetch LLM providers: ${res.statusText}`);
-  return res.json();
-}
-
-export async function fetchJobs(signal?: AbortSignal): Promise<JobsResponse> {
-  const res = await fetch(`${API_BASE}/api/jobs`, { signal });
-  if (!res.ok) throw new Error(`Failed to fetch explorations: ${res.statusText}`);
-  return res.json();
-}
-
-export async function fetchSuggestions(signal?: AbortSignal): Promise<SuggestionInbox> {
-  const res = await fetch(`${API_BASE}/api/suggestions`, { signal });
-  if (!res.ok) throw new Error(`Failed to fetch suggestions: ${res.statusText}`);
-  return res.json();
-}
-
-async function postSuggestions(
-  path: string,
-  body: Record<string, unknown>,
-  signal?: AbortSignal
-): Promise<SuggestionInbox> {
-  const res = await fetch(`${API_BASE}/api/suggestions/${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Suggestion ${path} failed: ${res.statusText}`);
-  }
-  return res.json();
-}
-
-export async function generateSuggestions(
-  payload: { provider: string; model?: string; count?: number; slots?: number[] },
-  signal?: AbortSignal
-): Promise<SuggestionInbox> {
-  return postSuggestions('generate', payload, signal);
-}
-
-export async function promoteSuggestion(
-  payload: { id: string },
-  signal?: AbortSignal
-): Promise<SuggestionInbox & { hypothesis_id: string }> {
-  return postSuggestions('promote', payload, signal) as Promise<
-    SuggestionInbox & { hypothesis_id: string }
-  >;
-}
-
-export async function refreshSuggestion(
-  payload: { id: string; provider: string; model?: string },
-  signal?: AbortSignal
-): Promise<SuggestionInbox> {
-  return postSuggestions('refresh', payload, signal);
-}
-
-export async function runExploration(
-  payload: {
-    hypothesis_id: string;
-    question: string;
-    signal_name: string;
-    partition: string;
-    role?: string;
-    provider: string;
-    model?: string;
-    suggestion_id?: string;
-    idea?: string;
-  },
-  signal?: AbortSignal
-): Promise<ExplorationResult> {
-  const res = await fetch(`${API_BASE}/api/explore`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    signal,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    const jobContext = err.job_id
-      ? ` (job ${err.job_id}${err.provider ? ` via ${err.provider}` : ''})`
-      : '';
-    const requestError = new Error(
-      (err.error || `Exploration failed: ${res.statusText}`) + jobContext
-    ) as Error & { hypothesisId?: string };
-    requestError.hypothesisId = err.hypothesis_id;
-    throw requestError;
-  }
   return res.json();
 }
 

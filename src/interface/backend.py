@@ -26,7 +26,7 @@ from ..persistence.models import Edge, Hypothesis, RELATION_TYPES
 from ..discretionary import replay as d_replay
 from ..research_data import catalogue
 from ..runner import agent, compare, job, planner, spec, suggest
-from . import screener_api
+from . import director_api, screener_api
 
 FRONTEND_DIR = config.PROJECT_ROOT / "frontend"
 DIST_DIR = FRONTEND_DIR / "dist"
@@ -405,6 +405,14 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(agent.provider_catalog())
             return
 
+        if path == "/api/director":
+            try:
+                self._send_json(director_api.state())
+            except Exception as exc:
+                self._send_json(
+                    {"error": f"{type(exc).__name__}: {exc}"}, status=500)
+            return
+
         if path == "/api/hypotheses":
             hyps = store.list_hypotheses()
             if not hyps:
@@ -538,6 +546,13 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
             req_data = json.loads(body.decode("utf-8"))
         except Exception:
             req_data = {}
+
+        if path.startswith("/api/director/"):
+            try:
+                self._send_json(director_api.dispatch_post(path, req_data))
+            except director_api.DirectorAPIError as exc:
+                self._send_json({"error": str(exc)}, status=exc.status)
+            return
 
         if path == "/api/hypotheses":
             statement = str(req_data.get("statement") or "").strip()
