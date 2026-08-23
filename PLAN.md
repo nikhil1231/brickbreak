@@ -1,304 +1,642 @@
-# brickbreak → the discretionary lab
+# brickbreak → the research director
 
-A plan for finding out whether contextual judgement beats a screen, without
-spending the sample to discover that it does not.
+A plan for using AI to improve the prior, acquire the observations an idea needs,
+and spend market outcomes only on experiments capable of answering their
+question.
 
-`MISSION.md` is the authority. This document is how the machine underneath it
-is operated, and it replaces the operating plan of 2026-08-21, archived at
-`archive/plan/PLAN_2026-08-22.md`. That document's §5 dispatch pipeline, §6
-label-free pre-flight, §8 long-history work and **both non-negotiables tables**
-remain in force without amendment — they describe a system that exists and
-nothing here relaxes any of it. The refactor plan (`archive/plan/PLAN_2026-08-21.md`)
-still owns the layer architecture. `FINDINGS.md` and `HYPOTHESES.md` are, as
-always, superseded by nothing.
+`MISSION.md` is the authority. This plan replaces the discretionary operating
+plan written 2026-08-22, archived byte-for-byte as
+`archive/plan/PLAN_2026-08-23.md`. That plan's discretionary loop,
+non-negotiables and unresolved safeguards remain the specification and
+provenance for what it built. The refactor plan's non-negotiables, layer
+architecture and conventions (`archive/plan/PLAN_2026-08-21.md` §§2, 5 and 10)
+and the throughput plan's second non-negotiables table, dispatch pipeline,
+label-free pre-flight and long-history principle
+(`archive/plan/PLAN_2026-08-22.md` §§4, 5, 6 and 8) remain in force except where
+this plan explicitly tightens outcome-exposure accounting.
 
-Written 2026-08-22.
+This is a change to orchestration above the harness, not a second laboratory
+beside it. `FINDINGS.md` and `HYPOTHESES.md` remain the current,
+append-only research state and are superseded by nothing.
 
----
+Written 2026-08-23.
 
-## 1. What changed, and what did not
-
-The previous two plans were about a **signal**: a function over the whole panel,
-scored by rank IC and a quantile spread. That machine works. It is not being
-retired, and the pivot is not a repudiation of it — it is a second unit of work
-placed beside it, because the mission's question cannot be phrased in the first
-one's vocabulary.
-
-> Can an AI, given rich point-in-time context, identify unusually attractive
-> opportunities better than strong simple quantitative baselines?
-
-That sentence has no cross-sectional score in it. It has a **case** — one
-situation, as a trader could have known it — and a **decision** committed
-against that case before the future is visible. Nothing in the signal path can
-express "the AI took 61 of these 500 and skipped the rest, and here is whether
-that selection beat top-N-by-score on the same 500".
-
-**What carries forward untouched**, and it is almost everything below the unit
-of work: point-in-time access and forward labels (`research_data.frame`), the
-partition split and its purge, the sample-budget ledger, the dispatch gate,
-multiplicity accounting, the leakage guards, session-clustered and
-Hansen-Hodrick inference, the manifests, the failure taxonomy, the hypothesis
-ledger and the idea graph. A replay spends the partition exactly as an
-exploration does and is counted by the same code.
-
-**What retires** is the assumption that a result *is* a signal — visible in
-`spec.validate_pass_criterion`, which speaks only in mean IC, quantile spread
-and monotonicity. None of those is defined for a selection.
-
-**What is demoted** is the opening-window family. It owned thirteen top-level
-CLI commands and the dashboard's landing view, which made one belief about the
-market look like the shape of the project. It now lives under
-`src/research/families/` behind `python -m src.cli family opening-window`, with
-its bracket simulator lifted into `alpha_eval.trade_sim` where the rest of the
-lab can use it. Nothing was deleted. `tests/test_architecture.py` enforces the
-one-way dependency.
+**Legacy citations.** Existing source and test docstrings citing `PLAN.md` §5,
+§5.1, §6, §8 or §9 refer to `archive/plan/PLAN_2026-08-22.md`. Research text
+written before this plan that cites `PLAN.md` §2.2 refers to
+`archive/plan/PLAN_2026-08-23.md`. A citation to “the refactor plan” refers to
+`archive/plan/PLAN_2026-08-21.md`. New code should cite the dated document when
+it depends on an archived section.
 
 ---
 
-## 2. The loop
+## 1. The decision
 
-```
-  IDEA                     a sentence, from suggest or from a person
-    │
-  OPPORTUNITY DEFINITION   frozen: generator, sample, blocks, judge, bar
-    │
-  CANDIDATE GENERATION     broad, high-recall, never tuned
-    │
-  CASE CONSTRUCTION        point-in-time by test, anonymised by default
-    │
-  DECISION ─────────────┐  AI and every baseline, on identical cases
-    │                   │
-  ══ SEAL ══════════════╪═ decisions hashed and committed
-    │                   │
-  REVEAL                └─ the only phase that spends sample
-    │
-  EVALUATION               selector lift, not strategy return
-    │
-  LEARNING                 which reasoning preceded which outcome
-```
+The evaluation machine is strict enough. It has point-in-time data access,
+versioned and purged partitions, a sample ledger, leakage gates, standard
+inference, immutable manifests, a signal runner, sealed replays, matched
+baselines, multiplicity accounting and a failure taxonomy. It is efficiently
+rejecting weak, confounded and untradeable effects.
 
-Six phases, six commands, and the seal between the fourth and the fifth is the
-experiment. MISSION §6 asks that a decision never be revised after subsequent
-data is seen; an instruction to that effect is worth nothing, so `reveal`
-refuses to run unless the decisions on disk hash to what was committed.
+What is missing sits before all of that. The current suggestion path asks a
+model for a signal computable from the columns already in the catalogue. That
+makes it a useful experiment compiler and a poor research director: however
+fluent the output, it mostly recombines the present representation.
 
-### 2.1 The distinction the whole design rests on
+The lab's recurring shortage is magnitude rather than significance. H039 found
+a stable relationship at a corrected t-statistic of −5.02 whose spread was only
+19.5 basis points against a 40 basis-point round trip. More cheap tests over the
+same observables are therefore not the highest-value use of AI.
 
-Candidate generation and discretionary selection are different jobs.
+The new operating thesis is:
 
-| | generation | selection |
+> Use abundant model reasoning to discover mechanisms, attack them, identify
+> missing observations and build reusable point-in-time data. Use scarce market
+> outcomes only after a candidate has survived that work and been frozen in a
+> small batch.
+
+The AI discretionary trader remains central, but its scalable output is its
+reason rather than its handful of picks. A reason can be expressed as a
+predicate and run over the panel. Retrospective selections alone are
+underpowered at an affordable case budget and carry irreducible model-memory
+risk.
+
+This plan does not promise that alpha exists in the current data, or that a
+fixed number of attempts will find it. It separates continuing the search from
+continuing to make claims from an increasingly familiar sample.
+
+---
+
+## 2. One research loop
+
+In the target state, the signal and discretionary paths share one upstream
+lifecycle:
+
+    EXTERNAL KNOWLEDGE + LEDGER + GRAVEYARD
+                         │
+                      DISCOVER
+                         │
+                 MECHANISM DOSSIER
+                         │
+          INDEPENDENT ATTACK + NOVELTY REVIEW
+                         │
+                 DATA READY? ───── no ───► DATA BROKER
+                         │                    │
+                        yes             PROBE → CONTRACT
+                         │                    │
+                         ◄────── research_data + catalogue
+                         │
+                 STRUCTURAL PREFLIGHT
+                         │
+              OPTIONAL OUTCOME-SHAPE GATE
+                         │
+              POWER + ECONOMIC PRIOR RANK
+                         │
+              EXPERIMENT CONTRACT + BATCH
+                         │
+             OUTCOME-BLIND EXECUTION
+                         │
+         SIGNAL COMPUTE OR CASE → DECISION
+                         │
+          OPTIONAL DISTILLATION + RULE FREEZE
+                         │
+                 ══ OUTCOME FIREWALL ══
+                         │
+                  REVEAL + EVALUATE
+                         │
+                      EVIDENCE
+                         │
+              FAILURE CLASS + IDEA GRAPH
+                         │
+                 CHRONOLOGICAL FORWARD
+
+The durable states are:
+
+`IDEA → DOSSIER → DATA_GAP | DATA_READY → SOURCE_PROBED →
+DATA_CONTRACTED → PREFLIGHTED → EXPERIMENT_CONTRACTED → BATCH_FROZEN →
+OUTCOME_BLIND_EXECUTED → RULE_FROZEN (when distilled) → REVEALED → EVIDENCE
+→ FORWARD`
+
+Once stages W and AB land, no state may be skipped by calling a lower-level
+runner directly. Every transition stores its inputs, provider/model or human
+reviewer, hashes, token and cash cost, outcome-exposure level and reason. A
+signal and a replay differ in execution adapter, not in evidence or budget
+semantics.
+
+Within an experiment, candidate generation remains broad, high-recall and
+untuned. The research director may define the economic domain in advance; it
+may not narrow the realised cases after seeing which ones worked.
+
+---
+
+## 3. The three contracts
+
+These contracts sit upstream of the existing
+`Hypothesis → Exploration → Signal → Evidence` model. Each is versioned,
+hashed and immutable once it advances.
+
+### 3.1 Mechanism dossier
+
+The research director produces a dossier, not executable signal code. It names:
+
+- the claim, population and expected horizon;
+- the observable facts, separated from the interpretation placed on them;
+- the causal chain and the participant persistently on the other side;
+- why that participant's behaviour can continue despite the claimed edge;
+- at least two competing explanations and the strongest simple baseline;
+- predictions unique to the proposed mechanism;
+- natural falsifiers, confounds, capacity and a minimum effect above costs;
+- the nearest nodes in the hypothesis graph and expected correlation with
+  existing signals;
+- observations required but absent from the catalogue;
+- historical-LLM-memory risk and the confirmation path;
+- the proposer, hostile reviewer and unresolved disagreement.
+
+A change to the causal claim is a new dossier. A parameter neighbourhood within
+one claim remains one multiplicity family rather than many apparently distinct
+ideas.
+
+### 3.2 Data contract
+
+A missing observation creates a data request. A source is not acquired until a
+probe turns that request into a contract recording:
+
+- source owner, licence or terms, cash price, authentication and rate limits;
+- raw fields, identifiers, timestamp and time-zone semantics;
+- publication latency, revisions, corrections and historical availability;
+- depth, universe coverage, survivorship, missingness and expected join rate;
+- the exact `available_at` and `first_tradable_session` rules;
+- pagination, caps, silent truncation and repeated-call stability;
+- entity-resolution and symbol-history policy;
+- immutable raw-byte provenance, hashes, refresh cadence and maintenance owner;
+- download time, storage, usable events per session and independent blocks;
+- validation fixtures, catalogue entries and PIT/invariance tests;
+- which other mechanism families the finished data product unlocks.
+
+No experiment owns a source adapter or opens its resulting files. The contract
+lands through `research_data` or it does not become experimental data.
+
+### 3.3 Experiment contract
+
+Only a dossier with usable data may compile into an experiment contract. It
+freezes:
+
+- hypothesis ID, lineage, family and batch;
+- dataset and split versions, partition, population and case/signal definition;
+- estimand, horizons, controls, baselines, costs and capacity assumptions;
+- the full permitted parameter neighbourhood and search-wide null;
+- expected outcome noise, power, independent blocks and sample-shape floor;
+- both a magnitude bar and a significance or built-null bar;
+- code, prompt, model, case-format and rule hashes where applicable;
+- the exact outcome columns requested and exposure level incurred;
+- the memory-leak classification and required forward-confirmation path;
+- abort conditions and the permitted reading of every possible result.
+
+The planner may draft this object. A separate reviewer or the human freezes it.
+The proposer does not approve its own bar.
+
+---
+
+## 4. The AI research council
+
+One large suggestion prompt is replaced by provider-diverse roles with
+asymmetric access:
+
+1. **Mechanism scouts** independently propose dossiers from different lenses:
+   market structure, participant constraints, external research, new disclosures,
+   data catalogues and branches from the local graveyard.
+2. **Economic critic** attacks the counterparty and persistence argument.
+3. **Novelty curator** links the dossier to the idea graph and searches for
+   semantic restatements.
+4. **Data analyst** converts the claim into observations and source requirements.
+5. **Leakage adversary** attacks timestamps, revisions, survivorship, identity
+   leakage and hidden factor sorts.
+6. **Power reviewer** prices sample shape, detectable effect, costs and the value
+   of a null result.
+7. **Adjudicator** preserves disagreements and emits a ranked dossier; it does
+   not silently average them into polished certainty.
+
+A provider may propose or approve a dossier, not both. Independent first passes
+come before any cross-agent discussion so model consensus does not erase
+diversity. Provider disagreement is stored as evidence about the prior.
+
+The council sees the feature catalogue, family-level evidence summaries,
+graveyard, idea graph and source documentation. It does not see target-case
+outcomes or raw outcome-bearing tables. Once a named historical case set exists,
+research agents may not browse for those identities or episodes.
+
+Every generation stores a context manifest naming the evidence summaries,
+hypotheses, datasets and source documents it received. A prior-only scout sees
+mechanisms, constraints, the catalogue and duplicate index, but no outcome
+summaries. A branch scout may use prior findings, but its dossier inherits the
+union of the relevant source families' exposures. Showing a model the whole
+outcome-bearing ledger and then calling its proposal unexposed is not permitted.
+
+Novelty is checked three ways:
+
+- semantic overlap in mechanism, participant, population and falsifier;
+- overlap in required data and transformation;
+- outcome-free correlation with existing signals.
+
+The existing lexical duplicate check may remain as a cheap first pass, but it is
+not the authority.
+
+---
+
+## 5. The data broker
+
+The broker turns an observation request into a reusable point-in-time data
+product:
+
+    REQUIREMENT → SOURCE SEARCH → MICRO-PROBE → SOURCE CONTRACT
+                → APPROVAL → RAW ARCHIVE → NORMALISE → VALIDATE
+                → CATALOGUE → DATASET VERSION
+
+The probe, not the documentation, establishes the truth. It deliberately tests
+small and awkward slices: early dates, inactive entities, holidays, revisions,
+wide queries, repeated queries, boundary timestamps and identifiers that should
+fail. It measures usable history and session density before a full backfill.
+
+AI is valuable for source and API archaeology, document interpretation, schema
+mapping, entity-resolution suggestions, adapter authoring and generating hostile
+validation cases. Deterministic code performs the pull, timestamp logic,
+aggregation and checks. Models receive compact probe summaries rather than raw
+datasets.
+
+Free and reversible probes may run automatically within configured limits.
+Anything paid, licence-sensitive or operationally material stops at a priced
+approval card. The default proprietary-data budget is zero.
+
+Data projects are ranked approximately by:
+
+    independent blocks added × distinct mechanisms unlocked
+    × likely orthogonality × reuse value
+    ─────────────────────────────────────────────────────────
+    cash + engineering + maintenance + PIT/revision risk
+
+A deep reusable history normally outranks a bespoke column that supports one
+story. A source whose historical publication state cannot be reconstructed is
+descriptive- or stratification-only. Disclosing that defect in an experiment
+contract does not make the source scorable.
+
+---
+
+## 6. Outcome firewall and exposure accounting
+
+The target state has three capability zones:
+
+| zone | may see | may not see |
 | --- | --- | --- |
-| purpose | find situations worth examining | the thing under test |
-| bias | broad, high recall | whatever the judge brings |
-| tuning | **none** | n/a — it is measured, not fitted |
+| research | dossiers, source documents, raw PIT facts, feature distributions, synthetic data | forward labels and target-case outcomes |
+| evaluation vault | frozen contracts, signals/decisions, outcome labels, scoring code | generative research tools and mutable prompts |
+| evidence sink | preregistered report, durable failure class, permitted aggregates | arbitrary slices or follow-up queries into the same result |
 
-A generator tuned until it looks profitable has stolen the experiment: the lift
-is then measured against a baseline that already contains the answer. Generator
-parameters are frozen in the definition, and re-tuning one is a new test.
+The boundary is enforced by files, columns and tool capabilities rather than a
+prompt. A contract is hashed before access. The evidence sink releases the
+whole registered batch even when some members fail or look uninteresting.
 
-The instinct this reverses is the one every screen in this repository encodes.
-`families.opening_window.screener` has eight narrowing stages. That is right for
-a mechanical strategy and wrong here, because **a narrow generator flatters the
-selector by hiding its hard cases.** The default is `liquid_universe` — every
-tradeable name, every session, a constant score — precisely so that no screen
-does any of the work.
+The sample ledger gains an exposure level separate from statistical test
+burden:
+
+| level | access | accounting |
+| --- | --- | --- |
+| **E0 mechanics** | schemas, counts, predictor distributions, coverage, turnover, predictor-to-predictor correlation | outcome-free; no sample spent |
+| **E1 shape** | absolute returns, dispersion, tail rates or path-state frequency without signed direction | family/partition marked exploratory; increments shape burden and consumes an outcome-access slot |
+| **E2 directional train** | first moments, outcome sign, IC, spreads or selector lift | full exploration and multiplicity burden |
+| **E3 confirmatory** | validation or frozen shuffled test | one-way promotion; prior family exposure enforced |
+| **E4 forward** | outcomes arriving after registration | automatic accrual for the frozen identity; adaptive changes create a new test |
+
+This explicitly tightens the previous statement that anything short of a
+directional reveal is free. A statistic derived from future outcomes can change
+what is pursued even when it hides the sign. E1 is not charged as a directional
+test, but it is exposure and the resulting family cannot describe the same
+partition as pristine.
+
+E1 has a finite, lineage-aware burden of its own. Shape gates are frozen in
+batches, corrected across every registered gate and every cell within them, and
+rate-limited through the same dispatch machinery as E2. Repeating or renaming a
+shape gate counts again. Initially, E1 and E2 together share the ceiling of five
+train outcome accesses per week; this is a ceiling rather than an entitlement.
+
+Prior exposure remains family-specific, not a blanket destruction of a date.
+An unrelated mechanism may use previously viewed quarters with a stated caveat;
+a descendant is blocked; ambiguous lineage blocks by default. Lab-wide
+multiplicity still counts every directional question.
+
+Exposure attaches to the underlying market sessions and hypothesis lineage,
+not to a filename or dataset version. Rebuilding 2021 with a new column can
+unlock a genuinely new observable; it cannot make 2021's already-seen price
+outcomes unseen again.
 
 ---
 
-## 3. The fourth budget
+## 7. Distribution, dispersion and power gate
 
-The archived plan named three: compute, tokens, sample. Sample was the binding
-one and the only one that cannot be bought. That is still true, and a fourth now
-sits in front of it.
+Every candidate receives an E0 structural gate. A new family whose premise is
+that outcomes contain separable cases may additionally receive one registered
+E1 shape gate.
 
-| budget | size | replenishes | binds when |
-| --- | --- | --- | --- |
-| compute | 4 cores, 16 GB, 24/7 | continuously | never |
-| tokens | 3 subscriptions + API | rolling | — |
-| **cases** | ~500 per replay | per replay, at a price | immediately, at one call per case |
-| **sample** | ~75 independent blocks in `train` | **not at all** | permanently |
+### 7.1 Structural gate — genuinely outcome-free
 
-**Cases are the new near-term constraint.** A broad generator over `train`
-yields ~500,000 situations. At one model call each that is not an experiment,
-it is a budget request. So the sampler is part of the frozen definition rather
-than something applied afterwards, and the default is 500 cases stratified
-across sessions.
+It reports:
 
-Measured on this data: a case is ~1,350 tokens, a replay arm ~500 calls. On the
-API path that is minutes and single-digit dollars; on the subscription CLI it is
-serial and slow, which is why the CLI is for working on a prompt and the API is
-for running a replay.
+- coverage, missingness and timestamp availability by era;
+- cross-sectional variation, usable tails and temporal stability;
+- cases or events per session, participant concentration and persistence;
+- feature turnover, selector take rate and pool attenuation;
+- predictor correlation with known factors and existing signals;
+- expected independent blocks from the proposed horizon and event structure;
+- costs, capacity and minimum detectable effect using a frozen noise reference;
+- whether a null result at the available sample size would answer anything.
 
-### 3.1 The take rate is the real multiplier, and it is small
+Degenerate, redundant, untradeable or structurally underpowered candidates die
+here without market outcomes.
 
-Measured on the first live replay (`RPL_20260822_020607`, 8 cases, broad
-`liquid_universe` generator, Claude via the sealed CLI):
+### 7.2 Shape gate — controlled outcome exposure
 
-> **take rate 0%.** Six SKIP, two WATCH, no TAKE. Zero failed calls.
+When dispersion is part of the reason to pursue a family, the contract freezes
+before E1:
 
-That is not a defect and the reasoning was not thin — each decision named
-specific unusual features, argued a real competing explanation (one cited a
-failed high-volume spike *earlier in the same case's own window*), gave a
-concrete invalidation level, and assessed asymmetry explicitly against the
-0.40% cost floor. It is the design working: a broad generator shows mostly
-ordinary situations, and the prompt says in as many words that skipping is free
-and that "nothing unusual" is the right answer most of the time.
+- the event set and all descriptive splits;
+- matching variables and same-session control;
+- horizons and liquidity floors;
+- variance/tail statistic;
+- realistic group-size and persistence structure;
+- the maximum statistic across every inspected cell;
+- the minimum excess dispersion that would justify further work.
 
-The consequence is arithmetic and it governs how a replay is sized:
+The null is built using the real group sizes and session structure, not an
+arbitrary control. All registered cells are reported. Passing says only that
+the outcomes may be separable; it says nothing about direction or whether any
+available observation finds that separation. Failing kills the family only when
+the test had adequate power to rule out a useful amount of dispersion.
 
-    cases needed  ≈  takes wanted  /  take rate
+Target-batch dispersion may always be reported after E2 as a diagnostic. It may
+not retroactively change the bar, choose a subset or be presented as
+outcome-free.
 
-At a take rate somewhere in 5–15%, a replay needs **300–600 cases to yield
-30–60 takes**, and 30 takes is the floor at which any breakdown by regime or
-sector means anything. A 50-case pilot cannot answer the mission's question; it
-can only estimate the take rate — which is a legitimate and cheap thing to spend
-50 cases on, and should be done before committing to a full replay against a
-generator nobody has run yet.
+---
 
-Two corollaries worth stating before they are discovered the expensive way:
+## 8. LLM memory and the discretionary path
 
-- **A zero take rate is a valid outcome and the report says so** rather than
-  manufacturing a contrast — `INSUFFICIENT_SAMPLE`, and every lift reads "—"
-  rather than a number.
-- **The take rate is a property of the generator and the prompt jointly.**
-  Narrowing the generator raises it, which is a reason to reach for a narrower
-  generator that is *not* about making the numbers work. Change one at a time,
-  and remember that changing the prompt is a new test.
+No transformation can prove that a pretrained model does not remember a famous
+historical episode. Removing a symbol and date is necessary, not sufficient:
+an exact price path, scale, catalyst or distinctive sequence may identify it.
 
-### 3.2 What 500 cases can and cannot detect
+Historical cases therefore use layered controls:
 
-500 cases spread over a few hundred sessions at a ten-session horizon is
-**tens of independent blocks**, not hundreds. `evaluate` reports
-`independent_blocks` in the headline for exactly this reason — and note that
-§3.1 makes this worse than it looks, because only the *taken* cases carry the
-contrast.
+- symbols and calendar dates removed;
+- prices rebased and volumes/ranges normalised where the case permits;
+- relative rather than absolute time;
+- unnecessary narrative and exact identifying metadata removed;
+- a recognition probe asking whether the model can identify the case;
+- H042's paired anonymised/revealed-identity control;
+- model, prompt, case format and rendered case bytes frozen;
+- no tools, retrieval or filesystem access during a decision.
 
-Measured here, on 60 coin-flip selectors against synthetic data with a realistic
-session factor:
+Recognised cases are quarantined, but non-recognition is not proof. Unless a
+versioned model checkpoint demonstrably predates an event, a historical replay
+is exploratory or retrospective-supportive. It may reject a judge, compare
+arms, generate concepts and author predicates. It does not by itself validate
+AI judgement.
 
-| | null selector |
+A 50–500-case pilot may estimate take rate, exercise a prompt or generate and
+distil reasons only if it stops before reveal. A scored selector replay retains
+the archived plan's adequacy floor: magnitude and significance clauses, at
+least eight independent blocks, at least two cases per session and a
+non-degenerate pool attenuation. Roughly 2,000 cases is the floor and 6,000 the
+design point; 500 revealed cases are not evidence of decision quality.
+
+The decisive confirmation is chronological: freeze the model version, prompt,
+case format, generator and decision rule, then score cases whose outcomes did
+not exist at freeze time. Any change begins a new forward identity.
+
+### 8.1 Outcome-blind distillation
+
+Before reveal whenever possible:
+
+1. the judge emits a decision, factual reasons, competing explanation and
+   invalidation;
+2. one model proposes a small set of readable predicates from those reasons and
+   PIT case columns only;
+3. a different provider audits semantic fidelity, leakage and hidden proxies;
+4. in the target implementation, fidelity is measured on a separately frozen,
+   outcome-free case set;
+5. surviving predicates are frozen as one multiplicity batch;
+6. edge is evaluated through the signal harness.
+
+The current `discretionary.distil` implementation measures fidelity on the
+source case set; the separate set, its case identity, judge calls and budget are
+part of stage U. Fidelity and edge remain separate. Edge without fidelity is a
+new quantitative hypothesis, not evidence for the judge. Fidelity without edge
+is a valid negative result.
+
+---
+
+## 9. Provider, token and cash policy
+
+This is an individual research lab. It is designed around sunk subscription
+capacity and public data, not institutional infrastructure.
+
+| resource | default | policy |
+| --- | --- | --- |
+| current model lanes | Codex and Claude | subscription-first; one active model job per available lane |
+| planned model lanes | two Google/Antigravity subscriptions | add only where a supported, auditable interface passes adapter feasibility |
+| API cash | **$0 by default; $50/month hard ceiling when explicitly enabled** | overflow or a frozen large replay only; approval records expected information gain |
+| proprietary data | **$0 by default** | priced approval required; reusable products preferred |
+| local compute | 4 cores, 16 GB, continuously available | arithmetic, probes and evaluation; models do not consume raw frames |
+| trading capital | ₹5–10 lakh, separate from research cash | no research result assumes institutional capacity; deployment waits for forward evidence |
+| historical sample | finite, family-aware | outcomes are never bought back by more tokens |
+| forward sample | one session at a time | accrues automatically only for frozen identities |
+
+Initial token envelopes, to be replaced by measured p50/p90 after ten jobs:
+
+| work unit | initial envelope |
+| --- | ---: |
+| mechanism dossier plus independent reviews | 50k–150k total tokens |
+| source qualification and probe design | 100k–300k |
+| connector/data-product implementation | 200k–1m, bounded and resumable |
+| discretionary case | measured ~1,350 input tokens plus its decision |
+| 2,000-case replay arm | measured ~2.7M input tokens |
+| 6,000-case replay arm | measured ~8.1M input tokens |
+
+Hundreds of dossiers may wait in the queue. Codex and Claude can drain
+outcome-free jobs now; after stage Z, up to four subscription lanes may work in
+parallel where supported and subject to provider limits. Source probes also
+parallelise when their endpoints and rate limits permit. The system uses only
+supported CLI or API surfaces, never automates consumer web interfaces or
+evades account limits.
+
+Anything outcome-bearing is different. A small batch is frozen before any
+member is revealed; after that, its jobs may run in parallel because no result
+can change membership. The existing ceiling of five train dispatches per week
+remains a maximum, not a target, until prospective power and observed preflight
+yield justify changing it. Hundreds of outcome jobs are forbidden whether
+serial or parallel.
+
+One replay arm uses one provider/model/prompt/case identity. It may resume over
+multiple subscription windows, but it is not sharded across different models
+and called one judge. Different models are separate arms and separate tests.
+Provider failure is visible; there is no silent fallback to a canned suggestion
+or different model.
+
+---
+
+## 10. Search policy: keep searching without mining forever
+
+The lab has no lifetime cap on E0 discovery. It may continue generating
+mechanisms, probing data and improving representations for as long as the work
+is useful. The constraint applies to claims made from a particular outcome
+sample.
+
+After repeated E2 use, that partition is research memory: useful for generation,
+calibration and engineering, not fresh confirmation. A candidate discovered
+there becomes believable only on eligible validation/test quarters or on the
+chronological forward lane. Thus “stop” means stop asking that partition for a
+new verdict, not abandon the search for alpha.
+
+Candidates are ranked by an explicit, initially ordinal expected-information
+score:
+
+    mechanism prior × PIT measurability × probability effect clears costs
+    × prospective power × orthogonality × data reuse
+    ───────────────────────────────────────────────────────────────
+    outcome exposure + cash + engineering + tokens + human attention
+
+The score is calibrated prospectively against which dossiers survive each gate.
+It is never tuned to make the current favourite rank first.
+
+### 10.1 Broad priors
+
+Common knowledge may narrow where the lab spends attention, provided the prior
+is declared before outcomes and is not confused with evidence.
+
+**Hard exclusions:**
+
+- non-PIT or irreconstructibly revised observations;
+- untradeable liquidity or capacity at realistic costs;
+- inadequate independent blocks or a null that would remain uninformative;
+- data whose use is legally or operationally unavailable.
+
+**Soft defaults:**
+
+- hourly-or-slower horizons, where data quality and friction are more forgiving;
+- liquid low- and mid-cap names where point-in-time size history exists, or in
+  forward work after membership is frozen. Until a historical size source is
+  contracted, use PIT liquidity and capacity—not present-day `size_tier`—to
+  define a small-book niche;
+- mechanisms tied to persistent participant constraints rather than a new
+  indicator expression;
+- data products that unlock several independent families.
+
+A configured minority of discovery capacity remains outside the soft defaults
+so the prior does not become a blindfold. Inside any frozen experiment, the
+generator stays broad and high-recall; the soft prior chooses research domains,
+not convenient realised cases.
+
+---
+
+## 11. Reuse, replacement and retirement
+
+The implementation extends the existing lab rather than building a parallel
+one.
+
+| disposition | code and responsibility |
 | --- | --- |
-| corrected \|t\| > 1.96 | **13.3%** (nominal 5%) |
-| standard deviation of t | **1.40** (should be 1) |
-| cleared the frozen bar | **1 in 60** |
+| **keep** | `research_data.frame`, catalogue, splits/purge, source storage and validation; persistence ledger/evidence/graph; `runner.job`, agent isolation, gate, burden, preregistration, manifests and forward accrual; `alpha_eval`; case PIT tests, sealed decisions, replay, baselines and outcome handling |
+| **generalise** | `research_data.feasibility` from Breeze-specific spike machinery into source-contract probes while retaining source adapters; the idea graph into mechanism/data provenance; provider routing into four subscription lanes |
+| **replace** | `runner.suggest` as a one-shot fixed-column idea generator with discover/attack/qualify; `runner.planner` and opportunity-specific freezing with the shared experiment compiler; simplistic result-to-follow-up routing with the research council |
+| **connect** | outcome-blind `discretionary.distil` to the signal evaluator; replay forward registration to the shared forward lane |
+| **retire** | silent canned/offline suggestion substitution, duplicate provider runners, dead dashboard routes and parallel top-level signal/replay orchestration after their callers migrate |
 
-The first two rows are the residual over-rejection AGENTS.md already documents
-at this block count, and the corrections are working — they are simply unable to
-invent independent observations. The third row is the point:
+There is one production path at the end of each migration, never a permanent
+old and new path selected by preference. A replacement is complete only when:
 
-> A bar denominated in **basis points** rejected the same null selectors 98% of
-> the time, where a bar denominated in **t** would have passed 13% of them.
+- every caller and stored artifact has migrated or has an explicit reader;
+- CLI and UI expose one route;
+- architecture tests forbid the obsolete dependency;
+- tests for the replacement cover the old contract;
+- repository search finds no stale imports or documentation;
+- measurement-bearing family code needed for reproduction is archived;
+- obsolete plumbing is deleted rather than archived.
 
-This is the same conclusion the archived plan reached from H039 — the lab is
-fighting magnitude, not significance — arriving from a different direction. It
-is why `MIN_MEANINGFUL` in `opportunity.py` is in bps with a floor at the 40 bps
-round trip, and why the report says in words not to promote on a t-statistic.
+Parallel work in the repository is preserved. Migration commits stage only
+their declared paths and never absorb unrelated changes.
 
 ---
 
-## 4. Non-negotiables, continued
+## 12. What the idea factory is measured on
 
-Extending both prior tables. Same rule: none of these may be something a
-researcher has to remember.
+Raw proposal count and the existence of one best result are anti-metrics. Report:
 
-| lesson | source | becomes |
+- dossiers produced, deduplicated and rejected before outcomes;
+- survival rate at economic, data, leakage, power and structural gates;
+- predicted prior versus realised failure class, calibrated over time;
+- distinct mechanisms and reusable data products added;
+- incremental independent blocks acquired per rupee and engineering hour;
+- correlation and subsumption among dispatched signals;
+- tokens and cash per dossier, contracted data product and directional reveal;
+- share of directional results exceeding costs, not merely significance;
+- validation/test retention and chronological forward evidence;
+- recognised or otherwise contaminated historical LLM cases.
+
+The research director is improving when it sends fewer redundant, underpowered
+or sub-cost ideas across the firewall—not when it becomes better at explaining
+the winner after seeing it.
+
+---
+
+## 13. Delivery order
+
+| stage | delivers | done when |
 | --- | --- | --- |
-| A decider is not frozen the way a function is | a prompt is editable; a signal is not | test identity is (prompt hash, model, case-set hash); any change counts as a new test |
-| A model may remember what a named stock did in a named quarter | the leak is in the weights, not the frame | cases are anonymised **by default**; revealed identity is a deliberate paired control (H042) |
-| A judge that can read a file can read the outcome | `runner.agent` defaults to Bash/Read/Write | the decision path passes `allowed_tools=()` and an empty directory, asserted by test |
-| A dropped failure is a changed population | baselines see every case | every case yields a decision, including failures; `failure_summary` reports them |
-| Selectivity is confounded with skill | a 12% arm beats a 100% arm on any above-average pool | baselines run at the AI's own realised take rate |
-| A stale baseline is a weak baseline | a single early fit drifts | `rank_model` refits walk-forward; the bias must run against the AI |
-| A control from another session carries that session's market | H020 | every contrast is a per-session paired difference |
-| A narrow generator hides the selector's hard cases | §2.1 | generator parameters are frozen; re-tuning is a new test |
-| A correction cannot invent observations | §3.1, 13.3% at nominal 5% | the bar is in bps; `independent_blocks` is in the headline |
-| An unresolved analogue is a leak wearing a disguise | a case 3 sessions old has not resolved at h=10 | analogues and the rank-model fit filter on `resolved_by`, never on their own date |
+| **U — close current foundations** | H042; validated long-history normalisation; distillation escalation into `alpha_eval`; separate frozen fidelity case set and budget; replay forward lane | historical AI results carry the correct memory classification and reasons can reach panel evaluation |
+| **V — inventory and migration map** | call-site inventory with keep/generalise/replace/retire decisions | every existing orchestration path has one declared destination |
+| **W — contracts and state** | dossier, data contract, experiment contract, exposure record and one lifecycle | no runner can cross a missing state transition |
+| **X — firewall and gates** | capability-separated zones, E0/E1 accounting, structural and registered shape gates | a future-derived dispersion statistic cannot appear as outcome-free work |
+| **Y — data broker** | generic source probes, approval cards, contracted ingestion and catalogue generation | a missing observation can become a validated data product without experiment-owned access |
+| **Z — subscription pool** | Codex, Claude and supported Google/Antigravity adapters, quotas, resumability and usage accounting | four lanes can drain outcome-free work without API spend or silent fallback |
+| **AA — research council** | independent scouts, critics, graph novelty and adjudication | a stored dossier includes dissent and survives every non-outcome gate |
+| **AB — replacement** | discover/attack/qualify/compile as the sole orchestration path; obsolete paths removed | CLI, UI, tests and docs expose one route and repository search is clean |
+| **AC — pilot** | one end-to-end data-gap and data-ready dossier, no directional result required | both reach a frozen experiment contract with measured cost and no firewall breach |
+| **AD — first batch** | a small preregistered directional batch through the existing harness | every member is reported together and eligible survivors enter forward accrual |
+
+For autonomous operation of the new factory, U and V happen first. Nothing
+about the new idea factory justifies delaying the memory control or trusting
+unfinished long-history data. W and X precede autonomous throughput. AB is part
+of the build, not optional cleanup after the interesting work.
+
+This ordering is not the retired global phase gate. Work already frozen under
+the existing harness—including H044's unopened validation contract at this
+plan date—may proceed under that contract while the new factory is built.
 
 ---
 
-## 5. Where the budget is spent
+## 14. Non-negotiables and open risks
 
-Not at `freeze`, and not at `decide`. A replay that is defined, generated, built
-and judged has read **nothing** about what happened next — it has spent tokens
-and compute, both replaceable. `reveal` is the first moment the partition is
-touched, so `gate.enforce_dispatch_gate` and `ledger.enforce_permission` fire
-there.
+- **A historical LLM result is not forward evidence.** Anonymisation and H042
+  bound obvious recall; neither inspects the weights.
+- **Outcome dispersion is exposure.** It may be a useful gate, but it is logged
+  and cannot confer pristine status on the same family/partition.
+- **Subscription capacity changes token economics, not statistical economics.**
+  A prepaid result spends the sample exactly like an API result.
+- **Adaptive parallelism stops at the firewall.** Large outcome-free queues are
+  healthy, and a batch may execute in parallel after it is frozen; large
+  adaptive outcome queues are not.
+- **The prior may be wrong.** Higher timeframes and low/mid caps are defaults,
+  not truths discovered from this sample.
+- **Source acquisition creates maintenance.** A free endpoint with unstable
+  semantics can be more expensive than a paid, reconstructible source.
+- **The model cannot buy data or API capacity by implication.** Material cash
+  spend requires an explicit approval record.
+- **The trading account is not the research budget.** No exploratory result
+  licenses deployment, and a real but small edge may still be economically
+  irrelevant at ₹5–10 lakh.
+- **No result is owed.** Believing alpha exists justifies continued mechanism
+  search and data acquisition; it does not turn the best result from an
+  exhausted partition into evidence.
+- **Forward will remain slow.** The interface must make accumulating no verdict
+  look normal rather than broken.
 
-This is the same economics as label-free pre-flight in the archived plan §6, and
-for the same reason: **a candidate killed before the outcome is read costs
-nothing.** A replay whose cases turn out to be degenerate, whose judge failed on
-half of them, or which was simply thought better of, can be abandoned for free.
-
-The dispatch rate of five per week against `train` is unchanged and now covers
-replays too — a replay files an `Evidence` record under `signal_id =
-"replay:<id>"`, so `runner.burden` counts it beside every signal ever scored,
-and Benjamini-Hochberg sees it, without either knowing the discretionary package
-exists.
-
----
-
-## 6. What is owed
-
-| stage | delivers | state |
-| --- | --- | --- |
-| **K** | families demoted, `trade_sim` extracted, CLI namespaced | **done** |
-| **L** | opportunity, generators, case; future-blindness test | **done** |
-| **M** | prompt, decider, both providers, sealed execution | **done** |
-| **N** | replay, seal, baselines, outcomes, budget at reveal | **done** |
-| **O** | selector report, paired contrasts, calibration, null control | **done** |
-| **P** | `inconclusive`/`frozen` statuses; forward registration of a frozen decider | statuses done; forward lane **owed** |
-| **Q** | docs; a read-only Replays view in the dashboard | docs done; UI **owed** |
-| **R** | the memorisation control (H042) run as a paired replay | **owed, and it gates everything** |
-| **S** | long-history extension — archived plan §8 | **owed, and now worth more** |
-
-**R before any finding is believed.** H042 is the control that licenses reading
-an anonymised result as judgement rather than as recall. It is two replays on
-one case set differing in a single field, and until it has been run every
-discretionary result in this lab carries an asterisk.
-
-**S is worth more than it was.** The archived plan argued that the legacy
-bhavcopy archive reaches 1995 and would give a price-only family roughly four
-times the independent blocks. §3.1 above is the sharpest possible statement of
-why that matters: a case-budgeted loop is short of independent blocks
-specifically, and history is the only thing that buys them. It remains the
-highest-expected-value idle work in the repository and the least urgent, which
-is exactly the profile of work that never happens unless it is scheduled.
-
----
-
-## 7. Risks and open decisions
-
-- **The counterparty question is unanswered, and it is the honest weak point.**
-  The archived plan's highest-leverage line is the demand that a proposal name
-  who is on the other side of the trade and why they keep taking it. For a
-  discretionary judgement the answer is genuinely unclear. If nobody is
-  persistently on the other side, a measured edge is a data artefact — and it
-  will not announce itself as one. Recorded in H041's rationale rather than
-  argued away.
-
-- **The judge can be gamed by the thing it is judged on.** Prompt tuning against
-  a visible score is overfitting with extra steps, and it is *cheap* — which
-  makes it the likeliest way this lab hurts itself now. The prompt hash counting
-  as test identity makes it visible; it does not make it hard. A prompt should
-  be worked on against cases whose outcomes have not been revealed, and the
-  discipline is not yet enforced by anything.
-
-- **Tag analysis is association, not cause.** A tag is claimed by the judge, not
-  assigned by the lab, so a tag that reads well may only mark the cases where the
-  judge felt articulate. `_by_tag` says so where it prints.
-
-- **WATCH is untested as a category.** It is currently scored as a non-position.
-  Whether it carries information — whether WATCH outperforms SKIP — is a real
-  question this loop can answer and has not.
-
-- **The case is a design choice, not a given.** Sixty sessions of bars, ten
-  blocks, five analogues. Every one of those is a parameter nobody has varied,
-  and varying them is itself a multiple-comparisons exercise against the same
-  sample. Treat the case format as frozen infrastructure and change it
-  deliberately, in the open, with the change recorded — it is part of the test
-  identity in spirit even where it is not yet in the hash.
-
-- **This plan still optimises for correctness of inference and will still feel
-  slow.** If the lab feels underutilised, that is the design working, and the
-  correct response remains to point the spare capacity at §8 of the archived
-  plan rather than at `train`.
+The lab continues searching. What it refuses to do is confuse unlimited
+curiosity with unlimited independent evidence.

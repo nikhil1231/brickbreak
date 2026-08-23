@@ -1,11 +1,17 @@
 # MISSION
 
-Build an AI-driven trading research system that can discover and evaluate market opportunities with the judgment of a strong discretionary trader.
+Build an AI-directed trading research laboratory that discovers and tests genuinely new sources of edge in NSE equities.
 
-The project should not assume that profitable trading must reduce to rigid rules. Its aim is to combine quantitative evidence with rich market context — including price action, relative strength, sector and market regime, volume behaviour, catalysts, and comparable historical situations — to identify opportunities that simpler systematic methods may miss.
+The central question is whether AI can act as a strong research director: form plausible market mechanisms, identify the observations needed to distinguish them, acquire point-in-time data, and turn them into falsifiable experiments — while retaining the contextual judgement of a strong discretionary trader where rigid rules lose information.
 
-The AI should reason from observed facts, form competing explanations, assess what is unusual, estimate risk and reward, and decide whether an opportunity is worth taking. It should remain skeptical of attractive narratives and distinguish evidence from interpretation.
+AI is not here to grid-search indicators or decorate correlations with stories. It should reason from observed facts, name who is persistently on the other side and why, develop competing explanations, specify what evidence would kill an idea, and distinguish measurement from interpretation.
 
-Research should measure whether this contextual judgment adds predictive value beyond simple quantitative screening and ranking. Ideas may be exploratory, but claims of edge must ultimately survive genuinely unseen data and realistic trading assumptions.
+Every candidate begins as a mechanism dossier. Missing observations become a data contract. Before any candidate may see outcomes, it becomes a frozen experiment contract. All experimental data enters through the point-in-time data module.
 
-Success means demonstrating repeatable, economically meaningful decision quality: the AI consistently selects better opportunities than strong simple baselines while controlling risk and avoiding dependence on fragile or overly specific patterns.
+Outcome-free research may run widely and in parallel. Outcome access is scarce: only small preregistered batches of the strongest candidates cross the outcome firewall, after their data quality, sample shape, detectable effect, costs, baselines and multiplicity burden have been priced.
+
+Historical AI replay can reject ideas and generate scalable predicates, but it cannot prove that a model did not remember a named security or distinctive episode. Claims involving AI judgement ultimately require genuinely forward evidence collected after the model, prompt, case format and decision rule were frozen.
+
+The laboratory must remain affordable to an individual researcher. Existing subscriptions and public data are used before paid APIs or proprietary feeds; money is spent only when the expected information gain justifies it. Existing point-in-time access, splits, ledgers, gates, sealed replays and evaluation machinery are reused, while redundant orchestration is replaced rather than carried indefinitely.
+
+Success is not a large catalogue of tests or a lucky best result. It is a small body of independent, economically meaningful signals whose mechanisms survive strong simple baselines, realistic costs, hostile review and genuinely unseen data.
