@@ -21,7 +21,7 @@ from src.research_data.pipelines import causal_zones, intraday  # noqa: E402
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=("prepare", "report"))
-    parser.add_argument("--version", default="pa_bootstrap_v3")
+    parser.add_argument("--version", default="pa_bootstrap_v4")
     parser.add_argument("--split-version", default="v1")
     parser.add_argument("--bundle", type=Path, default=(
         config.METADATA_DIR / "research_store" / "price_action" / "pa7_e0_bundle"))

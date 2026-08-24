@@ -362,7 +362,7 @@ def structural_report(
     source_pass = (
         acquisition_report.get("pending", 1) == 0
         and acquisition_report.get("bad", 1) == 0
-        and acquisition_report.get("empty", 1) == 0)
+        and acquisition_report.get("session_coverage_pct", 0.0) >= 95.0)
     power_pass = mde is not None and mde <= useful_effect_bps
     annotation_pass = agreement is not None and agreement.get("passed", False)
     quality = features.get("quality_flags", pd.Series("", index=features.index)).astype(str)

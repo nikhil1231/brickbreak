@@ -115,7 +115,7 @@ def test_capped_response_is_never_admitted(tmp_path):
     assert result["remaining"] == 1
 
 
-def test_terminal_close_marker_is_preserved_but_not_admitted_as_a_bar(tmp_path):
+def test_nonregular_markers_are_preserved_but_not_admitted_as_bars(tmp_path):
     pairs, sessions = request_pairs(1)
     requests = intraday.build_request_manifest(
         pairs, version="bootstrap_v1", all_sessions=sessions)
@@ -126,8 +126,12 @@ def test_terminal_close_marker_is_preserved_but_not_admitted_as_a_bar(tmp_path):
             "low": "99", "close": "100", "volume": "10",
         },
         {
+            "datetime": f"{session} 09:05:00", "open": "99", "high": "99",
+            "low": "99", "close": "99", "volume": "0",
+        },
+        {
             "datetime": f"{session} 15:30:00", "open": "102", "high": "102",
-            "low": "101", "close": "101", "volume": "0",
+            "low": "101", "close": "101", "volume": "7",
         },
     ]
     result = intraday.fetch_requests(
@@ -136,19 +140,42 @@ def test_terminal_close_marker_is_preserved_but_not_admitted_as_a_bar(tmp_path):
     request_id = requests.iloc[0]["request_id"]
     bars = pd.read_parquet(tmp_path / "normalised" / f"{request_id}.parquet")
     markers = pd.read_parquet(
-        tmp_path / "closing_markers" / f"{request_id}.parquet")
+        tmp_path / "session_markers" / f"{request_id}.parquet")
     attempt = json.loads(
         (tmp_path / "attempts" / f"{request_id}.json").read_text())
     assert bars["bar_start"].dt.strftime("%H:%M").tolist() == ["09:15"]
-    assert markers["bar_start"].dt.strftime("%H:%M").tolist() == ["15:30"]
-    assert markers["available_at"].equals(markers["bar_start"])
-    assert markers["quality_flags"].tolist() == ["terminal_close_marker"]
-    assert attempt["n_terminal_rows_excluded"] == 1
-    assert attempt["closing_markers_sha256"] == intraday.file_sha256(
-        tmp_path / "closing_markers" / f"{request_id}.parquet")
+    assert markers["bar_start"].dt.strftime("%H:%M").tolist() == ["09:05", "15:30"]
+    assert markers["quality_flags"].tolist() == [
+        "preopen_marker", "terminal_close_marker"]
+    assert attempt["n_session_marker_rows_excluded"] == 2
+    assert attempt["session_markers_sha256"] == intraday.file_sha256(
+        tmp_path / "session_markers" / f"{request_id}.parquet")
 
 
-def test_partial_response_is_explicit_and_not_admitted(tmp_path):
+def test_evening_special_session_is_explicit_not_a_missing_regular_session(tmp_path):
+    pairs = pd.DataFrame({
+        "instrument_id": ["TESTCODE"], "symbol_asof": ["TEST"],
+        "session": [pd.Timestamp("2026-11-08")],
+    })
+    requests = intraday.build_request_manifest(
+        pairs, version="bootstrap_v1", all_sessions=[pd.Timestamp("2026-11-08")])
+    row = {
+        "datetime": "2026-11-08 18:15:00", "open": "100", "high": "101",
+        "low": "99", "close": "100", "volume": "10",
+    }
+    result = intraday.fetch_requests(
+        requests, FakeClient([row]), tmp_path, workers=1)
+    assert result["ok"] == 1
+    assert result["remaining"] == 0
+    request_id = requests.iloc[0]["request_id"]
+    assert pd.read_parquet(
+        tmp_path / "session_markers" / f"{request_id}.parquet"
+    )["quality_flags"].tolist() == ["special_session_bar"]
+    assert pd.read_parquet(
+        tmp_path / "normalised" / f"{request_id}.parquet").empty
+
+
+def test_partial_response_is_settled_with_explicit_coverage_gap(tmp_path):
     pairs, sessions = request_pairs(2)
     requests = intraday.build_request_manifest(
         pairs, version="bootstrap_v1", all_sessions=sessions)
@@ -160,11 +187,17 @@ def test_partial_response_is_explicit_and_not_admitted(tmp_path):
     result = intraday.fetch_requests(
         requests, FakeClient([row]), tmp_path, workers=1)
     assert result["partial"] == 1
-    assert result["remaining"] == 1
+    assert result["remaining"] == 0
     attempt = intraday.load_attempts(tmp_path).iloc[0]
     assert json.loads(json.dumps(attempt["missing_sessions"])) == [
         pd.Timestamp(sessions[1]).strftime("%Y-%m-%d")]
-    assert not list((tmp_path / "normalised").glob("*.parquet"))
+    assert len(pd.read_parquet(next(
+        (tmp_path / "normalised").glob("*.parquet")))) == 1
+    intraday.write_request_manifest(requests, tmp_path)
+    report = intraday.verify_acquisition(tmp_path)
+    assert report["partial"] == 1
+    assert report["bad"] == 0
+    assert report["session_coverage_pct"] == 50.0
 
 
 def test_auth_failure_stops_dispatching_new_requests(tmp_path):

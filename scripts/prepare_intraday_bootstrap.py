@@ -22,7 +22,7 @@ from src.research_data.sources import security_master  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", default="pa_bootstrap_v3")
+    parser.add_argument("--version", default="pa_bootstrap_v4")
     parser.add_argument("--n-anchors", type=int, default=50)
     parser.add_argument("--warmup-sessions", type=int, default=60)
     parser.add_argument("--seed", type=int, default=20260824)
@@ -147,7 +147,10 @@ def main() -> int:
     report = {
         "stage": "PA2_IDENTITY_AND_PA4_REQUESTS",
         "status": "manifest_frozen",
-        "supersedes_unfetched_versions": ["pa_bootstrap_v1", "pa_bootstrap_v2"],
+        "supersedes_versions": {
+            "unfetched": ["pa_bootstrap_v1", "pa_bootstrap_v2"],
+            "rejected_ingestion_contract": ["pa_bootstrap_v3"],
+        },
         "acquisition_code_hash": intraday.acquisition_code_fingerprint(),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "outcome_accessed": False,

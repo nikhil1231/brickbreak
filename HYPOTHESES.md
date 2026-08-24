@@ -2941,9 +2941,13 @@ stage must enter through the research-director lifecycle and earn each gate in
 order.
 
 **Current pre-outcome state, 2026-08-24.** The real source microprobe and
-point-in-time identity preflight are recorded in FINDINGS.md. The content-pinned
-PA4 bootstrap manifest is frozen and deployed to `hp-ts`, but no request has
-run because that machine's Breeze session is expired. The real dossier
+point-in-time identity preflight are recorded in FINDINGS.md. After the Breeze
+session was refreshed, all 250 v3 bootstrap requests ran, but its collector
+rejected 241 whole responses merely because Breeze included non-regular
+pre-open, terminal-close, or special-session records. v3 is failed-ingestion
+provenance, not a dataset. The corrected v4 contract preserves those records
+separately, excludes them from decisions, and gates on explicit requested-
+session coverage; it remains to be frozen and fetched. The real dossier
 `DOS_MARK_40127F9C04` has only deterministic criticism; it is explicitly
 diagnostic and cannot qualify until an independent provider attack (or a
 recorded owner waiver) exists. No PA4–PA12 claim has passed and no outcome has

@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -44,6 +45,7 @@ BAR_COLUMNS = (
     "volume_raw", "source", "source_interval", "request_id",
     "quality_flags", "dataset_version",
 )
+SETTLED_STATUSES = frozenset({"ok", "empty", "partial"})
 
 
 class IntradayError(RuntimeError):
@@ -328,7 +330,7 @@ def pending_requests(frame: pd.DataFrame, root: Path) -> pd.DataFrame:
     if attempts.empty:
         return frame.copy()
     settled = set(attempts.loc[
-        attempts["status"].isin(["ok", "empty"]), "request_id"].astype(str))
+        attempts["status"].isin(SETTLED_STATUSES), "request_id"].astype(str))
     return frame[~frame["request_id"].astype(str).isin(settled)].copy()
 
 
@@ -402,7 +404,7 @@ def _write_json_once(value: dict[str, Any], path: Path) -> None:
     text = json.dumps(value, indent=2, sort_keys=True, default=str) + "\n"
     if path.exists():
         old = json.loads(path.read_text())
-        if old.get("status") in ("ok", "empty") and old != value:
+        if old.get("status") in SETTLED_STATUSES and old != value:
             raise IntradayError(f"settled attempt changed: {path}")
     tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     tmp.write_text(text)
@@ -423,7 +425,7 @@ def fetch_requests(
     todo = pending_requests(requests, root).sort_values("request_id")
     if max_calls is not None:
         todo = todo.head(max_calls)
-    for directory in ("raw", "normalised", "closing_markers", "attempts"):
+    for directory in ("raw", "normalised", "session_markers", "attempts"):
         (root / directory).mkdir(parents=True, exist_ok=True)
 
     totals = {"attempted": 0, "ok": 0, "empty": 0, "errors": 0,
@@ -448,34 +450,38 @@ def fetch_requests(
             status, reason = "capped", "response reached Breeze 1,000-row cap"
 
         canonical = normalise_response(raw, request) if raw else pd.DataFrame(columns=BAR_COLUMNS)
-        terminal_mask = (
-            canonical["bar_start"].dt.time.eq(datetime.strptime("15:30", "%H:%M").time())
-            & pd.to_numeric(canonical["volume_raw"], errors="coerce").eq(0)
-        ) if not canonical.empty else pd.Series(False, index=canonical.index)
-        closing_markers = canonical.loc[terminal_mask].copy()
-        if not closing_markers.empty:
-            # Breeze appends a zero-volume 15:30 row whose close can carry the
-            # official daily close.  It is not a tradable interval bar: retain
-            # it as source metadata, make it knowable at 15:30, and keep it out
-            # of every decision-bar dataset.
-            closing_markers["bar_end"] = closing_markers["bar_start"]
-            closing_markers["available_at"] = closing_markers["bar_start"]
-            closing_markers["quality_flags"] = "terminal_close_marker"
-        n_terminal_rows = int(terminal_mask.sum())
-        canonical = canonical.loc[~terminal_mask].copy()
         requested_sessions = set(json.loads(str(row.requested_sessions)))
-        if status == "ok":
+        regular_mask = (
+            canonical["bar_start"].dt.time.ge(
+                datetime.strptime("09:15", "%H:%M").time())
+            & canonical["bar_end"].dt.time.le(
+                datetime.strptime("15:30", "%H:%M").time())
+        ) if not canonical.empty else pd.Series(False, index=canonical.index)
+        session_markers = canonical.loc[~regular_mask].copy()
+        if not session_markers.empty:
+            times = session_markers["bar_start"].dt.time
+            before_open = times < datetime.strptime("09:15", "%H:%M").time()
+            close_marker = (
+                (times >= datetime.strptime("15:30", "%H:%M").time())
+                & (times < datetime.strptime("16:00", "%H:%M").time()))
+            session_markers["quality_flags"] = np.select(
+                [before_open, close_marker],
+                ["preopen_marker", "terminal_close_marker"],
+                default="special_session_bar")
+        n_session_marker_rows = int(len(session_markers))
+        observed_sessions = set(
+            canonical["session"].dt.strftime("%Y-%m-%d")
+        ) if not canonical.empty else set()
+        canonical = canonical.loc[regular_mask].copy()
+        if status in ("ok", "partial"):
             if canonical["bar_start"].isna().any():
                 status, reason = "error", "unparseable timestamps"
             elif canonical.duplicated(["instrument_id", "bar_start"]).any():
                 status, reason = "error", "duplicate instrument/bar timestamps"
-            elif ((canonical["bar_start"].dt.time < datetime.strptime("09:15", "%H:%M").time())
-                  | (canonical["bar_end"].dt.time > datetime.strptime("15:30", "%H:%M").time())).any():
-                status, reason = "error", "bars outside the regular session"
-
-        observed_sessions = set(
-            canonical["session"].dt.strftime("%Y-%m-%d")
-        ) if not canonical.empty else set()
+            elif session_markers["bar_start"].isna().any():
+                status, reason = "error", "unparseable marker timestamps"
+            elif session_markers.duplicated(["instrument_id", "bar_start"]).any():
+                status, reason = "error", "duplicate instrument/marker timestamps"
         missing_sessions = sorted(requested_sessions - observed_sessions)
         unexpected_sessions = sorted(observed_sessions - requested_sessions)
         if status == "ok" and unexpected_sessions:
@@ -494,21 +500,21 @@ def fetch_requests(
             raw_hash = _write_frame_once(
                 pd.DataFrame(raw).astype(str), root / "raw" / f"{row.request_id}.parquet")
         normalised_hash = None
-        closing_markers_hash = None
+        session_markers_hash = None
         kept = canonical[
             canonical["session"].dt.strftime("%Y-%m-%d").isin(requested_sessions)
         ].copy() if not canonical.empty else canonical
-        if status == "ok":
+        if status in ("ok", "partial"):
             normalised_hash = _write_frame_once(
                 kept, root / "normalised" / f"{row.request_id}.parquet")
-            kept_markers = closing_markers[
-                closing_markers["session"].dt.strftime("%Y-%m-%d").isin(
+            kept_markers = session_markers[
+                session_markers["session"].dt.strftime("%Y-%m-%d").isin(
                     requested_sessions)
-            ].copy() if not closing_markers.empty else closing_markers
+            ].copy() if not session_markers.empty else session_markers
             if not kept_markers.empty:
-                closing_markers_hash = _write_frame_once(
+                session_markers_hash = _write_frame_once(
                     kept_markers,
-                    root / "closing_markers" / f"{row.request_id}.parquet")
+                    root / "session_markers" / f"{row.request_id}.parquet")
 
         attempt = {
             "request_id": str(row.request_id),
@@ -518,12 +524,12 @@ def fetch_requests(
             "source_call_id": result.call_id,
             "n_source_rows": int(len(raw)),
             "n_kept_rows": int(len(kept)),
-            "n_terminal_rows_excluded": n_terminal_rows,
+            "n_session_marker_rows_excluded": n_session_marker_rows,
             "missing_sessions": missing_sessions,
             "unexpected_sessions": unexpected_sessions,
             "raw_sha256": raw_hash,
             "normalised_sha256": normalised_hash,
-            "closing_markers_sha256": closing_markers_hash,
+            "session_markers_sha256": session_markers_hash,
             "attempted_at": datetime.now(timezone.utc).isoformat(),
             "duration_s": result.duration_s,
         }
@@ -588,10 +594,13 @@ def verify_acquisition(
         return {"requests": int(len(requests)), "attempts": 0, "pending": int(len(requests))}
     required_attempt = {
         "request_id", "status", "n_source_rows", "n_kept_rows",
-        "raw_sha256", "normalised_sha256", "closing_markers_sha256",
+        "raw_sha256", "normalised_sha256",
     }
     if missing := required_attempt - set(attempts.columns):
         raise IntradayError(f"attempt checkpoints missing fields: {sorted(missing)}")
+    if not ({"session_markers_sha256", "closing_markers_sha256"}
+            & set(attempts.columns)):
+        raise IntradayError("attempt checkpoints missing session-marker hash field")
     if attempts["request_id"].astype(str).duplicated().any():
         raise IntradayError("duplicate attempt checkpoint request IDs")
     known = set(requests["request_id"].astype(str))
@@ -601,10 +610,20 @@ def verify_acquisition(
 
     for attempt in attempts.to_dict("records"):
         req_id = str(attempt["request_id"])
+        has_new_marker = (
+            "session_markers_sha256" in attempt
+            and not pd.isna(attempt.get("session_markers_sha256")))
+        marker_field = (
+            "session_markers_sha256" if has_new_marker
+            or "closing_markers_sha256" not in attempt
+            else "closing_markers_sha256")
+        marker_directory = (
+            "session_markers" if marker_field == "session_markers_sha256"
+            else "closing_markers")
         for directory, field in (
             ("raw", "raw_sha256"),
             ("normalised", "normalised_sha256"),
-            ("closing_markers", "closing_markers_sha256"),
+            (marker_directory, marker_field),
         ):
             expected = attempt.get(field)
             if pd.isna(expected):
@@ -623,16 +642,21 @@ def verify_acquisition(
         if normalised_path.exists() \
                 and len(pd.read_parquet(normalised_path)) != int(attempt["n_kept_rows"]):
             raise IntradayError(f"normalised row count mismatch: {normalised_path}")
-        if attempt["status"] == "ok" and not normalised_path.exists():
+        if attempt["status"] in ("ok", "partial") and not normalised_path.exists():
             raise IntradayError(f"successful request has no normalised shard: {req_id}")
 
     settled = set(attempts.loc[
-        attempts["status"].isin(["ok", "empty"]), "request_id"].astype(str))
+        attempts["status"].isin(SETTLED_STATUSES), "request_id"].astype(str))
     pending = known - settled
-    bad = attempts[~attempts["status"].isin(["ok", "empty"])]
+    bad = attempts[~attempts["status"].isin(SETTLED_STATUSES)]
     if require_complete and (pending or not bad.empty):
         raise IntradayError(
             f"acquisition incomplete: pending={len(pending)}, bad={len(bad)}")
+    requested_sessions = int(sum(
+        len(json.loads(value)) for value in requests["requested_sessions"]))
+    missing_sessions = int(sum(
+        len(value) if isinstance(value, list) else 0
+        for value in attempts.get("missing_sessions", pd.Series(dtype=object))))
     return {
         "requests": int(len(requests)),
         "attempts": int(len(attempts)),
@@ -640,10 +664,16 @@ def verify_acquisition(
         "bad": int(len(bad)),
         "ok": int(attempts["status"].eq("ok").sum()),
         "empty": int(attempts["status"].eq("empty").sum()),
+        "partial": int(attempts["status"].eq("partial").sum()),
         "source_rows": int(pd.to_numeric(
             attempts["n_source_rows"], errors="raise").sum()),
         "kept_rows": int(pd.to_numeric(
             attempts["n_kept_rows"], errors="raise").sum()),
+        "requested_sessions": requested_sessions,
+        "missing_sessions": missing_sessions,
+        "session_coverage_pct": round(
+            (requested_sessions - missing_sessions) / requested_sessions * 100.0, 6)
+            if requested_sessions else 0.0,
     }
 
 

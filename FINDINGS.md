@@ -2627,7 +2627,19 @@ The point-in-time identity preflight clears the declared 95% symbol-session and
 acquisition-code hash is
 `e0dda0f9c35c4bb86be8a7e342a3cfae434842c316e60fd52d02e9b4abe0558a`.
 
-The remote worker verifies both hashes and stops before acquisition because the
-Breeze session in `~/brickbreak/.env` on `hp-ts` is expired. PA4 is therefore
-**READY BUT NOT RUN**; no coverage, representation, E0, shape, or directional
-claim has passed.
+**Superseded acquisition status later on 2026-08-24.** After the Breeze session
+was refreshed, v3 ran all 250 requests but rejected 241 as "bars outside the
+regular session" (3 `ok`, 5 `empty`, 1 `partial`; 221,062 source rows). The
+source commonly supplies pre-open 09:05 records, terminal 15:30 records, and a
+small number of evening special-session records alongside regular bars. These
+records are not decision bars, but rejecting the whole response discards valid
+regular history. v3 is retained as failed-ingestion provenance and is not an
+admissible dataset.
+
+The corrected v4 contract preserves every such record in a separate
+session-marker shard, excludes it from decision data, and measures requested
+session coverage explicitly. A partial archival response is settled with its
+missing sessions declared and counted against coverage; cap, authentication,
+schema, duplicate, timestamp, and unrequested-session errors still block
+admission. v4 must be frozen and fetched before PA4 can pass. No coverage,
+representation, E0, shape, or directional claim has passed.
