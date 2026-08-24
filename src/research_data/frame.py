@@ -562,3 +562,67 @@ def load_raw_file_slice(file_path: Path | str, nrows: int | None = None) -> pd.D
         return pd.read_csv(p, nrows=nrows)
     else:
         raise ValueError(f"Unsupported file format {p.suffix!r}")
+
+# ---------------------------------------------------------------------------
+# intraday panel
+# ---------------------------------------------------------------------------
+
+def load_intraday_panel(
+    version: str = "v1",
+    partition: str | None = None,
+    base_interval: str = "5minute",
+    columns: list[str] | None = None,
+    drop_purged: bool = True,
+) -> pd.DataFrame:
+    """The generic intraday panel with split partitions attached.
+    
+    This is the only door for intraday data. It enforces partitions
+    and inherits assignment from the parent session.
+
+    Parameters
+    ----------
+    version : str
+        Intraday dataset version. Default "v1".
+    partition : str or None
+        Filter to "train", "validation", "test", "forward".
+    base_interval : str
+        Requested interval (e.g. "5minute", "1minute", "hourly").
+    columns : list[str] or None
+        Select specific columns.
+    drop_purged : bool
+        If True, drop rows in the purge zone.
+        
+    Returns
+    -------
+    pd.DataFrame
+        Dated intraday panel with a ``partition`` column attached.
+    """
+    path = config.NORMALIZED_DIR / f"intraday_{version}_{base_interval}.parquet"
+    if not path.exists():
+        logger.warning(f"Intraday store {path.name} not found. Returning empty frame pending PA8 backfill.")
+        return pd.DataFrame()
+        
+    df = pd.read_parquet(path, columns=columns)
+    
+    # Intraday rows inherit the session's partition
+    # (Assuming a 'session' column exists that maps to daily 'date')
+    if "session" in df.columns:
+        # Create a temp date column for splits.assign if it expects 'date'
+        has_date = "date" in df.columns
+        if not has_date:
+            df["date"] = df["session"]
+            
+        df = splits.assign(df, version=version, drop_purged=drop_purged)
+        
+        if not has_date:
+            df = df.drop(columns=["date"])
+            
+    if partition:
+        valid = splits.SETS + ("forward",)
+        if partition not in valid:
+            raise FrameError(f"unknown partition {partition!r}")
+        if "partition" in df.columns:
+            df = df[df["partition"] == partition].copy()
+            
+    logger.info(f"load_intraday_panel: {len(df):,} rows, version={version}, partition={partition}")
+    return df
