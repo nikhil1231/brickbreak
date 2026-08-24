@@ -29,3 +29,9 @@ computed from canonical five-minute bars; provider-specific hourly bars are not
 part of the interface.
 
 No parallel loader is planned.
+
+`src/discretionary/pa_e0.py` and `scripts/pa7_e0.py` reuse the same case
+renderer, split assignment, source verifier, and dataset loader. The E0 runner
+freezes candidate/case hashes and an empty annotation template; it remains
+blocked until the real bootstrap is complete and one human plus two independent
+model annotators satisfy the predeclared agreement bar. It has no outcome API.

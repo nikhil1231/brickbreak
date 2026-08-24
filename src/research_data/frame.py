@@ -343,6 +343,7 @@ def bars(
     partition: str | None = None,
     adjusted: bool = True,
     columns: list[str] | None = None,
+    drop_purged: bool = True,
 ) -> pd.DataFrame:
     """Daily OHLCV bars, partitioned.
 
@@ -366,7 +367,7 @@ def bars(
             if c not in read_cols:
                 read_cols = [c] + list(read_cols)
     df = pd.read_parquet(path, columns=read_cols)
-    df = splits.assign(df, version=version)
+    df = splits.assign(df, version=version, drop_purged=drop_purged)
 
     if partition:
         df = df[df["partition"] == partition].copy()

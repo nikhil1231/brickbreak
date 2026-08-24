@@ -2590,3 +2590,44 @@ bulk symbol-events across 2,438 symbols, but `research_data` has no broad
 full-session intraday dataset; the seven one-minute probe files are not an
 unbiased panel. No 15:15 outcome was read. The honest result is **DATA GAP**, not
 a large-cap backtest.
+
+---
+
+# H055 PA2 source probe — native five-minute Breeze history is usable with a strict collector (2026-08-24)
+
+No forward return was read. A bounded, repeated RELIANCE probe established the
+source semantics needed before the price-action bootstrap can run.
+
+- Native 1-minute, 5-minute and 30-minute endpoints returned 376, 76 and 13
+  rows respectively for 03-Feb-2025. Repeating the five-minute request produced
+  byte-identical payload content.
+- Across 75 regular buckets, every native five-minute OHLCV row equalled the
+  corresponding five one-minute rows aggregated from its timestamp. The source
+  timestamp is therefore the **bar start**, and a five-minute row is not
+  available until timestamp + five minutes.
+- A deliberately wide five-minute request returned exactly 1,000 rows, starting
+  on 11-Mar despite asking from 01-Jan: Breeze silently keeps the **tail**.
+  Frozen requests must remain below the cap and a capped response is rejected.
+- Native five-minute data returned for sampled sessions in 2017, 2018 and 2020,
+  so the endpoint is deep enough for the 2020+ PIT bhavcopy programme.
+- Some sessions append a zero-volume 15:30 marker. It is not a tradable interval
+  bar, but it can carry the official close. The canonical collector now
+  preserves it in a separate closing-marker shard and excludes it from decision
+  bars.
+- Regular five-minute bars reconciled to 99.05% of daily volume on the sampled
+  session, but did not exactly reproduce daily low or close. Intraday bars must
+  therefore remain the execution/geometry source and bhavcopy the official
+  daily/context source; neither silently substitutes for the other.
+
+The point-in-time identity preflight clears the declared 95% symbol-session and
+98% lagged-traded-value thresholds in every year from 2020 through 2026. A
+50-anchor, 60-session, train-only bootstrap is frozen as 250 cap-safe requests
+(maximum 225,000 regular rows). Its request hash is
+`3bb343383853e60e8df7df5c6b9df615e80685b129334cf11a8a6230d73bd259` and its
+acquisition-code hash is
+`e0dda0f9c35c4bb86be8a7e342a3cfae434842c316e60fd52d02e9b4abe0558a`.
+
+The remote worker verifies both hashes and stops before acquisition because the
+Breeze session in `~/brickbreak/.env` on `hp-ts` is expired. PA4 is therefore
+**READY BUT NOT RUN**; no coverage, representation, E0, shape, or directional
+claim has passed.

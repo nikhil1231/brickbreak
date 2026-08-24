@@ -116,6 +116,43 @@ def _overlap_fraction(bar_low: float, bar_high: float,
     return min(1.0, overlap / width)
 
 
+def annotate_corporate_actions(
+    intraday_bars: pd.DataFrame,
+    daily_adjustments: pd.DataFrame,
+) -> pd.DataFrame:
+    """Flag the first bar of sessions where the known adjustment changes."""
+    required_daily = {"symbol", "date", "adj_factor"}
+    if missing := required_daily - set(daily_adjustments.columns):
+        raise ZoneError(f"daily adjustment frame missing: {sorted(missing)}")
+    columns = _required(intraday_bars)
+    out = intraday_bars.copy()
+    if "session" not in out.columns:
+        out["session"] = pd.to_datetime(out[columns["time"]]).dt.normalize()
+    else:
+        out["session"] = pd.to_datetime(out["session"]).dt.normalize()
+    daily = daily_adjustments[list(required_daily)].copy()
+    daily["date"] = pd.to_datetime(daily["date"]).dt.normalize()
+    daily = daily.sort_values(["symbol", "date"], kind="stable")
+    factor = pd.to_numeric(daily["adj_factor"], errors="coerce")
+    previous = factor.groupby(daily["symbol"], sort=False).shift(1)
+    changed = factor.notna() & previous.notna() & ~np.isclose(factor, previous)
+    action_keys = set(zip(
+        daily.loc[changed, "symbol"].astype(str),
+        daily.loc[changed, "date"],
+    ))
+    quality = out.get("quality_flags", pd.Series("", index=out.index)).fillna("").astype(str)
+    ordered = out.sort_values([columns["symbol"], "session", columns["time"]], kind="stable")
+    first_indices = ordered.groupby(
+        [columns["symbol"], "session"], sort=False).head(1).index
+    for index in first_indices:
+        key = (str(out.at[index, columns["symbol"]]), out.at[index, "session"])
+        if key in action_keys:
+            quality.at[index] = "|".join(
+                item for item in (quality.at[index], "corporate_action") if item)
+    out["quality_flags"] = quality
+    return out
+
+
 def _new_zone(kind: str, center: float, width: float, origin_at: pd.Timestamp,
               known_at: pd.Timestamp, known_index: int) -> dict[str, Any]:
     return {
@@ -306,5 +343,6 @@ def build_zone_state_machine(
 
 
 __all__ = [
-    "FEATURE_COLUMNS", "ZoneConfig", "ZoneError", "build_zone_state_machine",
+    "FEATURE_COLUMNS", "ZoneConfig", "ZoneError", "annotate_corporate_actions",
+    "build_zone_state_machine",
 ]

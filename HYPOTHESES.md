@@ -2939,3 +2939,12 @@ no outcomes. Those files are invalid scaffolding, not evidence, and have been
 removed. H055 therefore remains **PROPOSED — OUTCOME UNTESTED**. Its first valid
 stage must enter through the research-director lifecycle and earn each gate in
 order.
+
+**Current pre-outcome state, 2026-08-24.** The real source microprobe and
+point-in-time identity preflight are recorded in FINDINGS.md. The content-pinned
+PA4 bootstrap manifest is frozen and deployed to `hp-ts`, but no request has
+run because that machine's Breeze session is expired. The real dossier
+`DOS_MARK_40127F9C04` has only deterministic criticism; it is explicitly
+diagnostic and cannot qualify until an independent provider attack (or a
+recorded owner waiver) exists. No PA4–PA12 claim has passed and no outcome has
+been opened.

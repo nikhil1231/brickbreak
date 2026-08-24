@@ -4,6 +4,7 @@ import pandas as pd
 from src.research_data.pipelines.causal_zones import (
     FEATURE_COLUMNS,
     ZoneConfig,
+    annotate_corporate_actions,
     build_zone_state_machine,
 )
 
@@ -85,3 +86,19 @@ def test_corporate_action_invalidates_old_zones():
     result = build_zone_state_machine(frame)
     assert result.loc[4, "support_zone_kind"] == "support"
     assert result.loc[5, "support_zone_kind"] == ""
+
+
+def test_adjustment_change_flags_only_the_first_bar_of_the_ex_session():
+    frame = pd.concat([
+        bars([10, 9, 8, 9, 10], start="2026-01-02 09:15"),
+        bars([5, 5.1], start="2026-01-05 09:15"),
+    ], ignore_index=True)
+    frame["session"] = frame["bar_start"].dt.normalize()
+    daily = pd.DataFrame({
+        "symbol": ["TEST", "TEST"],
+        "date": pd.to_datetime(["2026-01-02", "2026-01-05"]),
+        "adj_factor": [1.0, 2.0],
+    })
+    flagged = annotate_corporate_actions(frame, daily)
+    assert flagged.loc[5, "quality_flags"] == "corporate_action"
+    assert flagged.loc[6, "quality_flags"] == ""
