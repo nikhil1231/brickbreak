@@ -337,7 +337,8 @@ def attack(payload: dict[str, Any]) -> dict[str, Any]:
                 raise DirectorAPIError(
                     "no failed independent model attack is available to waive", 409)
 
-            deterministic = adjudicate_dossier(dossier).to_dict()
+            deterministic = adjudicate_dossier(
+                dossier, independent_review_provider="owner_waiver").to_dict()
             if not deterministic.get("approved"):
                 raise DirectorAPIError(
                     "the dossier still fails deterministic gates; the independent "
@@ -368,6 +369,8 @@ def attack(payload: dict[str, Any]) -> dict[str, Any]:
                     "attack and all objections remain attached; deterministic "
                     "gates passed."
                 ),
+                "independent_review_provider": "owner_waiver",
+                "deterministic_only": False,
             }
             path = _atomic_json(existing_path, waived)
             return {"adjudication": waived, "path": str(path)}
@@ -388,6 +391,7 @@ def attack(payload: dict[str, Any]) -> dict[str, Any]:
         raise DirectorAPIError(str(exc)) from exc
 
     extra_reviews = ()
+    provider = None
     deterministic_only = bool(payload.get("deterministic_only", False))
     if not deterministic_only:
         response, provider = route_council_call(
@@ -403,7 +407,11 @@ def attack(payload: dict[str, Any]) -> dict[str, Any]:
         extra_reviews = (model_review,)
 
     adjudication = adjudicate_dossier(
-        dossier, additional_reviews=extra_reviews)
+        dossier,
+        additional_reviews=extra_reviews,
+        independent_review_provider=(provider.value if provider is not None else ""),
+        deterministic_only=deterministic_only,
+    )
     path = _atomic_json(
         ADJUDICATIONS_DIR / f"{dossier.dossier_id}.json",
         adjudication.to_dict())

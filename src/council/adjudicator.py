@@ -30,6 +30,8 @@ class AdjudicationResult:
     novelty: NoveltyReport
     all_dissents: tuple[DossierDissent, ...]
     verdict: str
+    independent_review_provider: str = ""
+    deterministic_only: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -40,6 +42,8 @@ class AdjudicationResult:
             "novelty": self.novelty.to_dict(),
             "all_dissents": [d.to_dict() for d in self.all_dissents],
             "verdict": self.verdict,
+            "independent_review_provider": self.independent_review_provider,
+            "deterministic_only": self.deterministic_only,
         }
 
 
@@ -67,6 +71,8 @@ import numpy as np
 def adjudicate_dossier(dossier: MechanismDossier,
                        existing_claims: Sequence[dict[str, str]] | None = None,
                        additional_reviews: Sequence[CriticReview] = (),
+                       independent_review_provider: str = "",
+                       deterministic_only: bool = False,
                        ) -> AdjudicationResult:
     """Evaluate a dossier across all council critics and adjudicate approval."""
     r_econ = review_economic_mechanism(dossier)
@@ -80,21 +86,26 @@ def adjudicate_dossier(dossier: MechanismDossier,
     for r in reviews:
         all_dissents.extend(r.dissents)
 
-    # Check fatal objections
+    # Fatal objections stop the dossier here. Material objections travel into
+    # qualification, where each needs an implemented, frozen resolution.
     has_fatal = any(d.severity == "fatal" for d in all_dissents)
     all_approved = (
         all(r.approved for r in reviews)
         and novelty.is_novel
         and novelty.lineage_complete
         and not has_fatal
+        and not deterministic_only
     )
 
     priority = compute_expected_information_score(dossier, reviews, novelty)
 
     if all_approved:
         verdict = f"APPROVED with priority {priority:.2f}. {len(all_dissents)} dissent(s) noted."
+    elif deterministic_only:
+        verdict = ("DIAGNOSTIC ONLY. An independent provider review is required "
+                   f"before qualification. {len(all_dissents)} dissent(s).")
     else:
-        verdict = f"REJECTED. Fatal objections or critic disapproval. {len(all_dissents)} dissent(s)."
+        verdict = f"REJECTED. Critic disapproval or incomplete independent review. {len(all_dissents)} dissent(s)."
 
     # Return new dossier copy with aggregated dissents
     updated_dossier = MechanismDossier(
@@ -142,4 +153,6 @@ def adjudicate_dossier(dossier: MechanismDossier,
         novelty=novelty,
         all_dissents=tuple(all_dissents),
         verdict=verdict,
+        independent_review_provider=independent_review_provider,
+        deterministic_only=deterministic_only,
     )

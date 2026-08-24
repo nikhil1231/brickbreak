@@ -253,5 +253,8 @@ def test_attack_deterministic_only_skips_provider_dispatch(tmp_path, monkeypatch
     )
 
     result = director_api.attack({"dossier_id": dossier_id, "deterministic_only": True})
-    assert result["adjudication"]["approved"] is True
+    assert result["adjudication"]["approved"] is False
+    assert result["adjudication"]["deterministic_only"] is True
+    assert result["adjudication"]["independent_review_provider"] == ""
+    assert "DIAGNOSTIC ONLY" in result["adjudication"]["verdict"]
     assert (adjudication_dir / f"{dossier_id}.json").exists()

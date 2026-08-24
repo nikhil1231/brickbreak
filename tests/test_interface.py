@@ -437,7 +437,8 @@ def test_cli_attack_dossier(tmp_path, capsys):
 
     args = argparse.Namespace(dossier_file=str(p), save=True)
     res = council.cmd_attack(args)
-    assert res == 0
+    assert res == 2
     captured = capsys.readouterr()
     assert "Attacking dossier" in captured.out
-    assert "Verdict: APPROVED" in captured.out
+    assert "Verdict: DIAGNOSTIC ONLY" in captured.out
+    assert "Approved: False" in captured.out

@@ -267,8 +267,16 @@ def qualify_adjudication(
     temp_dir: Path | None = None,
 ) -> tuple[QualificationArtifact, Path]:
     """Author a signal and freeze E0 reports without constructing outcomes."""
+    if adjudication.get("deterministic_only"):
+        raise QualificationError(
+            "deterministic-only attack is diagnostic and cannot qualify a dossier")
     if not adjudication.get("approved"):
         raise QualificationError("dossier was not approved by the attack stage")
+    if (not adjudication.get("independent_review_provider")
+            and not adjudication.get("independent_attack_waiver")):
+        raise QualificationError(
+            "qualification requires an independent provider attack or an explicit "
+            "recorded owner waiver")
     dossier = MechanismDossier.from_dict(adjudication["dossier"])
     if dossier.has_data_gap:
         raise QualificationError(

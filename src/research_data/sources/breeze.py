@@ -28,6 +28,7 @@ V2_INTERVALS = ("1second", "1minute", "5minute", "30minute", "1day")
 # Breeze wants ISO-ish stamps with a literal .000Z suffix. It treats them as
 # IST wall-clock despite the Z; that assumption is tested in validate_data.
 TS_FMT = "%Y-%m-%dT%H:%M:%S.000Z"
+_CALL_LOG_LOCK = threading.Lock()
 
 
 def _new_sdk_client(api_key: str):
@@ -224,8 +225,9 @@ class BreezeClient:
     @staticmethod
     def _append_log(result: CallResult) -> None:
         config.ensure_dirs()
-        with config.CALL_LOG.open("a") as fh:
-            fh.write(json.dumps(result.log_record()) + "\n")
+        with _CALL_LOG_LOCK:
+            with config.CALL_LOG.open("a") as fh:
+                fh.write(json.dumps(result.log_record()) + "\n")
 
     # ---------------- public surface ----------------
 

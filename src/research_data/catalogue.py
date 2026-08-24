@@ -737,6 +737,86 @@ def _forward_label_features() -> list[FeatureSpec]:
     return specs
 
 
+def _price_action_features() -> list[FeatureSpec]:
+    """Causal features from completed canonical intraday bars.
+
+    The raw intraday OHLC columns deliberately reuse the daily names at the
+    frame boundary, so these entries name only the derived fields. Their owner
+    enforces the stronger invariant: each value is frozen at ``bar_end`` and
+    must survive the future-append test.
+    """
+    F = FeatureSpec
+    caveat = ("Computed only from bars with available_at <= decision_at; "
+              "tests require prefix bytes to ignore every later bar")
+    return [
+        F("atr_20", "Causal 20-bar average true range", "intraday_t", 0,
+          False, True, owner="price_action", known_caveats=caveat),
+        F("rolling_hour_trend_pct", "Return over the prior completed rolling hour",
+          "intraday_t", 0, False, True, owner="price_action", known_caveats=caveat),
+        F("tod_volume_median_20", "Prior-session median volume for this clock bucket",
+          "intraday_t", 20, False, True, owner="price_action",
+          known_caveats="Current-session volume is shifted out of the denominator"),
+        F("lagged_time_of_day_volume_surprise",
+          "Current completed-bar volume divided by prior-session same-clock median",
+          "intraday_t", 20, False, True, inputs=("tod_volume_median_20",),
+          owner="price_action", known_caveats=caveat),
+        F("support_zone_center", "Centre of nearest already-known support zone",
+          "intraday_t", 0, False, True, owner="price_action", known_caveats=caveat),
+        F("support_zone_kind", "Observable origin type of the nearest support zone",
+          "intraday_t", 0, False, True, owner="price_action", known_caveats=caveat),
+        F("support_zone_lower", "Lower raw-price bound of nearest known support",
+          "intraday_t", 0, False, True, inputs=("support_zone_center",),
+          owner="price_action", known_caveats=caveat),
+        F("support_zone_upper", "Upper raw-price bound of nearest known support",
+          "intraday_t", 0, False, True, inputs=("support_zone_center",),
+          owner="price_action", known_caveats=caveat),
+        F("support_origin_at", "Timestamp of the pivot that seeded support",
+          "intraday_t", 0, False, True, owner="price_action", known_caveats=caveat),
+        F("support_known_at", "First timestamp at which support was confirmed",
+          "intraday_t", 0, False, True, owner="price_action", known_caveats=caveat),
+        F("support_broken_at", "Timestamp resistance became flip support, if any",
+          "intraday_t", 0, False, True, owner="price_action", known_caveats=caveat),
+        F("support_age_bars", "Completed bars since the zone became knowable",
+          "intraday_t", 0, False, True, owner="price_action", known_caveats=caveat),
+        F("zone_distance_atr", "Signed close distance to support in causal ATR units",
+          "intraday_t", 0, False, True, inputs=("support_zone_center", "atr_20"),
+          owner="price_action", known_caveats=caveat),
+        F("zone_overlap_frac", "Fraction of the support-zone width touched by this bar",
+          "intraday_t", 0, False, True, inputs=("support_zone_center",),
+          owner="price_action", known_caveats=caveat),
+        F("approach_speed_atr_per_bar", "Three-bar change in zone distance",
+          "intraday_t", 0, False, True,
+          inputs=("support_zone_center", "atr_20"), owner="price_action",
+          known_caveats=caveat),
+        F("close_location", "Close location inside the completed intraday bar",
+          "intraday_t", 0, False, True, owner="price_action", known_caveats=caveat),
+        F("rejection_strength_atr", "Close-minus-low excursion on a zone-touch bar",
+          "intraday_t", 0, False, True, inputs=("atr_20",),
+          owner="price_action", known_caveats=caveat),
+        F("support_touch_count", "Prior distinct touch episodes plus the current episode",
+          "intraday_t", 0, False, True, owner="price_action", known_caveats=caveat),
+        F("support_touch", "Current completed bar overlaps known support",
+          "intraday_t", 0, False, True, inputs=("zone_overlap_frac",),
+          owner="price_action", known_caveats=caveat),
+        F("bullish_rejection", "Completed bar rejects an already-known support zone",
+          "intraday_t", 0, False, True,
+          inputs=("zone_overlap_frac", "close_location"), owner="price_action",
+          known_caveats=caveat),
+        F("bullish_flip_retest", "Completed bar retests a resistance zone broken earlier",
+          "intraday_t", 0, False, True,
+          inputs=("zone_overlap_frac", "close_location"), owner="price_action",
+          known_caveats=caveat),
+        F("resistance_zone_lower", "Lower raw-price bound of nearest known resistance",
+          "intraday_t", 0, False, True, owner="price_action", known_caveats=caveat),
+        F("resistance_zone_upper", "Upper raw-price bound of nearest known resistance",
+          "intraday_t", 0, False, True, owner="price_action", known_caveats=caveat),
+        F("resistance_zone_center", "Centre of nearest already-known resistance",
+          "intraday_t", 0, False, True, owner="price_action", known_caveats=caveat),
+        F("resistance_known_at", "First timestamp at which resistance was confirmed",
+          "intraday_t", 0, False, True, owner="price_action", known_caveats=caveat),
+    ]
+
+
 def build_default_catalogue() -> Catalogue:
     """The complete catalogue of every feature currently computable."""
     cat = Catalogue()
@@ -748,6 +828,7 @@ def build_default_catalogue() -> Catalogue:
     cat.register_many(_relative_strength_features())
     cat.register_many(_sector_features())
     cat.register_many(_opening_features())
+    cat.register_many(_price_action_features())
     cat.register_many(_forward_label_features())
     return cat
 

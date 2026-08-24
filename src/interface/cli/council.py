@@ -172,7 +172,13 @@ def cmd_attack(args: argparse.Namespace) -> int:
         except (ProviderError, ValueError) as exc:
             print(f"[-] Independent hostile review failed without fallback: {exc}")
             return 1
-    adj = adjudicate_dossier(dossier, additional_reviews=extra_reviews)
+    adj = adjudicate_dossier(
+        dossier,
+        additional_reviews=extra_reviews,
+        independent_review_provider=(reviewer_provider.value
+                                     if reviewer_provider is not None else ""),
+        deterministic_only=deterministic_only,
+    )
 
     print(f"\nVerdict: {adj.verdict}")
     print(f"Approved: {adj.approved} (Priority Score: {adj.priority_score:.2f})")

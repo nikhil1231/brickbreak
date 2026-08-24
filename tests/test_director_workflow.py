@@ -74,7 +74,8 @@ def test_qualification_refuses_an_unimplemented_intraday_adapter(
         research_store):
     dossier = replace(
         _dossier(), data_adapter="intraday_panel", entry_price="intraday")
-    adjudication = adjudicate_dossier(dossier).to_dict()
+    adjudication = adjudicate_dossier(
+        dossier, independent_review_provider="mock_independent").to_dict()
     with pytest.raises(qualification_mod.QualificationError,
                        match="not executable by the daily signal director"):
         qualification_mod.qualify_adjudication(
@@ -84,13 +85,32 @@ def test_qualification_refuses_an_unimplemented_intraday_adapter(
 def test_data_ready_is_checked_against_the_actual_adapter_frame(
         monkeypatch, research_store):
     dossier = replace(_dossier(), required_feature_names=("missing_pit_feature",))
-    adjudication = adjudicate_dossier(dossier).to_dict()
+    adjudication = adjudicate_dossier(
+        dossier, independent_review_provider="mock_independent").to_dict()
     monkeypatch.setattr(
         qualification_mod.frame, "load_daily_panel", lambda **kwargs: _panel())
     with pytest.raises(qualification_mod.QualificationError,
                        match="missing required feature"):
         qualification_mod.qualify_adjudication(
             adjudication, signal_name="missing_feature_signal")
+
+
+def test_qualification_refuses_deterministic_only_attack(research_store):
+    adjudication = adjudicate_dossier(
+        _dossier(), deterministic_only=True).to_dict()
+    with pytest.raises(qualification_mod.QualificationError,
+                       match="deterministic-only attack is diagnostic"):
+        qualification_mod.qualify_adjudication(
+            adjudication, signal_name="deterministic_only_signal")
+
+
+def test_qualification_requires_independent_provider_or_owner_waiver(
+        research_store):
+    adjudication = adjudicate_dossier(_dossier()).to_dict()
+    with pytest.raises(qualification_mod.QualificationError,
+                       match="independent provider attack"):
+        qualification_mod.qualify_adjudication(
+            adjudication, signal_name="unreviewed_signal")
 
 
 def test_execution_claim_retries_only_pre_exposure_failures(tmp_path, monkeypatch):
@@ -134,7 +154,12 @@ def test_compile_freezes_multiple_qualifications_in_one_batch(
             claim=f"Distinct point-in-time batch mechanism {index} predicts returns",
         )
         artifact, _ = qualification_mod.qualify_adjudication(
-            {"approved": True, "dossier": dossier.to_dict()},
+            {
+                "approved": True,
+                "dossier": dossier.to_dict(),
+                "independent_review_provider": "mock_independent",
+                "deterministic_only": False,
+            },
             signal_name=f"batch_signal_{index}",
             signal_source=(
                 "import pandas as pd\n\n"
@@ -221,7 +246,8 @@ def test_reviewed_dossier_compiles_and_executes_exactly_once(
     panel = _panel()
     monkeypatch.setattr(
         qualification_mod.frame, "load_daily_panel", lambda **kwargs: panel.copy())
-    adjudication = adjudicate_dossier(_dossier()).to_dict()
+    adjudication = adjudicate_dossier(
+        _dossier(), independent_review_provider="mock_independent").to_dict()
     dissent_resolutions = tuple(
         f"Implemented pre-outcome safeguard for: {item['objection']}"
         for item in adjudication["all_dissents"]

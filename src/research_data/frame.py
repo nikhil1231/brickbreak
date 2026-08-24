@@ -573,56 +573,103 @@ def load_intraday_panel(
     base_interval: str = "5minute",
     columns: list[str] | None = None,
     drop_purged: bool = True,
+    split_version: str = "v1",
 ) -> pd.DataFrame:
-    """The generic intraday panel with split partitions attached.
-    
-    This is the only door for intraday data. It enforces partitions
-    and inherits assignment from the parent session.
+    """Load an immutable intraday dataset and attach session partitions.
+
+    ``version`` identifies the intraday bytes; ``split_version`` identifies
+    the independently frozen daily split.  Keeping the two explicit prevents a
+    dataset version from accidentally selecting a different holdout manifest.
 
     Parameters
     ----------
     version : str
-        Intraday dataset version. Default "v1".
+        Intraday dataset version. Default ``"v1"``.
     partition : str or None
         Filter to "train", "validation", "test", "forward".
     base_interval : str
-        Requested interval (e.g. "5minute", "1minute", "hourly").
+        Canonical stored interval. Derived rolling-hour features are computed
+        by a registered pipeline, not loaded from an unverified provider bar.
     columns : list[str] or None
         Select specific columns.
-    drop_purged : bool
-        If True, drop rows in the purge zone.
-        
+    split_version : str
+        Parent daily split version. It must match the dataset manifest.
+
     Returns
     -------
     pd.DataFrame
         Dated intraday panel with a ``partition`` column attached.
     """
-    path = config.NORMALIZED_DIR / f"intraday_{version}_{base_interval}.parquet"
-    if not path.exists():
-        logger.warning(f"Intraday store {path.name} not found. Returning empty frame pending PA8 backfill.")
-        return pd.DataFrame()
-        
-    df = pd.read_parquet(path, columns=columns)
-    
-    # Intraday rows inherit the session's partition
-    # (Assuming a 'session' column exists that maps to daily 'date')
-    if "session" in df.columns:
-        # Create a temp date column for splits.assign if it expects 'date'
-        has_date = "date" in df.columns
-        if not has_date:
-            df["date"] = df["session"]
-            
-        df = splits.assign(df, version=version, drop_purged=drop_purged)
-        
-        if not has_date:
-            df = df.drop(columns=["date"])
-            
+    from .pipelines import intraday
+
+    try:
+        manifest = intraday.load_dataset_manifest(version, base_interval)
+    except intraday.IntradayError as exc:
+        raise FrameError(str(exc)) from exc
+    if manifest.get("parent_split_version") != split_version:
+        raise FrameError(
+            f"intraday dataset {version!r} was built against split "
+            f"{manifest.get('parent_split_version')!r}, not {split_version!r}")
+    split_manifest = splits.load(split_version)
+    if manifest.get("parent_split_hash") != split_manifest.get("hash"):
+        raise FrameError(
+            "intraday dataset's parent split hash no longer matches the "
+            "frozen split manifest")
+
+    available = set(manifest.get("columns", []))
+    outcomes = set(manifest.get("outcome_columns", []))
+    requested = set(columns or [])
+    unknown = requested - available
+    if unknown:
+        raise FrameError(f"unknown intraday columns: {sorted(unknown)}")
+    leaked = requested & outcomes
+    if leaked:
+        raise FrameError(
+            f"intraday outcome columns cannot be loaded as features: {sorted(leaked)}")
+
+    identity = {
+        "instrument_id", "symbol_asof", "session", "bar_start", "bar_end",
+        "available_at",
+    }
+    read_columns = None if columns is None else sorted(requested | identity)
+    parts = sorted(intraday.dataset_root(version, base_interval).glob("part-*.parquet"))
+    if not parts:
+        raise FrameError(f"intraday dataset {version!r}/{base_interval!r} has no parts")
+    df = pd.concat(
+        (pd.read_parquet(path, columns=read_columns) for path in parts),
+        ignore_index=True,
+    )
+    missing_identity = identity - set(df.columns)
+    if missing_identity:
+        raise FrameError(
+            f"intraday dataset is missing identity columns: {sorted(missing_identity)}")
+    df["session"] = pd.to_datetime(df["session"], errors="raise").dt.normalize()
+    for timestamp in ("bar_start", "bar_end", "available_at"):
+        df[timestamp] = pd.to_datetime(df[timestamp], errors="raise")
+    if (df["available_at"] < df["bar_end"]).any():
+        raise FrameError("intraday rows claim availability before their bar ended")
+
+    df = splits.assign(
+        df, manifest=split_manifest, version=split_version,
+        date_col="session", drop_purged=drop_purged)
     if partition:
         valid = splits.SETS + ("forward",)
         if partition not in valid:
-            raise FrameError(f"unknown partition {partition!r}")
-        if "partition" in df.columns:
-            df = df[df["partition"] == partition].copy()
-            
-    logger.info(f"load_intraday_panel: {len(df):,} rows, version={version}, partition={partition}")
-    return df
+            raise FrameError(f"unknown partition {partition!r}; choose from {valid}")
+        df = df[df["partition"] == partition].copy()
+        if df.empty:
+            logger.warning("intraday partition %r returned 0 rows", partition)
+
+    if columns is not None:
+        keep = [
+            c for c in (
+                "instrument_id", "symbol_asof", "session", "bar_start",
+                "bar_end", "available_at", "partition", *columns,
+            ) if c in df.columns
+        ]
+        df = df.loc[:, list(dict.fromkeys(keep))]
+
+    logger.info(
+        "load_intraday_panel: %s rows, version=%s, split=%s, interval=%s, partition=%s",
+        f"{len(df):,}", version, split_version, base_interval, partition)
+    return df.reset_index(drop=True)
