@@ -210,6 +210,10 @@ def assess_batch(batch_id: str, q: float = 0.10, alpha: float = 0.05) -> dict[st
         hyp_id = spec_dict.get("hypothesis_id")
         sig_name = spec_dict.get("signal_name")
         part = spec_dict.get("partition", batch.partition)
+        # Version-4 contracts freeze batch identity into each member spec.
+        # Older stored manifests predate that field, so retain their original
+        # hypothesis/signal/partition lookup without weakening new batches.
+        member_batch_id = spec_dict.get("batch_id")
 
         t_val = None
         exp_id = None
@@ -217,7 +221,10 @@ def assess_batch(batch_id: str, q: float = 0.10, alpha: float = 0.05) -> dict[st
             if exp.is_void:
                 continue
             e_spec = exp.spec or {}
-            if e_spec.get("signal_name") == sig_name and e_spec.get("partition") == part:
+            if (e_spec.get("signal_name") == sig_name
+                    and e_spec.get("partition") == part
+                    and (member_batch_id is None
+                         or e_spec.get("batch_id") == member_batch_id)):
                 exp_id = exp.id
                 for ev in by_exploration.get(exp.id, []):
                     if ev.partition == part:

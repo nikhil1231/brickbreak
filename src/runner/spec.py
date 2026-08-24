@@ -89,6 +89,15 @@ class ExperimentSpec:
     backtest_top_k: int = 5
     backtest_holding: int = 10
     universe_name: str = "liquid_universe"
+    entry_price: str = "close"
+    outcome_kind: str = "raw"
+    signal_kind: str = "dense"
+    baseline_name: str = ""
+    eligibility_name: str = ""
+    batch_id: str = ""
+    batch_hash: str = ""
+    min_significance_t: float = 2.5
+    cost_round_trip_bps: float = 40.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -125,6 +134,18 @@ def validate_spec(
         )
 
     validate_pass_criterion(spec.pass_criterion)
+    if spec.entry_price not in ("open", "close"):
+        raise SpecValidationError("entry_price must be 'open' or 'close'")
+    if spec.outcome_kind not in ("raw", "market_excess"):
+        raise SpecValidationError("outcome_kind must be 'raw' or 'market_excess'")
+    if spec.signal_kind not in ("dense", "selector"):
+        raise SpecValidationError("signal_kind must be 'dense' or 'selector'")
+    if spec.min_significance_t <= 0:
+        raise SpecValidationError("min_significance_t must be positive")
+    if spec.cost_round_trip_bps < 0:
+        raise SpecValidationError("cost_round_trip_bps cannot be negative")
+    if spec.eligibility_name and not spec.eligibility_name.isidentifier():
+        raise SpecValidationError("eligibility_name must be a Python identifier")
 
     # The hypothesis must be registered. Defaulting an unknown id to a
     # "general" family granted it confirmatory access to spent quarters,
@@ -155,4 +176,3 @@ def validate_spec(
         quarters=target_quarters,
         dataset_version=spec.dataset_version,
     )
-

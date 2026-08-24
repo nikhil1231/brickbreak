@@ -58,6 +58,19 @@ class ExperimentContract:
     parameter_neighbourhood: tuple[str, ...] = ()
     search_wide_null: str = ""
     permitted_result_readings: tuple[str, ...] = ()
+    # Version-3 execution semantics. Older frozen contracts remain readable,
+    # but only v3 can express the entry clock and selector/baseline evaluation
+    # needed by the research-director path.
+    entry_price: str = "close"
+    outcome_kind: str = "raw"
+    signal_kind: str = "dense"
+    baseline_name: str = ""
+    baseline_source_hash: str = ""
+    dissent_resolutions: tuple[str, ...] = ()
+    # Version-4 freezes the exact eligible population independently from the
+    # sparse selector and the baseline score.
+    eligibility_name: str = ""
+    eligibility_source_hash: str = ""
     created_at: str = field(
         default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
@@ -109,7 +122,7 @@ class ExperimentContract:
         if self.proposer == self.reviewer:
             raise ExperimentContractValidationError(
                 "proposer and reviewer must be separate entities (PLAN §3.3)")
-        if self.contract_version not in (1, 2):
+        if self.contract_version not in (1, 2, 3, 4):
             raise ExperimentContractValidationError("unsupported contract_version")
         if self.contract_version >= 2:
             for name, value in (
@@ -129,11 +142,45 @@ class ExperimentContract:
             if not self.permitted_result_readings:
                 raise ExperimentContractValidationError(
                     "version-2 contract requires permitted_result_readings")
+        if self.contract_version >= 3:
+            if self.entry_price not in ("open", "close"):
+                raise ExperimentContractValidationError(
+                    "version-3 contract entry_price must be open or close")
+            if self.outcome_kind not in ("raw", "market_excess"):
+                raise ExperimentContractValidationError(
+                    "version-3 contract outcome_kind must be raw or market_excess")
+            if self.signal_kind not in ("dense", "selector"):
+                raise ExperimentContractValidationError(
+                    "version-3 contract signal_kind must be dense or selector")
+            if not self.baseline_name.strip() or not self.baseline_source_hash.strip():
+                raise ExperimentContractValidationError(
+                    "version-3 contract requires a frozen executable baseline")
+            if (not self.baseline_name.isidentifier()
+                    or self.baseline_name == self.signal_name):
+                raise ExperimentContractValidationError(
+                    "version-3 baseline_name must be a distinct Python identifier")
+        if self.contract_version >= 4:
+            if not self.eligibility_name.strip() or not self.eligibility_source_hash.strip():
+                raise ExperimentContractValidationError(
+                    "version-4 contract requires frozen eligibility code")
+            if (not self.eligibility_name.isidentifier()
+                    or self.eligibility_name in (self.signal_name, self.baseline_name)):
+                raise ExperimentContractValidationError(
+                    "version-4 eligibility_name must be a distinct Python identifier")
 
     @property
     def contract_hash(self) -> str:
         semantic_fields = asdict(self)
         semantic_fields.pop("created_at", None)
+        if self.contract_version < 3:
+            for name in (
+                "entry_price", "outcome_kind", "signal_kind", "baseline_name",
+                "baseline_source_hash", "dissent_resolutions",
+            ):
+                semantic_fields.pop(name, None)
+        if self.contract_version < 4:
+            for name in ("eligibility_name", "eligibility_source_hash"):
+                semantic_fields.pop(name, None)
         payload = json.dumps(semantic_fields, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
@@ -146,6 +193,7 @@ class ExperimentContract:
         data["abort_conditions"] = list(self.abort_conditions)
         data["parameter_neighbourhood"] = list(self.parameter_neighbourhood)
         data["permitted_result_readings"] = list(self.permitted_result_readings)
+        data["dissent_resolutions"] = list(self.dissent_resolutions)
         return data
 
     @classmethod
@@ -154,7 +202,7 @@ class ExperimentContract:
         expected_hash = d.pop("contract_hash", None)
         for k in ("horizons", "baselines", "requested_outcome_columns",
                   "abort_conditions", "parameter_neighbourhood",
-                  "permitted_result_readings"):
+                  "permitted_result_readings", "dissent_resolutions"):
             if k in d and isinstance(d[k], (list, tuple)):
                 d[k] = tuple(d[k])
         contract = cls(**d)

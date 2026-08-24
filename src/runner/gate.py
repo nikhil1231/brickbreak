@@ -200,6 +200,9 @@ def reserve_outcome_access(
         raise DispatchGateRefusalError(
             f"Cannot reserve outcome access for unknown partition {spec.partition!r}")
 
+    outcome_prefix = (
+        "excess_ret" if getattr(spec, "outcome_kind", "raw") == "market_excess"
+        else "fwd_ret")
     return record_exposure(
         hypothesis_id=spec.hypothesis_id,
         family=hypothesis.family if hypothesis else "general",
@@ -207,7 +210,7 @@ def reserve_outcome_access(
         level=level,
         dataset_version=spec.dataset_version,
         partition=spec.partition,
-        target_columns=[f"fwd_ret_{int(h)}d_pct" for h in spec.horizons],
+        target_columns=[f"{outcome_prefix}_{int(h)}d_pct" for h in spec.horizons],
         actor="evaluation_vault",
         reason="Reserved directional outcome access before label construction",
         source_id=source_id,

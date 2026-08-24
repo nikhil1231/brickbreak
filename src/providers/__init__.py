@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .pool import (
     BaseProviderAdapter,
+    AntigravityAdapter,
     ClaudeAdapter,
     CodexAdapter,
     GoogleAntigravityAdapter,
@@ -29,6 +30,7 @@ __all__ = [
     "MockProviderAdapter",
     "ClaudeAdapter",
     "CodexAdapter",
+    "AntigravityAdapter",
     "GoogleAntigravityAdapter",
     "SubscriptionLane",
     "SubscriptionPool",

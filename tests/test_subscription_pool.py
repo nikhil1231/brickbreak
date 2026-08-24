@@ -9,9 +9,9 @@ from src.providers import (
     NoFallbackError,
     ProviderRole,
     ProviderType,
+    AntigravityAdapter,
     ClaudeAdapter,
     CodexAdapter,
-    GoogleAntigravityAdapter,
     SubscriptionLane,
     SubscriptionPool,
     route_council_call,
@@ -49,7 +49,7 @@ def test_asymmetric_assignment_validation():
 
     # Different providers allowed
     validate_asymmetric_assignment(ProviderType.CLAUDE, ProviderType.CODEX)
-    validate_asymmetric_assignment(ProviderType.CLAUDE, ProviderType.GOOGLE_ANTIGRAVITY)
+    validate_asymmetric_assignment(ProviderType.CLAUDE, ProviderType.ANTIGRAVITY)
 
 
 def test_route_council_call():
@@ -76,9 +76,33 @@ def test_route_council_call():
     assert resp3 == "Scout idea"
 
 
+def test_route_council_call_forwards_selected_model():
+    seen = {}
+
+    class RecordingAdapter(MockProviderAdapter):
+        def generate(self, prompt, system_prompt="", model=""):
+            seen["model"] = model
+            return "answer"
+
+    pool = SubscriptionPool(lanes=[SubscriptionLane(
+        "x_lane", ProviderType.CODEX,
+        RecordingAdapter(ProviderType.CODEX, "answer"),
+    )])
+
+    route_council_call(
+        pool, role=ProviderRole.SCOUT, prompt="Find alpha",
+        preferred_provider=ProviderType.CODEX, model="gpt-5.6-sol")
+
+    assert seen["model"] == "gpt-5.6-sol"
+
+
 @pytest.mark.parametrize(
     ("adapter", "provider"),
-    [(ClaudeAdapter(), "claude"), (CodexAdapter(), "codex")],
+    [
+        (ClaudeAdapter(), "claude"),
+        (CodexAdapter(), "codex"),
+        (AntigravityAdapter(), "antigravity"),
+    ],
 )
 def test_real_cli_adapters_use_sealed_agent_runner(monkeypatch, adapter, provider):
     from src.runner import agent
@@ -91,14 +115,8 @@ def test_real_cli_adapters_use_sealed_agent_runner(monkeypatch, adapter, provide
             ok=True, text=f"{provider} answer", returncode=0, duration_s=0.1)
 
     monkeypatch.setattr(agent, "run_agent", fake_run)
-    assert adapter.generate("prompt", system_prompt="system") == f"{provider} answer"
+    assert adapter.generate("prompt", system_prompt="system", model="selected") == f"{provider} answer"
     assert seen["provider"] == provider
+    assert seen["model"] == "selected"
     assert seen["allowed_tools"] == ()
     assert seen["sandbox"] == "read-only"
-
-
-def test_unconfigured_google_lane_is_not_faked():
-    adapter = GoogleAntigravityAdapter()
-    assert not adapter.is_available()
-    with pytest.raises(Exception, match="no configured supported CLI"):
-        adapter.generate("prompt")

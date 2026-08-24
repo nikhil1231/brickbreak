@@ -419,6 +419,68 @@ def quantile_profile(
     }
 
 
+def selector_vs_baseline(
+    df: pd.DataFrame,
+    signal_col: str,
+    baseline_col: str,
+    forward_col: str,
+    date_col: str = "date",
+    horizon: int | None = None,
+) -> dict:
+    """Compare a sparse selector with a baseline at the identical daily take rate.
+
+    Non-candidates are NaN by contract. On each active session the baseline
+    takes exactly as many names as the selector, preventing selectivity from
+    being mistaken for skill. The headline observation is one paired
+    selector-minus-baseline mean per session, corrected for overlapping
+    horizons.
+    """
+    required = [date_col, signal_col, baseline_col, forward_col]
+    d = df[required].copy()
+    d = d.dropna(subset=[date_col, forward_col, baseline_col])
+    h = horizon if horizon is not None else horizon_from_column(forward_col)
+    selector_rows = []
+    baseline_rows = []
+    paired = []
+    n_selected = 0
+    for date, group in d.groupby(date_col, sort=True):
+        selected = group[group[signal_col].notna()]
+        n_take = len(selected)
+        if n_take == 0:
+            continue
+        baseline = group.nlargest(n_take, baseline_col, keep="first")
+        if len(baseline) != n_take:
+            continue
+        sel_mean = float(selected[forward_col].mean())
+        base_mean = float(baseline[forward_col].mean())
+        selector_rows.append((date, sel_mean))
+        baseline_rows.append((date, base_mean))
+        paired.append((date, sel_mean - base_mean))
+        n_selected += n_take
+
+    if not paired:
+        return {
+            "n_selected": 0, "n_sessions": 0, "selected_mean_bps": np.nan,
+            "baseline_mean_bps": np.nan, "lift_bps": np.nan,
+            "lift_t": np.nan, "lift_naive_t": np.nan,
+        }
+    paired_df = pd.DataFrame(paired, columns=[date_col, "diff"])
+    sel = pd.Series(dict(selector_rows)).sort_index()
+    base = pd.Series(dict(baseline_rows)).sort_index()
+    stats = cluster_stats(
+        paired_df["diff"], paired_df[date_col], lags=max(0, int(h) - 1))
+    return {
+        "n_selected": int(n_selected),
+        "n_sessions": int(len(paired_df)),
+        "selected_mean_bps": round(float(sel.mean()) * 100.0, 1),
+        "baseline_mean_bps": round(float(base.mean()) * 100.0, 1),
+        "lift_bps": round(float(paired_df["diff"].mean()) * 100.0, 1),
+        "lift_t": stats["t"],
+        "lift_naive_t": stats["naive_t"],
+        "horizon": int(h),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Signal Mechanics (Turnover, Autocorrelation, Coverage)
 # ---------------------------------------------------------------------------

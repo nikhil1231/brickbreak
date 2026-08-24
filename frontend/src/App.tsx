@@ -9,9 +9,13 @@ import { IdeaGraphView } from './components/alpha/IdeaGraphView';
 import { SignalCompare } from './components/alpha/SignalCompare';
 import { BudgetLedgerView } from './components/alpha/BudgetLedgerView';
 import { CatalogueView } from './components/alpha/CatalogueView';
+import { SettingsView } from './components/settings/SettingsView';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('explore');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    const requested = new URLSearchParams(window.location.search).get('tab');
+    return requested === 'settings' ? 'settings' : 'explore';
+  });
   const [statusText, setStatusText] = useState<string>('');
   const [metaText, setMetaText] = useState<string>('');
 
@@ -35,6 +39,7 @@ export const App: React.FC = () => {
           {activeTab === 'compare' && <SignalCompare />}
           {activeTab === 'ledger' && <BudgetLedgerView />}
           {activeTab === 'catalogue' && <CatalogueView />}
+          {activeTab === 'settings' && <SettingsView />}
           {activeTab === 'screener' && (
             <ScreenerView
               onStatusChange={setStatusText}

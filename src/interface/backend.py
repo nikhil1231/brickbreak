@@ -11,6 +11,7 @@ Provides REST API endpoints and an interactive single-page web console for:
 from __future__ import annotations
 
 import http.server
+import html
 import json
 import math
 import socketserver
@@ -26,7 +27,7 @@ from ..persistence.models import Edge, Hypothesis, RELATION_TYPES
 from ..discretionary import replay as d_replay
 from ..research_data import catalogue
 from ..runner import agent, compare, job, planner, spec, suggest
-from . import director_api, screener_api
+from . import breeze_auth, director_api, screener_api
 
 FRONTEND_DIR = config.PROJECT_ROOT / "frontend"
 DIST_DIR = FRONTEND_DIR / "dist"
@@ -84,6 +85,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
       <button onclick="switchTab('compare')">Signal Compare</button>
       <button onclick="switchTab('ledger')">Budget Ledger</button>
       <button onclick="switchTab('catalogue')">Catalogue</button>
+      <button onclick="switchTab('settings')">Settings</button>
     </nav>
   </header>
 
@@ -196,6 +198,32 @@ HTML_DASHBOARD = """<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- Local Settings -->
+  <div id="tab-settings" class="tab-content">
+    <div class="card">
+      <h2>ICICI Direct Breeze <span><span id="breeze-status" class="badge"></span>
+        <small id="breeze-refreshed" style="color:var(--text-muted); margin-left:8px;"></small></span></h2>
+      <p style="color:var(--text-muted); margin-bottom:16px; font-size:13px;">
+        Set this exact URL as the redirect URL on your Breeze API app. The server
+        verifies each callback before updating BREEZE_SESSION_TOKEN in .env.
+      </p>
+      <label style="font-size:12px; color:var(--text-muted);">Registered callback URL</label>
+      <input id="breeze-callback" type="text" readonly>
+      <div style="margin:16px 0; padding:14px; border:1px solid var(--border); border-radius:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <div>
+            <label style="font-size:12px; color:var(--text-muted);">Authenticator code</label>
+            <div id="breeze-totp" style="font:700 28px monospace; letter-spacing:.2em; margin-top:4px;">Not configured</div>
+          </div>
+          <small id="breeze-totp-countdown" style="color:var(--text-muted);"></small>
+        </div>
+        <small id="breeze-totp-help" style="color:var(--text-muted);">Add BREEZE_TOTP_SECRET to .env and restart the server.</small>
+      </div>
+      <p id="breeze-error" style="color:var(--red); margin-bottom:12px; font-size:12px;"></p>
+      <button id="breeze-login" class="btn-primary" onclick="beginBreezeLogin()">Connect Breeze</button>
+    </div>
+  </div>
+
   <script>
     function switchTab(name) {
       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -206,6 +234,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
       if (name === 'graph') loadGraph();
       if (name === 'ledger') loadLedger();
       if (name === 'catalogue') loadCatalogue();
+      if (name === 'settings') loadBreezeSettings();
     }
 
     async function loadHypotheses() {
@@ -256,6 +285,70 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         tbody.appendChild(tr);
       });
     }
+
+    let breezeLoginUrl = '/auth/breeze/login';
+    let breezeTotpTimer = null;
+
+    async function loadBreezeTotp() {
+      const code = document.getElementById('breeze-totp');
+      const countdown = document.getElementById('breeze-totp-countdown');
+      try {
+        const res = await fetch('/api/settings/breeze/totp', {cache: 'no-store'});
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not generate code');
+        code.innerText = data.code;
+        countdown.innerText = 'Refreshes in ' + data.valid_for_seconds + 's';
+      } catch (error) {
+        code.innerText = 'Unavailable';
+        countdown.innerText = error.message;
+      }
+    }
+
+    async function loadBreezeSettings() {
+      const res = await fetch('/api/settings/breeze');
+      const data = await res.json();
+      breezeLoginUrl = data.login_url || data.login_path || breezeLoginUrl;
+      document.getElementById('breeze-callback').value = data.callback_url || '';
+      document.getElementById('breeze-error').innerText = data.error || '';
+      const status = document.getElementById('breeze-status');
+      status.className = 'badge ' + (data.has_session_token ? 'badge-success' : 'badge-exploring');
+      status.innerText = data.has_session_token ? 'token saved' : 'login needed';
+      const refreshed = document.getElementById('breeze-refreshed');
+      refreshed.innerText = data.has_session_token
+        ? (data.session_refreshed_at
+          ? 'Last refreshed ' + new Date(data.session_refreshed_at).toLocaleString()
+          : 'Last refresh time unavailable')
+        : '';
+      const button = document.getElementById('breeze-login');
+      button.disabled = !data.configured;
+      button.innerText = data.has_session_token ? 'Refresh Breeze login' : 'Connect Breeze';
+      clearInterval(breezeTotpTimer);
+      breezeTotpTimer = null;
+      const totpHelp = document.getElementById('breeze-totp-help');
+      if (data.totp_configured) {
+        totpHelp.innerText = 'Generated locally; the seed is never sent to this page.';
+        loadBreezeTotp();
+        breezeTotpTimer = setInterval(loadBreezeTotp, 1000);
+      } else {
+        document.getElementById('breeze-totp').innerText = 'Not configured';
+        document.getElementById('breeze-totp-countdown').innerText = '';
+        totpHelp.innerText = 'Add BREEZE_TOTP_SECRET to .env and restart the server.';
+      }
+    }
+
+    function beginBreezeLogin() {
+      const loginUrl = new URL(breezeLoginUrl, window.location.href);
+      loginUrl.searchParams.set('opener_origin', window.location.origin);
+      const loginTab = window.open(loginUrl.toString(), '_blank');
+      if (!loginTab) window.location.assign(loginUrl.toString());
+    }
+
+    window.addEventListener('message', e => {
+      if (e.origin === window.location.origin && e.data?.type === 'breeze-auth-complete') {
+        loadBreezeSettings();
+      }
+    });
+    window.addEventListener('focus', loadBreezeSettings);
 
     async function runExploration() {
       const hypId = document.getElementById('exp-hyp-id').value;
@@ -356,6 +449,28 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
+        if path == breeze_auth.LOGIN_PATH:
+            try:
+                creds = config.load_credentials(require_session=False)
+            except config.ConfigError as exc:
+                self._send_auth_result(False, str(exc), status=400)
+                return
+            login_query = urllib.parse.parse_qs(parsed.query)
+            opener_origin = breeze_auth.safe_local_origin(
+                next(iter(login_query.get("opener_origin", [])), None)
+            )
+            nonce = breeze_auth.PENDING_LOGINS.begin(opener_origin)
+            self.send_response(302)
+            self.send_header("Location", creds.login_url)
+            self.send_header("Set-Cookie", breeze_auth.login_cookie(nonce))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+
+        if path == breeze_auth.CALLBACK_PATH:
+            self._handle_breeze_callback(parsed)
+            return
+
         if path in ("/", "/index.html"):
             if DIST_DIR.exists() and (DIST_DIR / "index.html").exists():
                 self.send_response(200)
@@ -411,6 +526,21 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send_json(
                     {"error": f"{type(exc).__name__}: {exc}"}, status=500)
+            return
+
+        if path == "/api/settings/breeze":
+            port = int(self.server.server_address[1])
+            self._send_json(breeze_auth.settings_payload(port))
+            return
+
+        if path == "/api/settings/breeze/totp":
+            try:
+                payload = breeze_auth.totp_payload()
+            except breeze_auth.BreezeAuthError as exc:
+                self._send_json({"error": str(exc)}, status=400,
+                                cache_control="no-store")
+                return
+            self._send_json(payload, cache_control="no-store")
             return
 
         if path == "/api/hypotheses":
@@ -541,6 +671,13 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
         path = parsed.path
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length) if length > 0 else b"{}"
+
+        # ICICI Direct returns the popup login as a form POST in some browser
+        # flows. Pasting the same callback URL into the address bar creates a
+        # GET, so both methods must reach the identical verified handler.
+        if path == breeze_auth.CALLBACK_PATH:
+            self._handle_breeze_callback(parsed, body)
+            return
 
         try:
             req_data = json.loads(body.decode("utf-8"))
@@ -872,7 +1009,73 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
             "n_proposed_ever": len(store.list_suggestions()),
         }
 
-    def _send_json(self, data: Any, status: int = 200) -> None:
+    def _handle_breeze_callback(
+        self, parsed: urllib.parse.ParseResult, body: bytes | None = None,
+    ) -> None:
+        query = urllib.parse.parse_qs(parsed.query)
+        if body:
+            content_type = self.headers.get("Content-Type", "").split(";", 1)[0]
+            posted: dict[str, list[str]] = {}
+            try:
+                if content_type == "application/x-www-form-urlencoded":
+                    posted = urllib.parse.parse_qs(body.decode("utf-8"))
+                elif content_type == "application/json":
+                    decoded = json.loads(body.decode("utf-8"))
+                    if isinstance(decoded, dict):
+                        posted = {str(k): [str(v)] for k, v in decoded.items()
+                                  if v is not None}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                posted = {}
+            for key, values in posted.items():
+                query.setdefault(key, []).extend(values)
+
+        token = breeze_auth.extract_session_token(query)
+        if not token:
+            provider_error = next(iter(query.get("error", [])), "")
+            message = provider_error or "The callback did not include an apisession token."
+            self._send_auth_result(False, message, status=400)
+            return
+        valid_login, opener_origin = breeze_auth.PENDING_LOGINS.consume_cookie(
+            self.headers.get("Cookie")
+        )
+        if not valid_login and self.command == "POST":
+            valid_login, opener_origin = breeze_auth.PENDING_LOGINS.consume_latest()
+        if not valid_login:
+            self._send_auth_result(
+                False,
+                "This Breeze login was not started from the brickbreak Settings page, or it expired.",
+                status=400,
+            )
+            return
+        try:
+            creds = config.load_credentials(require_session=False)
+            breeze_auth.validate_session_token(creds, token)
+            config.save_breeze_session_token(token)
+        except (config.ConfigError, breeze_auth.BreezeAuthError) as exc:
+            self._send_auth_result(False, str(exc), status=400,
+                                   clear_cookie=True,
+                                   opener_origin=opener_origin)
+            return
+        except Exception as exc:
+            self._send_auth_result(
+                False,
+                f"Could not save the verified Breeze session ({type(exc).__name__}: {exc}).",
+                status=500,
+                clear_cookie=True,
+                opener_origin=opener_origin,
+            )
+            return
+        self._send_auth_result(
+            True,
+            "The new Breeze session was verified and saved to .env.",
+            clear_cookie=True,
+            opener_origin=opener_origin,
+        )
+
+    def _send_json(
+        self, data: Any, status: int = 200,
+        cache_control: str | None = None,
+    ) -> None:
         # `allow_nan=False` plus a NaN-scrubbing pass, not one or the other.
         # Python emits bare `NaN` by default, which is *not* JSON: the browser
         # throws on parse and the whole view fails to load rather than showing
@@ -883,6 +1086,51 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        if cache_control:
+            self.send_header("Cache-Control", cache_control)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_auth_result(
+        self,
+        success: bool,
+        message: str,
+        status: int = 200,
+        clear_cookie: bool = False,
+        opener_origin: str | None = None,
+    ) -> None:
+        """Render a tiny popup-safe callback page without exposing the token."""
+        title = "Breeze connected" if success else "Breeze login failed"
+        colour = "#3fb950" if success else "#f85149"
+        safe_title = html.escape(title)
+        safe_message = html.escape(message)
+        success_js = "true" if success else "false"
+        opener_origin_js = json.dumps(opener_origin)
+        body = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>{safe_title}</title><style>
+body {{ margin:0; min-height:100vh; display:grid; place-items:center; background:#0d1117;
+color:#c9d1d9; font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }}
+main {{ width:min(420px,calc(100% - 40px)); padding:28px; background:#161b22;
+border:1px solid #30363d; border-radius:10px; }}
+h1 {{ margin:0 0 10px; color:{colour}; font-size:20px; }}
+p {{ line-height:1.55; }} a {{ color:#58a6ff; }}
+</style></head><body><main><h1>{safe_title}</h1><p>{safe_message}</p>
+<p><a href="/?tab=settings">Return to Settings</a></p></main>
+<script>
+history.replaceState(null, '', '/auth/breeze/complete');
+if (window.opener) {{
+  const openerOrigin = {opener_origin_js} || window.location.origin;
+  window.opener.postMessage({{type:'breeze-auth-complete',success:{success_js}}}, openerOrigin);
+}}
+if ({success_js}) window.setTimeout(() => window.close(), 700);
+</script></body></html>""".encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        if clear_cookie:
+            self.send_header("Set-Cookie", breeze_auth.clear_login_cookie())
         self.end_headers()
         self.wfile.write(body)
 

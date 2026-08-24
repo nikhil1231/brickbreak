@@ -111,19 +111,23 @@ def run_preflight(
     max_cov = int(counts.max()) if len(counts) > 0 else 0
 
     total_sessions = df[date_col].nunique()
-    active_sessions = (counts >= 10).sum()
+    selector_mode = bool(spec and spec.signal_kind == "selector")
+    session_name_floor = 1 if selector_mode else 10
+    min_coverage_names = (1.5 if selector_mode else cfg.min_coverage_names)
+    active_sessions = (counts >= session_name_floor).sum()
     active_session_pct = (active_sessions / max(1, total_sessions))
 
-    if mean_cov < cfg.min_coverage_names:
+    if mean_cov < min_coverage_names:
         reasons.append(
             f"Mean universe coverage of {mean_cov:.1f} names/session is below "
-            f"minimum required {cfg.min_coverage_names:.1f}"
+            f"minimum required {min_coverage_names:.1f}"
         )
         failure_class = failure_class or "INSUFFICIENT_SAMPLE"
 
     if active_session_pct < cfg.min_active_sessions_pct:
         reasons.append(
-            f"Only {active_session_pct*100:.1f}% of sessions meet 10-name minimum "
+            f"Only {active_session_pct*100:.1f}% of sessions meet "
+            f"{session_name_floor}-name minimum "
             f"(required >= {cfg.min_active_sessions_pct*100:.0f}%)"
         )
         failure_class = failure_class or "INSUFFICIENT_SAMPLE"
@@ -155,7 +159,7 @@ def run_preflight(
             continue
 
         def _corr(g: pd.DataFrame) -> float:
-            if len(g) < 10:
+            if len(g) < (3 if selector_mode else 10):
                 return np.nan
             return diagnostics.spearman_corr(g[signal_col], g[factor_col])
 
@@ -189,7 +193,7 @@ def run_preflight(
             continue
 
         def _corr_sig(g: pd.DataFrame) -> float:
-            if len(g) < 10:
+            if len(g) < (3 if selector_mode else 10):
                 return np.nan
             return diagnostics.spearman_corr(g[signal_col], g[other_name])
 

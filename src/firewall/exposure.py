@@ -57,8 +57,14 @@ class ExposureEntry:
     actor: str
     reason: str
     source_id: str = ""
+    voided_reason: str = ""
+    voided_at: str = ""
     timestamp: str = field(
         default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+    @property
+    def is_void(self) -> bool:
+        return bool(self.voided_reason)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -73,6 +79,8 @@ class ExposureEntry:
             "actor": self.actor,
             "reason": self.reason,
             "source_id": self.source_id,
+            "voided_reason": self.voided_reason,
+            "voided_at": self.voided_at,
             "timestamp": self.timestamp,
         }
 
@@ -154,6 +162,8 @@ def check_weekly_exposure_limit(entries: Sequence[ExposureEntry],
     cutoff = ref_time - timedelta(days=7)
     recent_outcome_exposures = 0
     for e in entries:
+        if e.is_void:
+            continue
         if e.exposure_level in (ExposureLevel.E1_SHAPE, ExposureLevel.E2_DIRECTIONAL_TRAIN):
             try:
                 t = datetime.strptime(e.timestamp, "%Y-%m-%d %H:%M:%S")
@@ -202,6 +212,13 @@ def record_exposure(hypothesis_id: str,
         raise ValueError("outcome exposure must declare target_columns")
 
     p = path or EXPOSURE_LOG_PATH
+    production_path = config.METADATA_DIR / "research_store" / "exposure_log.json"
+    if (p.resolve() == production_path.resolve()
+            and source_id
+            and "TEST" in source_id.upper()):
+        raise ExposureLogError(
+            f"test-like source_id {source_id!r} cannot spend the production "
+            "outcome ledger; pass an isolated exposure path")
     with _exclusive_log_lock(p):
         entries = _read_exposure_log(p)
         if source_id:

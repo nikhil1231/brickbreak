@@ -85,6 +85,29 @@ class TestFailureClassifier:
         cls, interp, next_moves = classify_result(report)
         assert cls == "SUCCESS"
 
+    def test_selector_uses_frozen_baseline_lift_and_cost_bar(self):
+        spec = ExperimentSpec(
+            hypothesis_id="H_TEST", question="q", signal_name="selector",
+            horizons=(5,), primary_horizon=5, signal_kind="selector",
+            baseline_name="baseline", min_significance_t=2.5,
+            cost_round_trip_bps=40.0,
+            pass_criterion={
+                "min_mean_ic": 0.01,
+                "min_spread_bps": 80.0,
+                "min_monotonicity": 0.5,
+            })
+        report = {
+            "n_total_rows": 10_000,
+            "baseline_comparison": {
+                "n_sessions": 80, "n_selected": 400,
+                "selected_mean_bps": 135.0, "baseline_mean_bps": 40.0,
+                "lift_bps": 95.0, "lift_t": 3.1,
+            },
+        }
+        assert classify_result(report, spec)[0] == "SUCCESS"
+        report["baseline_comparison"]["lift_t"] = 2.0
+        assert classify_result(report, spec)[0] == "NO_SIGNAL"
+
 
 class TestSignalComparison:
     def test_compare_signals(self):

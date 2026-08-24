@@ -108,21 +108,24 @@ def load_contract(path_or_id: str | Path) -> tuple[ExperimentContract, Lifecycle
     return contract, lifecycle
 
 
-def compile_qualification(
+def _build_contract(
     qualification: QualificationArtifact,
     reviewer: str,
-    cost_round_trip_bps: float = 40.0,
-    capacity_limit_inr: float = 1_000_000.0,
-    min_significance_t: float = 2.5,
-) -> tuple[ExperimentContract, LifecycleTracker, BatchManifest]:
-    """Freeze the only object the evaluation vault is allowed to execute."""
+    batch_id: str,
+    contract_id: str,
+    batch_size: int,
+    cost_round_trip_bps: float,
+    capacity_limit_inr: float,
+    min_significance_t: float,
+) -> tuple[ExperimentContract, LifecycleTracker]:
     if not qualification.approved:
         raise ValueError(
             f"qualification {qualification.qualification_id} was rejected: "
             f"{'; '.join(qualification.rejection_reasons)}")
-    # The executor resolves qualifications by immutable ID.  Import a
-    # user-supplied artifact into the canonical store before freezing a pointer.
-    save_qualification(qualification)
+    if qualification.artifact_version < 3:
+        raise ValueError(
+            "legacy qualification does not freeze exact eligibility; re-qualify "
+            "it before compiling")
     dossier = qualification.mechanism_dossier
     proposer = qualification.provider or dossier.proposer
     if not reviewer.strip() or reviewer == proposer:
@@ -135,10 +138,8 @@ def compile_qualification(
     }
     validate_pass_criterion(pass_criterion)
 
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    batch_id = f"BATCH_{stamp}"
     contract = ExperimentContract(
-        contract_id=f"EC_{stamp}",
+        contract_id=contract_id,
         dossier_id=dossier.dossier_id,
         dossier_hash=dossier.dossier_hash,
         hypothesis_id=dossier.hypothesis_id,
@@ -150,6 +151,8 @@ def compile_qualification(
         partition="train",
         population_definition=dossier.population,
         estimand=(f"Cross-sectional {qualification.primary_horizon}-session "
+                  f"{qualification.entry_price}-entry "
+                  f"{'market-excess' if qualification.outcome_kind == 'market_excess' else 'raw'} "
                   "forward return, net of the registered cost hurdle"),
         horizons=qualification.horizons,
         cost_round_trip_bps=cost_round_trip_bps,
@@ -157,11 +160,11 @@ def compile_qualification(
         baselines=(dossier.strongest_baseline, "take_all", "walk_forward_rank_model"),
         min_magnitude_bps=max(cost_round_trip_bps, dossier.min_effect_bps),
         min_significance_t=min_significance_t,
-        min_independent_blocks=max(
-            8, int(qualification.structural_gate["estimated_independent_blocks"])),
+        min_independent_blocks=8,
         exposure_level_incurred="E2",
         requested_outcome_columns=tuple(
-            f"fwd_ret_{h}d_pct" for h in qualification.horizons),
+            f"{'excess_ret' if qualification.outcome_kind == 'market_excess' else 'fwd_ret'}_{h}d_pct"
+            for h in qualification.horizons),
         memory_risk_class=dossier.memory_risk_classification,
         forward_confirmation_path=dossier.forward_confirmation_path,
         execution_code_or_prompt_hash=qualification.signal_source_hash,
@@ -173,7 +176,7 @@ def compile_qualification(
             "outcome exposure reservation is refused",
             "effective independent blocks fall below the frozen floor",
         ),
-        contract_version=2,
+        contract_version=4,
         qualification_id=qualification.qualification_id,
         qualification_hash=qualification.qualification_hash,
         signal_name=qualification.signal_name,
@@ -182,12 +185,21 @@ def compile_qualification(
         falsification_condition=(
             f"mean IC <= 0 or net Q5-Q1 spread < {dossier.min_effect_bps:.1f} bps"),
         parameter_neighbourhood=("exact authored signal; no post-reveal tuning",),
-        search_wide_null="maximum statistic across this frozen one-member batch",
+        search_wide_null=(
+            f"maximum statistic and FDR across this frozen {batch_size}-member batch"),
         permitted_result_readings=(
             "registered standard report in full",
             "registered failure class and preregistered aggregate metrics",
             "no post-hoc cells, date slices, or parameter variants",
         ),
+        entry_price=qualification.entry_price,
+        outcome_kind=qualification.outcome_kind,
+        signal_kind=qualification.signal_kind,
+        baseline_name=qualification.baseline_name,
+        baseline_source_hash=qualification.baseline_source_hash,
+        dissent_resolutions=qualification.dissent_resolutions,
+        eligibility_name=qualification.eligibility_name,
+        eligibility_source_hash=qualification.eligibility_source_hash,
     )
 
     lifecycle = LifecycleTracker.from_dict(qualification.lifecycle)
@@ -195,7 +207,7 @@ def compile_qualification(
         LifecycleState.EXPERIMENT_CONTRACTED,
         actor=reviewer,
         input_hashes=(qualification.qualification_hash, contract.contract_hash),
-        reason="Independent reviewer froze the version-2 experiment contract",
+        reason="Independent reviewer froze the version-4 experiment contract",
     )
     lifecycle.transition(
         LifecycleState.BATCH_FROZEN,
@@ -204,27 +216,87 @@ def compile_qualification(
         reason="Contract enrolled in its immutable multiplicity batch",
     )
 
-    spec = contract_to_spec(contract)
-    specs = [spec.to_dict()]
+    return contract, lifecycle
+
+
+def compile_batch(
+    qualifications: list[QualificationArtifact],
+    reviewer: str,
+    cost_round_trip_bps: float = 40.0,
+    capacity_limit_inr: float = 1_000_000.0,
+    min_significance_t: float = 2.5,
+) -> tuple[list[ExperimentContract], list[LifecycleTracker], BatchManifest]:
+    """Atomically freeze one or more qualifications into one real batch."""
+    if not qualifications:
+        raise ValueError("cannot compile an empty qualification batch")
+    ids = [item.qualification_id for item in qualifications]
+    if len(ids) != len(set(ids)):
+        raise ValueError("qualification batch contains duplicate IDs")
+    datasets = {item.dataset_version for item in qualifications}
+    partitions = {item.partition for item in qualifications}
+    if len(datasets) != 1 or partitions != {"train"}:
+        raise ValueError("all batch members must use the same train dataset version")
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    batch_id = f"BATCH_{stamp}"
+    contracts: list[ExperimentContract] = []
+    lifecycles: list[LifecycleTracker] = []
+    for index, qualification in enumerate(qualifications, start=1):
+        suffix = f"_{index:02d}" if len(qualifications) > 1 else ""
+        contract, lifecycle = _build_contract(
+            qualification, reviewer=reviewer, batch_id=batch_id,
+            contract_id=f"EC_{stamp}{suffix}", batch_size=len(qualifications),
+            cost_round_trip_bps=cost_round_trip_bps,
+            capacity_limit_inr=capacity_limit_inr,
+            min_significance_t=min_significance_t,
+        )
+        contracts.append(contract)
+        lifecycles.append(lifecycle)
+
+    specs = [contract_to_spec(contract).to_dict() for contract in contracts]
     batch = BatchManifest(
         batch_id=batch_id,
-        partition=contract.partition,
-        proposal_ids=[qualification.qualification_id],
+        partition="train",
+        proposal_ids=ids,
         specs=specs,
         batch_hash=compute_batch_hash(specs),
         status="preregistered",
     )
-    claim = _claim_qualification(qualification.qualification_id,
-                                 contract.contract_id)
+    claims: list[Path] = []
+    saved_contracts: list[Path] = []
     try:
+        for qualification, contract in zip(qualifications, contracts):
+            save_qualification(qualification)
+            claims.append(_claim_qualification(
+                qualification.qualification_id, contract.contract_id))
         store.save_batch(batch)
-        # Persist while the atomic claim is held. Callers may save the same
-        # immutable payload again, but no second contract can be created.
-        save_contract(contract, lifecycle)
+        for contract, lifecycle in zip(contracts, lifecycles):
+            saved_contracts.append(save_contract(contract, lifecycle))
     except Exception:
-        claim.unlink(missing_ok=True)
+        for path in saved_contracts:
+            path.unlink(missing_ok=True)
+        (store.BATCHES_DIR / f"{batch.batch_id}.json").unlink(missing_ok=True)
+        for claim in claims:
+            claim.unlink(missing_ok=True)
         raise
-    return contract, lifecycle, batch
+    return contracts, lifecycles, batch
+
+
+def compile_qualification(
+    qualification: QualificationArtifact,
+    reviewer: str,
+    cost_round_trip_bps: float = 40.0,
+    capacity_limit_inr: float = 1_000_000.0,
+    min_significance_t: float = 2.5,
+) -> tuple[ExperimentContract, LifecycleTracker, BatchManifest]:
+    """Compatibility wrapper for a one-member frozen batch."""
+    contracts, lifecycles, batch = compile_batch(
+        [qualification], reviewer=reviewer,
+        cost_round_trip_bps=cost_round_trip_bps,
+        capacity_limit_inr=capacity_limit_inr,
+        min_significance_t=min_significance_t,
+    )
+    return contracts[0], lifecycles[0], batch
 
 
 def contract_to_spec(contract: ExperimentContract) -> ExperimentSpec:
@@ -242,4 +314,12 @@ def contract_to_spec(contract: ExperimentContract) -> ExperimentSpec:
         pass_criterion=dict(contract.pass_criterion),
         falsification_condition=contract.falsification_condition,
         backtest_holding=contract.horizons[0],
+        entry_price=contract.entry_price,
+        outcome_kind=contract.outcome_kind,
+        signal_kind=contract.signal_kind,
+        baseline_name=contract.baseline_name,
+        eligibility_name=contract.eligibility_name,
+        batch_id=contract.batch_id,
+        min_significance_t=contract.min_significance_t,
+        cost_round_trip_bps=contract.cost_round_trip_bps,
     )

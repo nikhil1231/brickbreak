@@ -95,7 +95,8 @@ class TestInterfaceAPI:
         assert req.status == 200
         data = json.loads(req.read().decode("utf-8"))
         assert data["default_provider"] == "claude"
-        assert {p["id"] for p in data["providers"]} == {"claude", "codex"}
+        assert {p["id"] for p in data["providers"]} == {
+            "claude", "codex", "antigravity"}
         assert all(p["models"] for p in data["providers"])
 
     def test_director_state_is_mounted_on_primary_backend(self, server,
@@ -424,7 +425,7 @@ def test_cli_attack_dossier(tmp_path, capsys):
         confounds=(),
         capacity_notes="Capacity",
         min_effect_bps=50.0,
-        nearest_hypothesis_ids=(),
+        nearest_hypothesis_ids=("H001",),
         required_observations_absent=(),
         memory_risk_classification="anon",
         forward_confirmation_path="fwd",

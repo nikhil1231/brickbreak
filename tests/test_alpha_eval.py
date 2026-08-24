@@ -65,6 +65,25 @@ class TestDiagnostics:
         assert sm["autocorrelation_1d"] == 1.0
         assert sm["mean_coverage_names"] == 10.0
 
+    def test_sparse_selector_is_paired_to_baseline_at_same_take_rate(self):
+        rng = np.random.default_rng(7)
+        dates = np.repeat(pd.date_range("2023-01-01", periods=40), 10)
+        rank = np.tile(np.arange(10, dtype=float), 40)
+        selector = np.where(rank >= 8, rank, np.nan)
+        outcomes = rank * 0.10 + rng.normal(0, 0.05, len(rank))
+        df = pd.DataFrame({
+            "date": dates,
+            "selector": selector,
+            "baseline": -rank,
+            "fwd_ret_1d_pct": outcomes,
+        })
+        result = diagnostics.selector_vs_baseline(
+            df, "selector", "baseline", "fwd_ret_1d_pct")
+        assert result["n_selected"] == 80
+        assert result["n_sessions"] == 40
+        assert result["lift_bps"] > 50
+        assert result["lift_t"] > 2
+
 
 class TestNeutralisation:
     def test_cross_sectional_residualize_orthogonal(self):

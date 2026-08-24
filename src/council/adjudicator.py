@@ -49,9 +49,15 @@ def compute_expected_information_score(dossier: MechanismDossier,
     """Compute expected-information score from PLAN.md §10."""
     mean_review_score = float(np.mean([r.score for r in reviews])) if reviews else 5.0
     novelty_multiplier = 1.2 if novelty.is_novel else 0.5
-    cost_margin = max(1.0, dossier.min_effect_bps / 40.0)
+    # A declared effect threshold is not evidence that an effect is likely, so
+    # it must not increase priority.  Price the incremental research project
+    # directly and heavily prefer candidates that run on data already owned.
+    engineering_penalty = 1.0 + dossier.estimated_engineering_days / 2.0
+    cash_penalty = 1.0 + dossier.estimated_cash_cost_usd / 50.0
+    blocking_gap_penalty = 2.0 if dossier.has_data_gap else 1.0
 
-    score = mean_review_score * novelty_multiplier * cost_margin
+    score = (mean_review_score * novelty_multiplier /
+             (engineering_penalty * cash_penalty * blocking_gap_penalty))
     return round(float(score), 2)
 
 
@@ -76,7 +82,12 @@ def adjudicate_dossier(dossier: MechanismDossier,
 
     # Check fatal objections
     has_fatal = any(d.severity == "fatal" for d in all_dissents)
-    all_approved = all(r.approved for r in reviews) and novelty.is_novel and not has_fatal
+    all_approved = (
+        all(r.approved for r in reviews)
+        and novelty.is_novel
+        and novelty.lineage_complete
+        and not has_fatal
+    )
 
     priority = compute_expected_information_score(dossier, reviews, novelty)
 
@@ -111,6 +122,15 @@ def adjudicate_dossier(dossier: MechanismDossier,
         forward_confirmation_path=dossier.forward_confirmation_path,
         proposer=dossier.proposer,
         hostile_reviewer=dossier.hostile_reviewer,
+        available_observations=dossier.available_observations,
+        optional_observations_absent=dossier.optional_observations_absent,
+        estimated_engineering_days=dossier.estimated_engineering_days,
+        estimated_cash_cost_usd=dossier.estimated_cash_cost_usd,
+        required_feature_names=dossier.required_feature_names,
+        data_adapter=dossier.data_adapter,
+        entry_price=dossier.entry_price,
+        outcome_kind=dossier.outcome_kind,
+        signal_kind=dossier.signal_kind,
         dissents=tuple(all_dissents),
     )
 

@@ -2506,3 +2506,415 @@ open→close and the short tail +41.7 bps gross. At the project's 40-bps round
 trip, neither supports the claimed two-sided signal, and the equal-weight
 short-only train book is negative after costs. **H044 is rejected without
 opening `validation`; the withdrawn cuts must not be dispatched.**
+
+
+## H045 — Equity-futures cash-and-carry earns an attractive return on deployed capital
+
+Status: **PROPOSED — DATA GAP.** Registered 2026-08-23 before any futures-basis
+outcome was read. `conditions-on` nothing; this is a fresh family.
+
+Family: `equity_futures_carry`. **Kind of work: hypothesis generation.** A
+source probe and outcome-free structural pre-flight may proceed; no historical
+entry rule, early-exit rule or leverage policy has been selected or scored.
+
+**The claim.** At observable executable prices, selected NSE single-stock
+futures sometimes trade sufficiently rich to cash that buying the shares and
+shorting the corresponding future earns a positive annualised return after
+financing, dividends, all entry/exit or physical-settlement charges, bid-ask
+slippage, margin collateral drag and operational buffers. The primary estimand
+is return on total capital encumbered, not the headline futures premium. It must
+clear a pre-frozen hurdle above an investable low-risk INR alternative and
+remain useful at the project's ₹5–10 lakh capital scale after whole-lot sizing.
+
+**Mechanism and the participant on the other side.** Leveraged directional
+demand, hedging constraints and limits on arbitrage capital can make futures
+temporarily rich relative to deliverable cash. The proposed return is payment
+for funding the cash leg, posting collateral, absorbing mark-to-market and
+margin calls, managing dividends and corporate actions, and guaranteeing
+physical delivery into expiry. This is an arbitrage/financing hypothesis, not
+a forecast of the stock's direction.
+
+**The advanced policy is a separate, nested question.** Enter only when the
+PIT net annualised locked yield clears a frozen hurdle. Each session, recompute
+the remaining net yield from executable unwind prices and exit early only when
+the incremental return from continuing falls below the PIT alternative rate
+plus a frozen switching buffer, or when the freed capital can enter a strictly
+better carry after paying both trades' costs. Leverage is capped from a
+cash-flow stress rule using observed exchange/broker margins and adverse daily
+variation-margin scenarios; it may scale an already positive trade but may not
+turn a sub-hurdle spread into one. Hold-to-expiry is the mandatory baseline;
+an early-exit policy must beat it on the same opportunity set.
+
+**Strongest simple baselines.** (1) Hold an INR Treasury-bill/liquid-fund proxy
+over the same calendar span; (2) mechanically take every liquid positive-net-
+carry contract and hold to expiry without timing; (3) rank only by net locked
+yield and allocate greedily subject to whole lots, without a learned early-exit
+rule. Complexity earns credit only for incremental return on encumbered capital
+and lower drawdown/liquidity stress against these baselines.
+
+**Required point-in-time observations.** Daily or intraday cash and futures
+bid/ask or defensible executable-price proxies; contract expiry and historical
+lot size; physical-settlement rules; futures and cash volumes/open interest;
+historical SPAN/exposure/ELM and broker add-on margins; funding and collateral
+interest actually available to this account; announced dividends with
+ex-dates and PIT availability; corporate actions and symbol history; every
+cash, futures and settlement tax/fee; and the calendar/auction mechanics of
+delivery. All derivatives bytes must enter through `research_data`; an
+experiment may not read downloaded bhavcopies directly.
+
+**Structural pre-flight.** Before any strategy backtest, measure contract-day
+coverage, cash/futures join rate, expiries and lot histories, executable depth,
+whole-lot capital required, gross implied annualised carry, and sensitivity of
+the net yield to conservative one-tick/two-tick slippage, funding and margin
+assumptions. Quarantine dividend and corporate-action windows until their PIT
+cash flows reconcile. A close-only probe can establish whether spreads are
+large enough to justify building the data product; it cannot establish
+tradeability or an early-exit edge.
+
+**Natural falsifiers.** Reject further work if conservative net locked yields
+rarely clear the alternative-rate hurdle; qualifying lots do not fit the
+capital budget; apparent richness concentrates in illiquid contracts,
+corporate-action/dividend mistakes or the expiry close; funding plus margin
+cash-flow stress eliminates the advantage; or a dynamic exit cannot beat the
+hold-to-expiry baseline after switching costs under a frozen rule.
+
+**Leakage traps recorded now.** Use only information published by the decision
+time. Do not backfill today's lot sizes or F&O universe into history; do not use
+dividends before announcement; do not treat final settlement prices or closing
+bhavcopy values as executable before the close; do not select a contract using
+its later minimum margin; and do not annualise a spread without retaining its
+actual days-to-expiry and calendar cash encumbrance. Corporate-action-adjusted
+cash and raw futures are not comparable unless their cash flows are reconciled.
+
+**Decision after the cheap probe.** Continue only if official historical data
+is obtainable with stable PIT semantics and the untuned cross-section contains
+a recurring, liquid gross cushion comfortably larger than plausible financing
+and all-in execution costs. Otherwise keep H045 as a documented data-gap null
+and spend the engineering budget on a more reusable source.
+
+### H045 cheap source probe — 2026-08-23
+
+**The source is feasible; the economic case is marginal enough to sequence
+carefully.** NSE's historical contract report returned March 2024 stock-futures
+settlement prices, volume, turnover and open interest. Ten sessions from
+02–15 January for RELIANCE, HDFCBANK, ICICIBANK, INFY and TCS joined exactly to
+the project's raw cash bhavcopy: 50/50 contract-days. The selected March
+contract was one of the three listed maturities throughout the window.
+
+Using the futures daily settlement and cash close only as a magnitude screen,
+and ignoring dividends initially, gross simple annualised basis had median
+**9.40%**, p10 **8.09%**, p90 **10.29%** (range 5.16–10.70%). The 91-day T-bill
+auction cut-off on 03-Jan-2024 was **6.94%**. The gross cushion was therefore
+roughly 2.5 percentage points annualised at the median before execution,
+funding, margin drag, taxes and settlement costs — real enough to measure, not
+large enough to assume.
+
+The low TCS tail proved why dividends are mandatory rather than a refinement.
+TCS announced ₹27 per share on 11-Jan with a 19-Jan record date. Adding that
+PIT-known cash flow lifts the apparent annualised carry from 6.28% to 9.62% on
+12-Jan and from 5.16% to 8.62% on 15-Jan. A basis study without announcement-
+timed dividends would systematically mis-rank exactly the contracts that look
+cheap.
+
+Historical lots inferred from the report's contract count and turnover were
+250 RELIANCE, 550 HDFCBANK, 700 ICICIBANK, 400 INFY and 175 TCS shares. The
+median cash leg was **₹6.10–9.17 lakh per position** across these five names,
+before futures margin and variation-margin liquidity. At the project's
+₹5–10 lakh scale that is one concentrated lot, not a diversified carry book;
+leverage increases cash-flow fragility rather than solving sizing.
+
+The path has enough variation to keep the early-exit question alive but not to
+answer it. From 02-Jan to 15-Jan the raw basis compressed by ₹0–30.10 per share
+across the five names, equivalent to 0–22.34% annualised realised return on the
+cash leg over those thirteen calendar days (median 14.72%). This is a
+hindsight, settlement-price diagnostic; an honest policy must use executable
+unwind quotes, PIT dividends and a switching-cost buffer, and must beat simply
+holding the same entries.
+
+**Source defect caught in the probe.** The report's `Underlying Value` is not
+historical: for several symbols one present-day number was repeated down all
+January 2024 rows, while other symbols showed `-`. It must be discarded. The
+cash leg must come from the point-in-time bhavcopy. Settlement price is a
+last-half-hour weighted price and is not an executable bid/ask, so none of the
+figures above is a trade result.
+
+**Go/no-go.** Worth a bounded data-contract and E0 pre-flight, because the
+official archive is deep, joins cleanly and the gross spread clears the T-bill
+reference in this deliberately small sample. Not worth building learned early
+exits or a leverage optimiser yet. First acquire daily bhavcopies, historical
+contract files/lot sizes, PIT dividends, historical charges and margin files;
+then kill the family cheaply if conservative net hold-to-expiry carry does not
+clear a frozen alternative-rate buffer. Status remains **PROPOSED — DATA GAP**;
+no strategy outcome or partition was read.
+
+
+## H046 — The disclosed bulk print versus the deal-day close predicts D+1 intraday continuation
+
+Status: **REJECTED AT THE TRAIN ECONOMIC GATE; validation unopened,
+2026-08-23.** The event-specific signal is real on train, but the registered
+1-crore tradable arms are all negative in excess return after 40 bps.
+`conditions-on` [[H044]] only as motivation; it changes the information clock
+and is a new test, not a rescue of H044.
+
+**The claim.** A bulk deal on D is disclosed after D closes. At that point both
+the quantity-weighted bulk print and D's raw close are known. If the close is
+above the print, go long at D+1 open; if it is below the print, go short. The
+outcome is D+1 open-to-close adjusted return. No part of D+1 is used to choose
+the trade.
+
+**Population and feature.** Pool all bulk-deal symbol-sessions, without using
+client identity, flow direction or round-trip status. At liquidity floors
+1.00 / 0.25 / 0.10 crore compute
+`premium_D = 100 * (all_deal_vwap_D / close_raw_D - 1)`. Freeze lower and upper
+tercile cuts separately at each floor on `train`; lower is the long tail and
+upper the short tail. Repeat after excluding `|premium_D| > 10%`. Quarantine
+missing or changed adjustment factors and reconciled corporate actions between
+D and the D+1 open.
+
+**Exact twin and statistic.** On names with no bulk event on D, use
+`100 * (vwap_raw_D / close_raw_D - 1)` and their next traded session's
+open-to-close return. Apply the event cuts to this twin; do not re-tercile it.
+Pair `(event top - event bottom) - (twin top - twin bottom)` within D+1 entry
+sessions, equal-weight sessions, and report the lag-zero DK t-statistic. The
+registered direction is negative. Also report standalone long, short and
+50/50 long-short gross bps per trade and subtract the project's 40-bps round
+trip from the tradable portfolios; the twin-subtracted increment itself is a
+diagnostic, not a portfolio return.
+
+**Decision.** H046 survives exploration only if the 1-crore primary has a
+negative event-minus-twin increment with `t <= -2`, the sign remains negative
+at every floor and with the 10% cap, and at least one frozen 1-crore tradable
+portfolio is positive after 40 bps. Otherwise reject on `train`. Do not read
+`validation`, `test` or `forward`; a survivor requires a separately frozen
+validation dispatch.
+
+### H046 train result — signal present, meaningful alpha rejected
+
+Run 2026-08-23 as registered. The implementation forms the immediately next
+traded row on the full tape before applying a liquidity floor, requires the
+no-deal twin to traverse the identical D-to-D+1 market-session pair, and drops
+31–41 action-contaminated event rows. `validation`, `test` and `forward` were
+not read.
+
+| floor | cap | cuts, % | event | twin | increment | t | events / paired sessions |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1.00 cr | none | −0.7295 / +0.7412 | −55.6 | −2.4 | **−53.2 bps** | −2.99 | 7,055 / 523 |
+| 1.00 cr | 10% | −0.7283 / +0.7326 | −55.7 | −2.3 | **−53.4 bps** | −3.00 | 7,013 / 522 |
+| 0.25 cr | none | −0.6952 / +0.7003 | −69.3 | −1.2 | **−68.1 bps** | −4.23 | 8,938 / 596 |
+| 0.25 cr | 10% | −0.6900 / +0.6849 | −68.5 | −1.0 | **−67.5 bps** | −4.21 | 8,867 / 594 |
+| 0.10 cr | none | −0.6830 / +0.6918 | −60.6 | −2.2 | **−58.4 bps** | −3.78 | 9,876 / 628 |
+| 0.10 cr | 10% | −0.6826 / +0.6731 | −59.7 | −2.1 | **−57.6 bps** | −3.71 | 9,792 / 628 |
+
+The ordinary VWAP-to-close twin carries essentially none of the effect, and
+the sign is stable everywhere. But the 1-crore primary is not economic. Long,
+short and 50/50 long-short earn respectively **−16.9, −5.4 and −12.2 bps of
+excess return after the 40-bps round trip**. The short tail's raw +74.9 bps is
+flattered by down-market entry sessions; its market-relative return is only
++34.6 bps before costs. The lower-liquidity short tails read +7.3 to +15.2 bps
+net excess, but those registered robustness rows cannot replace the failed
+primary after the outcome is known. H046 is rejected without validation.
+
+
+## H047 — The bulk print versus a fixed D+1 pre-close price predicts an overnight move
+
+Status: **DATA ACQUISITION REGISTERED — OUTCOME UNTESTED, 2026-08-23.** The
+original coverage gate found the gap; a refreshed Breeze session now licenses
+the bounded pull below. No 15:15 or D+2 outcome had been read when it was
+frozen. `conditions-on` [[H044]] only as motivation.
+
+**The claim.** At 15:15 IST on D+1, compare D's disclosed quantity-weighted
+bulk print with the first executable market price at or after 15:15. Buy names
+above the print and short names below it, then hold to D+2 open (primary) or
+D+2 close (secondary). Because disclosure occurred after D's close, every
+input is known before this entry. This is not the same test as H046: it asks
+whether D+1's realised move persists overnight after sacrificing most of the
+session to observe it.
+
+**Coverage gate before outcomes.** The test requires point-in-time 15:15 prices
+and executable entry observations for the broad `train` bulk-event universe,
+available through `research_data`. First report symbol-event coverage without
+joining a return. Do not score a convenient handful of large names, fetch a
+post-hoc subset, or read intraday parquet directly. If broad historical minute
+coverage is absent, stop as **DATA GAP** without testing an outcome.
+
+**Frozen future test.** Once coverage exists, quarantine corporate actions,
+use a same-session no-deal twin with the identical D-to-15:15 construction,
+derive event terciles on `train`, pair by entry session, and report both the
+event-minus-twin increment and standalone portfolios after 40 bps. The primary
+direction is negative. Validation remains unopened until a train survivor has
+a separate frozen dispatch.
+
+### H047 coverage result — stopped before outcomes
+
+The train event table contains **15,500 bulk symbol-events across 2,438
+symbols**. `research_data.repository` exposes selected opening ticks but no
+named broad full-session intraday dataset from which a 15:15 executable price
+can be obtained. The normalized store contains only seven one-minute source
+probe files, nowhere near an unbiased event-universe panel and not licensed as
+a separate read path. Scorable coverage under the registered contract is
+therefore zero. H047 remains untested rather than being estimated on a
+convenient large-cap subset; no outcome partition was opened.
+
+### H047 bounded acquisition and train test — registered before the pull
+
+**Primary universe.** Reuse H046's clean 1-crore D-day liquidity population:
+all bulk symbol-events whose disclosure is tradable at D+1 open, with the same
+factor/reconciled-action quarantine. This is the liquid primary that H046 was
+required to pass; the lower-liquidity rows are not substituted here. The 10%
+premium cap is a reported sensitivity, not a replacement primary.
+
+**One control per event, selected without D+1 information.** For every event,
+choose one no-bulk-deal name from D, without replacement inside the session
+where possible, matched on D-known quintiles of trailing 20-session volatility,
+20-session median turnover and D volume surprise. Exact-stratum misses are
+dropped, never filled from a neighbouring session. Selection is deterministic
+with seed 47 and is frozen before any 15:15 bar or D+2 return is read. This is
+the same-session matched-control logic already used by the bulk family, bounded
+to roughly one API call per event rather than an impossible all-stock pull.
+
+**Fetched observation and benchmark.** Request only 15:15:00–15:17:00 IST on
+D+1 from Breeze v2 `1minute`; use the open of the earliest valid bar stamped at
+or after 15:15 and no later than 15:16:59. Fetch NIFTY over the identical window
+once per entry session for the market-relative economic result. Missing and
+unmappable rows remain missing; do not replace them after seeing an outcome.
+The call manifest, normalized bars and mapping failures are retained through
+`research_data`.
+
+**Price-space quarantine added from the first ten label-free calls.** Breeze's
+historical minute series sometimes matches NSE raw prices and sometimes carries
+later split/bonus adjustments, including ratios absent from the current tape's
+factor column. Do not infer a conversion from a later return. A 15:15 bar is
+usable only when its open lies inside the same session's raw NSE low/high
+envelope with a 2% quote tolerance; otherwise mark it unit-inconsistent and
+missing. The registered 70% coverage floor is applied after this quarantine.
+
+**Frozen score.** Feature is
+`100 * (all_deal_vwap_D / price_1515_D+1 - 1)`; the control analogue uses
+`vwap_raw_D` in place of the deal print. Event train terciles are applied
+unchanged to both arms. Primary outcome is 15:15 D+1→D+2 open; D+2 close is
+secondary. Pair the top-minus-bottom increment by entry session and report the
+lag-zero DK t. Economic arms are judged on NIFTY-excess return after 40 bps.
+Survival requires the primary 1-crore increment to be negative with `t <= -2`,
+the sign to survive the 10% cap, at least 70% event and control feature coverage
+over at least 300 independent entry sessions, and at least one primary tradable
+arm positive in excess return after cost. Otherwise reject on train. Validation,
+test and forward remain closed.
+
+
+## H048 — Diminishing price impact during high-delivery declines predicts a five-day reversal
+
+Status: **WITHDRAWN BEFORE OUTCOME — INVALID E0/CONTRACT, 2026-08-24.**
+`conditions-on` [[H039]] and is adjacent to [[H030]] and [[H019]]. No forward
+return was constructed and no sample budget was spent.
+
+**The claim.** Among point-in-time NSE EQ-series names with trailing median
+turnover of INR 3–30 crore, a two-to-four-session sequence of high-delivery down
+days with diminishing negative price impact, followed by a positive close,
+predicts positive market-adjusted return from the next open through five
+sessions later. The delivery field measures activity delivered into settlement;
+it does not identify the seller or prove institutional liquidation.
+
+**Frozen intended comparison.** Candidate cases must beat an executable,
+outcome-blind short-horizon reversal baseline at the identical daily take rate.
+The primary bar is at least 80 bps of candidate-minus-baseline gross lift with
+overlap-corrected `t >= 2.5`, while the selected market-excess return must remain
+positive after the registered round trip. Circuit/price-band cases and
+unexecutable next opens are natural falsifiers, not rows to retain.
+
+**Why the first contract was withdrawn unopened.** Qualification
+`QUAL_20260824_001427_671408` and contract
+`EC_20260824_001427_715928` froze a source that encoded non-candidates as zero.
+The E0 structural gate therefore counted 1,513,342 panel rows as cases rather
+than the actual 3,248 positive cases, reported 2,020 cases per session, and
+approved a minimum detectable effect of 181.2 bps despite the 80-bps target.
+The source also did not implement the dossier's stated ratio-based impact
+measure, price-band falsifier, or residualized baseline. Finally, the contract
+would have evaluated close-entry raw returns and a generic backtest instead of
+the registered next-open market-excess, take-rate-matched comparison. Those are
+design defects visible without outcomes, so the immutable contract is preserved
+and permanently marked `withdrawn_unopened`.
+
+**Next valid test.** Re-qualify H048 under the corrected selector contract:
+non-candidates are `NaN`, the structural gate prices the actual active case set
+against the 80-bps target, every material dissent has an explicit implemented
+resolution, and both signal and baseline source are hashed into a version-3
+contract. This remains H048 rather than a new hypothesis because no outcome was
+opened and the economic claim has not changed.
+
+
+## H049 — Among NSE cash equities with point-in-time 20-day median turnover of INR 3-25 crore, a 2-5 session delivered selloff is more likely to reverse over the next five sessions when the following gap-down morning fails to extend lower during the opening window despite active trading. The minimum bootstrap test enters only after this intraday rejection is observable and makes no claim that delivery percentage identifies the seller.
+
+Status: **PROPOSED — OUTCOME UNTESTED, 2026-08-24.** Registered by the research director before outcome access.
+
+**Population.** NSE cash equities in the regular EQ series, excluding ETFs, selected separately on every signal date using point-in-time median_tv_20_cr between INR 3 crore and INR 25 crore. Require median_vol_20 sufficient for an INR 1-2 lakh position to remain at or below 2% of median daily traded value, and exclude observations with missing delivery data, corporate-action adjustment discontinuities, or an indicated round-trip cost above 40 bps. Do not use current index membership, current market capitalization, sector, or size_tier for universe construction.
+
+**Mechanism.** A provisional interpretation is that a multi-session urgency seller has reached the terminal part of an execution program. The gap-down invites or reflects residual supply, but the inability to push price materially below the open while meaningful volume trades indicates that available demand is absorbing it. The predictive claim is only that this joint state has a favorable conditional return distribution; the catalogue cannot establish seller identity, order parentage, or institutional participation. Counterparty: The proposed profitable side is a small patient buyer entering after the opening rejection is observable. The economically conceding side is an urgency-constrained holder completing a multi-session sale. Its identity and institutional status are not observable in the supplied catalogue and are not required for the minimum predictive test.
+
+**Frozen economic bar.** 80.0 bps. Strongest baseline: A cross-sectional, date-clustered comparison against the same fixed-time opening-rejection rule without the preceding delivered-selloff condition. Estimate the incremental five-day return using matched or weighted controls on gap_pct, preceding 5-day return, atr_pct, median_tv_20_cr, opening vol_rel_daily_pct, range_pos, market regime, and entry-time return from the open. Also compare with a plain recent-loser reversal rule that ignores opening behavior. Use purged walk-forward evaluation, date-level resampling, and one observation per symbol per overlapping five-session holding window.
+
+**Lineage.** Nearest prior hypotheses: H048, H010, H011, H039.
+
+
+## H050 — Among NSE cash equities with point-in-time 20-day median turnover of INR 3-25 crore, a 2-5 session delivered selloff is more likely to reverse over the next five sessions when the following gap-down morning fails to extend lower during the opening window despite active trading. The minimum bootstrap test enters only after this intraday rejection is observable and makes no claim that delivery percentage identifies the seller.
+
+Status: **SUPERSEDED — DUPLICATE OF H049, OUTCOME UNTESTED, 2026-08-24.** A retry race in provisional promotion allocated a second ID before outcome access. H049 is the canonical record; no evidence or sample exposure is attached to H050.
+
+**Population.** NSE cash equities in the regular EQ series, excluding ETFs, selected separately on every signal date using point-in-time median_tv_20_cr between INR 3 crore and INR 25 crore. Require median_vol_20 sufficient for an INR 1-2 lakh position to remain at or below 2% of median daily traded value, and exclude observations with missing delivery data, corporate-action adjustment discontinuities, or an indicated round-trip cost above 40 bps. Do not use current index membership, current market capitalization, sector, or size_tier for universe construction.
+
+**Mechanism.** A provisional interpretation is that a multi-session urgency seller has reached the terminal part of an execution program. The gap-down invites or reflects residual supply, but the inability to push price materially below the open while meaningful volume trades indicates that available demand is absorbing it. The predictive claim is only that this joint state has a favorable conditional return distribution; the catalogue cannot establish seller identity, order parentage, or institutional participation. Counterparty: The proposed profitable side is a small patient buyer entering after the opening rejection is observable. The economically conceding side is an urgency-constrained holder completing a multi-session sale. Its identity and institutional status are not observable in the supplied catalogue and are not required for the minimum predictive test.
+
+**Frozen economic bar.** 80.0 bps. Strongest baseline: A cross-sectional, date-clustered comparison against the same fixed-time opening-rejection rule without the preceding delivered-selloff condition. Estimate the incremental five-day return using matched or weighted controls on gap_pct, preceding 5-day return, atr_pct, median_tv_20_cr, opening vol_rel_daily_pct, range_pos, market regime, and entry-time return from the open. Also compare with a plain recent-loser reversal rule that ignores opening behavior. Use purged walk-forward evaluation, date-level resampling, and one observation per symbol per overlapping five-session holding window.
+
+**Lineage.** Subsumed by H049. Nearest prior hypotheses: H048, H010, H011, H039.
+
+
+## H051 — Among NSE cash equities with point-in-time 20-day median turnover of INR 3-20 crore, stocks experiencing a stock-specific 2-5 day decline before a scheduled exchange closure of at least three calendar days will, on average, partially reverse over the first five trading days after reopening when the final pre-closure session shows elevated turnover but no new closing low relative to its intraday low. The predictive claim is limited to a conditional post-closure reversal and does not assert that the observed selling came from institutions, leveraged traders, or any identifiable trade class.
+
+Status: **PROPOSED — OUTCOME UNTESTED, 2026-08-24.** Registered by the research director before outcome access.
+
+**Population.** NSE cash equities in ordinary tradable series, excluding ETFs, selected each day using only point-in-time median_tv_20_cr between INR 3 crore and INR 20 crore. At entry, require the intended position to be no more than 2% of the stock's point-in-time 20-day median daily turnover and no more than 10% of the entry day's observed turnover. Candidate events occur immediately before a scheduled NSE closure spanning at least three calendar days. Require a negative 5-day stock return, negative 5-day excess return versus the market, final-session turnover above 1.25 times its 20-day median, and a close in the upper half of the final session's range. Exclude observations lacking valid adjusted prices or delivery data and avoid survivorship filters based on current index membership, market capitalization, sector, or listing status.
+
+**Mechanism.** A plausible interpretation is that some holders reduce positions before a period in which they cannot react to news, margin changes, or financing needs. This precautionary supply can be disproportionately costly in moderately liquid stocks. A strong close after elevated pre-closure turnover is treated only as a candidate exhaustion footprint: urgent supply may have been absorbed before the market shut. The observable pattern does not identify the seller, leverage, institutional ownership, or a parent order. Counterparty: The economically conceding side is a heterogeneous set of holders who prefer lower unadjustable exposure over a scheduled closure, potentially including leveraged retail traders, broker-financed accounts, short-horizon proprietary traders, and inventory-constrained intermediaries. Their identities and trade classes are not observable and are not required for the predictive test. The proposed profitable side is a small, patient cash buyer entering near the final pre-closure close or the first liquid opportunity after reopening.
+
+**Frozen economic bar.** 80.0 bps. Strongest baseline: Within the same point-in-time liquidity universe, rank stocks solely by five-day market-excess return and buy the worst decile for five trading days, with identical entry timing, position limits, cost assumptions, and calendar exclusions. The proposed mechanism must improve out-of-sample net return or cross-sectional rank information over this plain short-term-reversal baseline. A secondary calendar baseline is the same loser-reversal rule on matched non-closure sessions with the same weekday, month, market regime, volatility, turnover, and liquidity distributions.
+
+**Lineage.** Nearest prior hypotheses: H039, H048, H049, H050.
+
+
+## H052 — Among NSE EQ-series equities with point-in-time 20-day median turnover of INR 3-20 crore, after a scheduled market-wide closure of at least three calendar days, stocks that rise on the first reopening session but capture less than half of a broad-market gain of at least 1.5% will, on average, partially catch up over the next five sessions. The signal is fixed after the reopening close and entered at the following session's open; it is a modest predictive underreaction claim, not evidence that any particular investor class caused the lag.
+
+Status: **PROPOSED — OUTCOME UNTESTED, 2026-08-24.** Registered by the research director before outcome access.
+
+**Population.** NSE cash equities in the EQ series, selected independently on each signal date using median_tv_20_cr between 3 and 20, at least 60 prior valid daily observations, a non-missing reopening-session open and close, and no mechanically suspect unadjusted price discontinuity. Market closures are identified point-in-time from gaps in the common NSE trading-date sequence, not from a current index, market-cap, or constituent snapshot. The primary test is long-only and requires a positive reopening-session stock return between 0% and 50% of a broad-market reopening gain of at least 1.5%.
+
+**Mechanism.** A broad positive repricing after a closure may reach moderately liquid, less-attended equities incompletely during the first reopening session. Conditional continuation would be consistent with delayed price discovery caused by limited investor attention, stale orders, and cautious liquidity provision. These mechanisms are interpretations only; the minimum test establishes neither investor identity nor order type. Counterparty: The economically conceding side is a mixture of reopening-session sellers, stale limit-order suppliers, attention-constrained holders, and inventory-cautious intermediaries in moderately liquid equities. Their identities are unobserved and are not required for the predictive test. The profitable side is a small cash buyer entering at the next session's open after the reopening lag has been measured.
+
+**Frozen economic bar.** 80.0 bps. Strongest baseline: A cross-sectional residual-continuation baseline: rank the eligible universe by reopening-session stock return minus its rolling 60-session beta times the reopening market return, then test the lowest positive-residual-response bucket against the universe and against matched controls with similar median_tv_20_cr, rolling beta, prior 20-day return, ATR percentage, and reopening gap. The mechanism must add value beyond an otherwise identical residual-laggard rule run on every ordinary trading session with a market gain of at least 1.5%.
+
+**Lineage.** Nearest prior hypotheses: H051, H040, H030.
+
+
+## H053 — Among NSE cash equities with point-in-time 20-day median turnover of INR 3-20 crore, recent idiosyncratic losers experience a modest five-session rebound when they suffer additional weakness during the final three trading sessions of a calendar quarter, especially when quarter-end turnover is elevated but the final session closes materially above its low. The minimum test buys at the final quarter-end close, or at the next session's open in a timing-robustness variant, and does not claim that observable price and volume identify institutional window dressing.
+
+Status: **PROPOSED — OUTCOME UNTESTED, 2026-08-24.** Registered by the research director before outcome access.
+
+**Population.** NSE EQ-series, non-ETF cash equities selected independently on each signal date using point-in-time median_tv_20_cr between INR 3 crore and INR 20 crore. Require at least 20 prior sessions, a valid unadjusted tradable price, and no zero-volume signal session. Define recent losers using bottom-quintile 20-session market-relative return within the eligible point-in-time liquidity universe. Do not use present-day index membership, market capitalization, sector, size_tier, or survivorship-conditioned symbol lists.
+
+**Mechanism.** A plausible interpretation is temporary quarter-end disposal of embarrassing or risk-intensive losing positions, followed by partial recovery after the reporting or risk deadline passes. This causal account is not identified by daily OHLCV or delivery percentage. The defensible bootstrap claim is only that the calendar-conditioned loser rebound is incrementally predictable after controlling for ordinary short-term reversal, liquidity, volatility, and market state. Counterparty: The economically conceding side is hypothesized to include benchmarked or reporting-sensitive asset managers, proprietary books facing quarter-end risk limits, broker-financed accounts reducing collateral usage, and other holders with quarter-end balance-sheet or presentation constraints. Their identities are unobserved and are not required for the predictive test. The profitable side is a small cash buyer able to absorb INR 0.5-2 lakh per name without demanding institutional capacity.
+
+**Frozen economic bar.** 80.0 bps. Strongest baseline: A cross-sectional five-day loser-reversal model estimated on the same point-in-time liquidity universe: predict fwd_ret_5d_pct or excess_ret_5d_pct from continuous rs_20d_vs_mkt, the last three-session return reconstructed from PIT prices, atr_pct, median_tv_20_cr, signal-day turnover multiple, close location within the daily range, mkt_ret_20d, and mkt_vol_20d. The mechanism earns consideration only if a pre-specified quarter-end interaction adds out-of-sample return beyond this baseline. Also compare directly with matched non-quarter-end losers from the same calendar year, liquidity decile, volatility decile, market regime, and prior-return decile.
+
+**Lineage.** Nearest prior hypotheses: H051, H030, H048.
+
+
+## H054 — Among NSE cash equities with point-in-time 20-day median turnover of INR 3-20 crore, Friday-specific selling pressure is followed by a modest three-session reversal when the stock closes in the bottom 20% of Friday's range on turnover at least 1.5 times its trailing median, but Monday opens no more than 30 bps below Friday's close. The predictive claim is that Monday's absence of further markdown identifies exhausted weekend-risk supply; it does not identify the sellers or prove that their trades were forced.
+
+Status: **PROPOSED — OUTCOME UNTESTED, 2026-08-24.** Registered by the research director before outcome access.
+
+**Population.** NSE cash equities in ordinary equity series, excluding ETFs, selected each session using only point-in-time information: median 20-day traded value between INR 3 crore and INR 20 crore, at least 15 valid trading observations in the preceding 20 sessions, Friday turnover and OHLC observations available, and a valid following-session open. Present-day index membership, market capitalization, sector, and size-tier labels must not define the universe.
+
+**Mechanism.** A weekend creates a recurring period during which cash-equity holders cannot adjust positions while company, macroeconomic, geopolitical, and margin-related news can arrive. Some short-horizon or financed holders therefore pay a small premium to reduce awkward exposure before Friday's close. In moderately liquid names, that supply can move the close. If Monday's opening auction does not require another material markdown, the weekend-risk concession was probably temporary and can partially unwind. This causal interpretation is provisional; the minimum test establishes only a conditional Friday-to-Monday relationship. Counterparty: The economically conceding side is a heterogeneous group of holders who value lower weekend exposure, potentially including leveraged retail accounts, broker-financed clients, short-horizon proprietary traders, and inventory-limited intermediaries. Seller identity is not observable and is not required. The proposed profitable side is a small cash buyer entering at Monday's observable open.
+
+**Frozen economic bar.** 80.0 bps. Strongest baseline: The strongest simple baseline is the identical high-turnover, negative-return, bottom-20%-of-range selloff followed by a next-session open no more than 30 bps below the prior close, estimated on Monday-through-Thursday signal sessions. Compare Friday and non-Friday cases within turnover deciles, Friday-return bins, ATR-ratio bins, market-regime bins, and calendar blocks. Also compare against an unconditional Friday effect in the same point-in-time liquidity universe.
+
+**Lineage.** Nearest prior hypotheses: H051, H039, H048, H049.

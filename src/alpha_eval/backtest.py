@@ -38,9 +38,9 @@ class BacktestConfig:
     top_k: int = 5
     holding_sessions: int = 10
     cost_pct: float = COST_PCT_ROUND_TRIP
-    # The canonical construction marks positions on the adjusted close. Entry
-    # timing belongs to strategy research, not signal evaluation (PLAN.md
-    # §5.10), so it is deliberately not a knob here.
+    entry_price: str = "close"
+    # Entry timing is frozen by the experiment contract; it is not tuned by
+    # callers after the outcome is visible.
 
 
 def span_stats(daily_returns: np.ndarray, is_live: np.ndarray | None = None) -> dict:
@@ -120,6 +120,8 @@ def canonical_backtest(
     """
     assert_scorable(signal_col, allow_unscorable=allow_unscorable)
     cfg = cfg or BacktestConfig()
+    if cfg.entry_price not in ("open", "close"):
+        raise ValueError("BacktestConfig.entry_price must be open or close")
     valid = df[[date_col, symbol_col, signal_col]].dropna().copy()
     if len(valid) == 0:
         return {"error": "no valid signal rows"}
@@ -148,7 +150,10 @@ def canonical_backtest(
     # Build 2D price matrix for fast vector slicing (date x symbol)
     b_piv = bars.pivot(index="date", columns="symbol",
                        values="close").reindex(sessions)
+    open_piv = (bars.pivot(index="date", columns="symbol", values="open")
+                .reindex(index=sessions, columns=b_piv.columns))
     px_matrix = b_piv.to_numpy()
+    open_matrix = open_piv.to_numpy()
     sym_map = {sym: j for j, sym in enumerate(b_piv.columns)}
 
     half_cost = (cfg.cost_pct / 2.0) / 100.0  # 0.20% = 0.0020
@@ -172,7 +177,18 @@ def canonical_backtest(
             continue
         prices = pd.Series(prices).ffill().to_numpy()
 
-        daily_r = (prices[1:] / prices[:-1]) - 1.0
+        if cfg.entry_price == "open":
+            entry = float(open_matrix[i0, j])
+            if not np.isfinite(entry) or entry <= 0:
+                continue
+            # The registered h-session open-entry label exits at D+h close:
+            # open-to-close on D plus h subsequent close-to-close returns.
+            daily_r = np.concatenate((
+                np.array([prices[0] / entry - 1.0]),
+                (prices[1:] / prices[:-1]) - 1.0,
+            ))
+        else:
+            daily_r = (prices[1:] / prices[:-1]) - 1.0
         daily_r = np.nan_to_num(daily_r, nan=0.0)
         # Entry cost on the first bar, exit cost on the last. For a
         # single-session hold both land on the same bar, which is correct:
@@ -190,7 +206,8 @@ def canonical_backtest(
     # state. Dividing by `top_k` alone (as this once did) silently runs the
     # book at `holding_sessions` times leverage — at hold=10 it reported 334%
     # CAGR on a universe compounding at 28%. Unfilled slots sit in cash at 0%.
-    n_slots = cfg.top_k * cfg.holding_sessions
+    slot_sessions = cfg.holding_sessions + (1 if cfg.entry_price == "open" else 0)
+    n_slots = cfg.top_k * slot_sessions
     port_daily_returns = pnl / n_slots
     is_live = active_weights > 0
 
@@ -245,6 +262,7 @@ def canonical_backtest(
             "top_k": cfg.top_k,
             "holding_sessions": cfg.holding_sessions,
             "cost_pct_round_trip": cfg.cost_pct,
+            "entry_price": cfg.entry_price,
             "capital_slots": n_slots,
         },
         "portfolio": port_stats,

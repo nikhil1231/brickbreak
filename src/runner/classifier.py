@@ -25,6 +25,17 @@ def classify_result(
     -------
     (failure_class, interpretation_paragraph, suggested_next_moves)
     """
+    spec = spec or ExperimentSpec(
+        hypothesis_id="UNREGISTERED",
+        question="legacy classifier defaults",
+        signal_name=str(report.get("signal", "signal")),
+    )
+    criterion = spec.pass_criterion
+    min_ic = float(criterion.get("min_mean_ic", 0.005))
+    min_spread_bps = float(criterion.get("min_spread_bps", 25.0))
+    min_monotonicity = float(criterion.get("min_monotonicity", 0.0))
+    min_t = float(spec.min_significance_t)
+
     pred = report.get("predictive_content", {})
     primary_ic = pred.get("primary_ic", {})
     mean_ic = primary_ic.get("mean_ic", 0.0) or 0.0
@@ -45,6 +56,61 @@ def classify_result(
     cond = report.get("conditioning", {})
     years = cond.get("year", [])
 
+    comparison = report.get("baseline_comparison", {})
+    if spec.signal_kind == "selector":
+        selector_sessions = comparison.get("n_sessions", 0) or 0
+        n_selected = comparison.get("n_selected", 0) or 0
+        lift_bps = comparison.get("lift_bps", np.nan)
+        lift_t = comparison.get("lift_t", np.nan)
+        selected_mean_bps = comparison.get("selected_mean_bps", np.nan)
+
+        if selector_sessions < 20 or n_selected < 300:
+            cls = "INSUFFICIENT_SAMPLE"
+            interp = (
+                f"Selector produced only {n_selected} cases across "
+                f"{selector_sessions} paired sessions; the registered comparison "
+                "is underpowered.")
+            return cls, interp, [{
+                "action": "broaden_population", "relation": "generalises",
+                "rationale": "Increase outcome-blind case coverage before another dispatch.",
+            }]
+
+        if not np.isfinite(lift_bps) or not np.isfinite(lift_t) \
+                or lift_bps <= 0 or lift_t < min_t:
+            cls = "NO_SIGNAL"
+            interp = (
+                "The selector did not beat the frozen baseline at its own take "
+                f"rate (lift = {lift_bps:.1f} bps, overlap-corrected t = "
+                f"{lift_t:.2f}; registered t bar = {min_t:.2f}).")
+            return cls, interp, [{
+                "action": "branch_laterally", "relation": "adjacent-to",
+                "rationale": "Test a distinct mechanism without tuning on these outcomes.",
+            }]
+
+        net_selected_bps = selected_mean_bps - spec.cost_round_trip_bps
+        if lift_bps < min_spread_bps or net_selected_bps <= 0:
+            cls = "SIGNAL_TOO_SMALL"
+            interp = (
+                f"The selector beat its take-rate-matched baseline by {lift_bps:.1f} "
+                f"bps (t = {lift_t:.2f}), but missed the registered "
+                f"{min_spread_bps:.1f} bps lift bar or retained only "
+                f"{net_selected_bps:.1f} bps after the {spec.cost_round_trip_bps:.1f} "
+                "bps round trip.")
+            return cls, interp, [{
+                "action": "combine_signals", "relation": "adjacent-to",
+                "rationale": "Seek a separately registered, low-correlation source of edge.",
+            }]
+
+        cls = "SUCCESS"
+        interp = (
+            f"Selector cleared its frozen take-rate-matched baseline by {lift_bps:.1f} "
+            f"bps (overlap-corrected t = {lift_t:.2f}) and retained "
+            f"{net_selected_bps:.1f} bps after costs.")
+        return cls, interp, [
+            {"action": "test_holdout", "relation": "specialises",
+             "rationale": "Proceed only through a separately frozen confirmatory contract."},
+        ]
+
     # 1. Sample adequacy
     if n_sessions < 20 or report.get("n_total_rows", 0) < 300:
         cls = "INSUFFICIENT_SAMPLE"
@@ -53,9 +119,12 @@ def classify_result(
         return cls, interp, next_moves
 
     # 2. No Signal
-    if mean_ic <= 0.005 or abs(t_stat) < 1.2 or spread_pct <= 0:
+    if mean_ic < min_ic or t_stat < min_t or spread_pct <= 0:
         cls = "NO_SIGNAL"
-        interp = f"No predictive signal detected (mean IC = {mean_ic:.4f}, t = {t_stat:.2f}, Q5-Q1 spread = {spread_bps:.1f} bps)."
+        interp = (
+            f"Signal missed its registered statistical bar (mean IC = {mean_ic:.4f} "
+            f"vs {min_ic:.4f}, t = {t_stat:.2f} vs {min_t:.2f}, "
+            f"Q5-Q1 spread = {spread_bps:.1f} bps).")
         next_moves = [
             {"action": "branch_laterally", "relation": "adjacent-to", "rationale": "Test conceptually adjacent setup features instead."},
             {"action": "condition_on_regime", "relation": "conditions-on", "rationale": "Test if signal activates only during specific market regimes."},
@@ -101,9 +170,18 @@ def classify_result(
             return cls, interp, next_moves
 
     # 6. Signal Too Small
-    if spread_bps < 25.0:
+    incremental_spread = comparison.get("incremental_spread_bps", spread_bps)
+    incremental_ic = comparison.get("incremental_mean_ic", mean_ic)
+    if (spread_bps < min_spread_bps
+            or monotonicity < min_monotonicity
+            or incremental_spread < min_spread_bps
+            or incremental_ic <= 0):
         cls = "SIGNAL_TOO_SMALL"
-        interp = f"Signal is monotonic (monotonicity = {monotonicity:.2f}) but the spread ({spread_bps:.1f} bps) is too small to clear realistic trading friction."
+        interp = (
+            f"Signal is positive but misses a frozen economic bar: raw spread "
+            f"{spread_bps:.1f} bps, incremental spread over the baseline "
+            f"{incremental_spread:.1f} bps, monotonicity {monotonicity:.2f} "
+            f"(required {min_spread_bps:.1f} bps and {min_monotonicity:.2f}).")
         next_moves = [
             {"action": "combine_signals", "relation": "adjacent-to", "rationale": "Combine with low-correlation momentum/breakout signal to boost spread."},
         ]

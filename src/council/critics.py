@@ -24,6 +24,15 @@ Attack causal persistence, timestamp/PIT safety, survivorship and revision
 risk, hidden factor sorts, statistical power, costs, capacity, and whether the
 claimed predictions distinguish the mechanism from its alternatives.
 
+Judge the minimum predictive test separately from the causal interpretation.
+Use fatal only when the minimum test is invalid with the stated point-in-time
+data or cannot be executed honestly; missing causal attribution is material or
+optional when the predictive claim remains testable. This is an INR 5-10 lakh
+book: limited institutional capacity is not an objection when that small book
+can participate at realistic costs and its small size is the stated advantage.
+Do object when apparent small-book capacity is merely untradeable illiquidity,
+missing exits or underestimated impact.
+
 Return strict JSON with: approved (boolean), score (0-10), critique (string),
 and dissents (list of objects with reviewer_role, objection, severity where
 severity is fatal, material, or advisory). Do not propose a replacement idea."""
@@ -51,7 +60,8 @@ def build_hostile_review_prompt(dossier: MechanismDossier) -> str:
     return json.dumps(dossier.to_dict(), indent=2)
 
 
-def parse_hostile_review(response_text: str, provider: str) -> CriticReview:
+def parse_hostile_review(response_text: str, provider: str,
+                         model: str = "") -> CriticReview:
     match = re.search(r"\{.*\}", response_text, re.DOTALL)
     if not match:
         raise ValueError("hostile reviewer returned no JSON object")
@@ -78,7 +88,8 @@ def parse_hostile_review(response_text: str, provider: str) -> CriticReview:
     if not raw["approved"] and not dissents:
         raise ValueError("a disapproving hostile review must state at least one dissent")
     return CriticReview(
-        critic_role=f"independent_model_critic:{provider}",
+        critic_role=(f"independent_model_critic:{provider}/"
+                     f"{model or 'cli-default'}"),
         approved=raw["approved"],
         score=score,
         critique=str(raw["critique"]),
@@ -99,6 +110,14 @@ def review_economic_mechanism(dossier: MechanismDossier) -> CriticReview:
     if dossier.min_effect_bps < 40.0:
         score -= 3.0
         dissents.append(DossierDissent("economic_critic", "Claimed effect sits below 40 bps round-trip cost floor", "fatal"))
+    elif dossier.min_effect_bps < 80.0:
+        score -= 1.0
+        dissents.append(DossierDissent(
+            "economic_critic",
+            "Minimum gross effect leaves less than 40 bps after the lab's "
+            "40 bps cost floor; bootstrap small-name work should target 80+ bps",
+            "material",
+        ))
 
     approved = score >= 5.0 and not any(d.severity == "fatal" for d in dissents)
     return CriticReview(
@@ -140,6 +159,30 @@ def review_power_and_costs(dossier: MechanismDossier) -> CriticReview:
     if dossier.expected_horizon_days > 20:
         score -= 1.5
         dissents.append(DossierDissent("power_reviewer", "Horizon > 20d reduces independent calendar blocks", "advisory"))
+
+    if dossier.estimated_cash_cost_usd > 0:
+        score -= min(3.0, dossier.estimated_cash_cost_usd / 25.0)
+        dissents.append(DossierDissent(
+            "power_reviewer",
+            f"Requires ${dossier.estimated_cash_cost_usd:.0f} incremental data spend; "
+            "bootstrap default is $0",
+            "material",
+        ))
+    if dossier.estimated_engineering_days > 2:
+        score -= min(3.0, (dossier.estimated_engineering_days - 2) / 2)
+        dissents.append(DossierDissent(
+            "power_reviewer",
+            f"Requires {dossier.estimated_engineering_days:g} engineering days before E0; "
+            "bootstrap default is at most two",
+            "material",
+        ))
+    if dossier.has_data_gap:
+        score -= 1.0
+        dissents.append(DossierDissent(
+            "power_reviewer",
+            "Minimum valid test still has blocking data gaps",
+            "material",
+        ))
 
     approved = score >= 5.0
     return CriticReview(

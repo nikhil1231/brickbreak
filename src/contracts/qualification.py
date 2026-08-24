@@ -49,6 +49,22 @@ class QualificationArtifact:
     lifecycle: dict[str, Any]
     created_at: str = field(
         default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    # Version 1 is the original single-source artifact. Version 2 freezes the
+    # entry clock, outcome interpretation, selector semantics, and an
+    # outcome-blind strongest-baseline implementation. Version 3 also freezes
+    # the eligible population as executable code.
+    artifact_version: int = 1
+    entry_price: str = "close"
+    outcome_kind: str = "raw"
+    signal_kind: str = "dense"
+    baseline_name: str = ""
+    baseline_source: str = ""
+    baseline_source_hash: str = ""
+    dissent_resolutions: tuple[str, ...] = ()
+    semantic_check: dict[str, Any] = field(default_factory=dict)
+    eligibility_name: str = ""
+    eligibility_source: str = ""
+    eligibility_source_hash: str = ""
 
     def __post_init__(self) -> None:
         self.validate()
@@ -84,12 +100,46 @@ class QualificationArtifact:
             raise QualificationValidationError("model_turns cannot be negative")
         if self.model_cost_usd is not None and self.model_cost_usd < 0:
             raise QualificationValidationError("model_cost_usd cannot be negative")
+        if self.artifact_version not in (1, 2, 3):
+            raise QualificationValidationError("unsupported qualification artifact_version")
+        if self.artifact_version >= 2:
+            if self.entry_price not in ("open", "close"):
+                raise QualificationValidationError("entry_price must be open or close")
+            if self.outcome_kind not in ("raw", "market_excess"):
+                raise QualificationValidationError(
+                    "outcome_kind must be raw or market_excess")
+            if self.signal_kind not in ("dense", "selector"):
+                raise QualificationValidationError(
+                    "signal_kind must be dense or selector")
+            if not self.baseline_name.strip() or not self.baseline_source.strip():
+                raise QualificationValidationError(
+                    "version-2 qualification requires a frozen baseline")
+            if (not self.baseline_name.isidentifier()
+                    or self.baseline_name == self.signal_name):
+                raise QualificationValidationError(
+                    "baseline_name must be a distinct Python identifier")
+            if source_hash(self.baseline_source) != self.baseline_source_hash:
+                raise QualificationValidationError(
+                    "baseline_source_hash does not match baseline_source")
+        if self.artifact_version >= 3:
+            if not self.eligibility_name.strip() or not self.eligibility_source.strip():
+                raise QualificationValidationError(
+                    "version-3 qualification requires frozen eligibility code")
+            if (not self.eligibility_name.isidentifier()
+                    or self.eligibility_name in (self.signal_name, self.baseline_name)):
+                raise QualificationValidationError(
+                    "eligibility_name must be a distinct Python identifier")
+            if source_hash(self.eligibility_source) != self.eligibility_source_hash:
+                raise QualificationValidationError(
+                    "eligibility_source_hash does not match eligibility_source")
         structural_passed = bool(self.structural_gate.get("passed"))
         preflight_passed = bool(self.preflight.get("passed"))
-        expected_approved = structural_passed and preflight_passed
+        semantic_passed = (bool(self.semantic_check.get("passed"))
+                           if self.artifact_version >= 2 else True)
+        expected_approved = structural_passed and preflight_passed and semantic_passed
         if self.approved != expected_approved:
             raise QualificationValidationError(
-                "approved must equal structural_gate.passed AND preflight.passed")
+                "approved must equal structural, preflight, and semantic gate results")
         if not self.approved and not self.rejection_reasons:
             raise QualificationValidationError(
                 "a rejected qualification must preserve its rejection reasons")
@@ -107,6 +157,21 @@ class QualificationArtifact:
     def qualification_hash(self) -> str:
         semantic = asdict(self)
         semantic.pop("created_at", None)
+        if self.artifact_version == 1:
+            for name in (
+                "artifact_version", "entry_price", "outcome_kind", "signal_kind",
+                "baseline_name", "baseline_source", "baseline_source_hash",
+                "dissent_resolutions", "semantic_check",
+                "eligibility_name", "eligibility_source",
+                "eligibility_source_hash",
+            ):
+                semantic.pop(name, None)
+        elif self.artifact_version == 2:
+            for name in (
+                "eligibility_name", "eligibility_source",
+                "eligibility_source_hash",
+            ):
+                semantic.pop(name, None)
         payload = json.dumps(semantic, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
@@ -115,6 +180,7 @@ class QualificationArtifact:
         data["qualification_hash"] = self.qualification_hash
         data["horizons"] = list(self.horizons)
         data["rejection_reasons"] = list(self.rejection_reasons)
+        data["dissent_resolutions"] = list(self.dissent_resolutions)
         return data
 
     @classmethod
@@ -123,6 +189,7 @@ class QualificationArtifact:
         expected_hash = raw.pop("qualification_hash", None)
         raw["horizons"] = tuple(raw.get("horizons", ()))
         raw["rejection_reasons"] = tuple(raw.get("rejection_reasons", ()))
+        raw["dissent_resolutions"] = tuple(raw.get("dissent_resolutions", ()))
         artifact = cls(**raw)
         if expected_hash is not None and artifact.qualification_hash != expected_hash:
             raise QualificationValidationError(

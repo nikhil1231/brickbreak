@@ -2515,3 +2515,78 @@ shorting the purported down tail. The latter is below the lab's 40-bps cost
 floor once sessions receive equal portfolio weight; the train book loses after
 costs. H044 is **REJECTED at train** and its frozen validation test is
 withdrawn without being run.
+
+---
+
+# H045 source probe — equity-futures cash-and-carry (2026-08-23)
+
+This was an E0 feasibility/magnitude probe registered in HYPOTHESES.md before
+the basis was read. It is not a backtest and spent no outcome partition.
+
+NSE's historical contract report supplied 50 March-2024 stock-futures rows:
+ten sessions from 02–15 January for RELIANCE, HDFCBANK, ICICIBANK, INFY and
+TCS. All 50 joined to the point-in-time raw cash bhavcopy. Close/settlement
+gross implied annualised carry was median 9.40%, p10 8.09% and p90 10.29%,
+against the RBI's 6.94% 91-day T-bill cut-off on 03-Jan-2024. That is a roughly
+2.5 percentage-point gross cushion before dividends, execution, funding,
+margin drag, taxes and physical-settlement costs.
+
+TCS demonstrates the dividend contract. It announced ₹27 per share on 11-Jan
+for a 19-Jan record date. Including that cash flow raises the 12-Jan indication
+from 6.28% to 9.62% and the 15-Jan indication from 5.16% to 8.62%. The
+unadjusted basis is not merely noisy; it ranks dividend contracts incorrectly.
+
+Lots inferred from contract count and reported turnover imply median cash legs
+of ₹6.10–9.17 lakh across the five names. One lot nearly consumes the lab's
+entire trading-capital range before futures margin, so the practical question
+is capital efficiency and cash-flow stress, not how much leverage can be
+applied.
+
+Across the same five hypothetical 02-Jan entries, basis compression by 15-Jan
+ranged from ₹0 to ₹30.10 per share, a 0–22.34% annualised realised return on
+the cash leg over thirteen calendar days (median 14.72%). This says the path is
+variable enough for a PIT early-exit rule to be a coherent later question. It
+does not show that such a rule beats hold-to-expiry: both legs use closing/
+settlement marks, the exit date was inspected retrospectively and switching
+costs were not charged.
+
+One silent source defect appeared immediately: historical `Underlying Value`
+was either missing or a present-day value repeated down every old row. It is
+not PIT and is unusable. Cash must come from the bhavcopy. Futures settlement
+is a last-half-hour weighted price, not an executable quote, so the observed
+spread licenses only the next data-contract step.
+
+Verdict: build a bounded daily derivatives/contract/dividend/margin pre-flight,
+then test the simple net hold-to-expiry baseline. Do not invest in early-exit or
+leverage optimisation unless that baseline first clears a frozen low-risk-rate
+buffer after conservative all-in costs.
+
+---
+
+# Addendum — Earlier entry preserves a bulk-deal signal, not primary net alpha (2026-08-23)
+
+H046 moved the clock to the first genuinely executable opportunity after the
+disclosure: compare the bulk print on D with D's completed close, then enter at
+D+1 open and exit at D+1 close. This uses no D+1 information to select the
+trade. `validation`, `test` and `forward` were not read.
+
+The train signal is clear and event-specific. At the registered 1-crore floor,
+the event top-minus-bottom spread is −55.6 bps against −2.4 bps for the exact
+same-session no-deal VWAP-to-close twin: an increment of **−53.2 bps** with
+DK t=−2.99 over 523 paired sessions. The sign and magnitude survive the 10%
+extreme cap and both lower liquidity floors (−53.4 to −68.1 bps, all t≤−2.99).
+
+That is information, but it is not enough money at the primary floor. In
+excess-return terms after the lab's 40-bps round trip, the 1-crore long,
+short and 50/50 long-short arms earn **−16.9, −5.4 and −12.2 bps per trade**.
+The tempting +74.9-bps raw short return is partly the market falling on the
+same sessions; the short's actual excess is +34.6 bps before cost. H046 is
+therefore rejected at its registered economic gate without validation. The
+0.25/0.10-crore short robustness rows are +7.3 to +15.2 bps net excess, but a
+lower-liquidity row cannot replace the frozen 1-crore primary after inspection.
+
+H047, the fixed 15:15 D+1 entry, stopped even earlier. Train contains 15,500
+bulk symbol-events across 2,438 symbols, but `research_data` has no broad
+full-session intraday dataset; the seven one-minute probe files are not an
+unbiased panel. No 15:15 outcome was read. The honest result is **DATA GAP**, not
+a large-cap backtest.

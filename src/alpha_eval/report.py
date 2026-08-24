@@ -27,6 +27,8 @@ def evaluate_signal(
     run_backtest: bool = True,
     run_neutralisation: bool = True,
     backtest_cfg: backtest.BacktestConfig | None = None,
+    baseline_col: str | None = None,
+    selector_mode: bool = False,
     date_col: str = "date",
     symbol_col: str = "symbol",
     output_path: Path | None = None,
@@ -38,11 +40,17 @@ def evaluate_signal(
         "signal": signal_col,
         "primary_forward_col": forward_col,
         "n_total_rows": len(df),
+        "evaluation_mode": "selector" if selector_mode else "dense",
     }
 
     # 1. Predictive Content & IC
     ic_res = diagnostics.rank_ic(df, signal_col, forward_col, date_col=date_col)
-    ic_decay = diagnostics.ic_decay(df, signal_col, horizons=horizons, date_col=date_col)
+    decay_template = ("excess_ret_{h}d_pct"
+                      if forward_col.startswith("excess_ret_")
+                      else "fwd_ret_{h}d_pct")
+    ic_decay = diagnostics.ic_decay(
+        df, signal_col, horizons=horizons,
+        forward_col_template=decay_template, date_col=date_col)
     report["predictive_content"] = {
         "primary_ic": {
             "mean_ic": ic_res["mean_ic"],
@@ -67,6 +75,30 @@ def evaluate_signal(
         "q10_spread_bps": q10["spread_bps"],
         "q10_monotonicity": q10["monotonicity"],
     }
+
+    if baseline_col:
+        if baseline_col not in df.columns:
+            raise ValueError(f"baseline column {baseline_col!r} is missing")
+        if selector_mode:
+            report["baseline_comparison"] = diagnostics.selector_vs_baseline(
+                df, signal_col, baseline_col, forward_col,
+                date_col=date_col)
+        else:
+            baseline_ic = diagnostics.rank_ic(
+                df, baseline_col, forward_col, date_col=date_col)
+            baseline_q = diagnostics.quantile_profile(
+                df, baseline_col, forward_col, q=5, date_col=date_col)
+            report["baseline_comparison"] = {
+                "baseline_name": baseline_col,
+                "signal_mean_ic": ic_res["mean_ic"],
+                "baseline_mean_ic": baseline_ic["mean_ic"],
+                "incremental_mean_ic": round(
+                    float(ic_res["mean_ic"] - baseline_ic["mean_ic"]), 4),
+                "signal_spread_bps": q5["spread_bps"],
+                "baseline_spread_bps": baseline_q["spread_bps"],
+                "incremental_spread_bps": round(
+                    float(q5["spread_bps"] - baseline_q["spread_bps"]), 1),
+            }
 
     # 3. Signal Mechanics
     report["signal_mechanics"] = diagnostics.signal_mechanics(

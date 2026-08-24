@@ -159,7 +159,7 @@ class TestSampleBudgetLedger:
 
 
 class TestMigration:
-    def test_migrate_all_hypotheses(self):
+    def test_migrate_all_hypotheses(self, research_store):
         hyps, l = migration.migrate(save_to_store=True)
 
         # Must have parsed all 38 hypotheses (H001..H038)
@@ -169,6 +169,9 @@ class TestMigration:
         assert "H001" in ids
         assert "H026" in ids
         assert "H038" in ids
+        h050 = next(h for h in hyps if h.id == "H050")
+        assert h050.status == "superseded"
+        assert Edge(target_id="H049", relation="subsumed-by") in h050.edges
 
         # Check that stored hypotheses match
         loaded_h026 = store.get_hypothesis("H026")

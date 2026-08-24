@@ -78,6 +78,18 @@ def test_mechanism_dossier_validation_and_hashing():
         MechanismDossier.from_dict(tampered)
 
 
+def test_optional_mechanism_evidence_does_not_block_bootstrap():
+    dos = replace(
+        _sample_dossier(),
+        optional_observations_absent=("institutional ownership", "full depth book"),
+        estimated_engineering_days=1.0,
+        estimated_cash_cost_usd=0.0,
+    )
+    assert dos.bootstrap_ready
+    assert not dos.has_data_gap
+    assert dos.to_dict()["optional_observations_absent"]
+
+
 def test_dossier_requires_competing_explanations_and_distinct_reviewer():
     with pytest.raises(DossierValidationError, match="competing explanations"):
         MechanismDossier(

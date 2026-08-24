@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 class ProviderType(str, Enum):
     CODEX = "codex"
     CLAUDE = "claude"
-    GOOGLE_ANTIGRAVITY = "google_antigravity"
+    ANTIGRAVITY = "antigravity"
+    GOOGLE_ANTIGRAVITY = "antigravity"
     MOCK = "mock"
 
 
@@ -137,20 +138,21 @@ class CodexAdapter(BaseProviderAdapter):
         return _run_cli_provider("codex", prompt, system_prompt, model)
 
 
-class GoogleAntigravityAdapter(BaseProviderAdapter):
-    """Reserved lane until a supported, auditable subscription surface exists."""
-
+class AntigravityAdapter(BaseProviderAdapter):
     def provider_type(self) -> ProviderType:
-        return ProviderType.GOOGLE_ANTIGRAVITY
+        return ProviderType.ANTIGRAVITY
 
     def is_available(self) -> bool:
-        return False
+        from ..runner import agent
+        return agent.available(provider="antigravity")
 
     def generate(self, prompt: str, system_prompt: str = "", model: str = "") -> str:
-        raise ProviderError(
-            "Google/Antigravity has no configured supported CLI or API adapter; "
-            "the lane remains disabled rather than returning a fabricated response"
-        )
+        return _run_cli_provider("antigravity", prompt, system_prompt, model)
+
+
+# Reader compatibility for artifacts/tests written while the lane used its
+# longer provisional name.  The production identity is `antigravity`.
+GoogleAntigravityAdapter = AntigravityAdapter
 
 
 @dataclass
@@ -190,7 +192,7 @@ class SubscriptionPool:
             self.lanes = [
                 SubscriptionLane("claude_lane", ProviderType.CLAUDE, ClaudeAdapter()),
                 SubscriptionLane("codex_lane", ProviderType.CODEX, CodexAdapter()),
-                SubscriptionLane("google_lane", ProviderType.GOOGLE_ANTIGRAVITY, GoogleAntigravityAdapter()),
+                SubscriptionLane("antigravity_lane", ProviderType.ANTIGRAVITY, AntigravityAdapter()),
             ]
         else:
             self.lanes = list(lanes)

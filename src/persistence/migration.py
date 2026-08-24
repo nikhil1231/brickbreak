@@ -43,12 +43,16 @@ def extract_edges(body: str, current_id: str) -> list[models.Edge]:
     edges = []
     # Match H001..H038 mentions
     refs = re.findall(r"\b(H\d{3})\b", body)
-    unique_refs = [r for r in set(refs) if r != current_id]
+    unique_refs = sorted(r for r in set(refs) if r != current_id)
+    subsumed_targets = set(re.findall(
+        r"subsumed\s+by\s+(H\d{3})", body, flags=re.IGNORECASE))
 
     for ref in unique_refs:
         # Default relation: adjacent-to or specialises
         rel = "adjacent-to"
-        if "supersede" in body.lower() or "replaces" in body.lower():
+        if ref in subsumed_targets:
+            rel = "subsumed-by"
+        elif "retest" in body.lower() or "replaces" in body.lower():
             rel = "retest-of"
         elif "conditions" in body.lower():
             rel = "conditions-on"
@@ -83,7 +87,11 @@ def parse_hypotheses_md(path: Path | None = None) -> list[models.Hypothesis]:
         body = content.split("\n", 1)[1] if "\n" in content else ""
 
         # Extract status
-        status_match = re.search(r"Status:\s*\*\*([A-Z_]+)\*\*", body)
+        # Status lines often continue inside the bold span (for example,
+        # ``SUPERSEDED — DUPLICATE`` or ``SUPPORTED in sample``). The first
+        # uppercase token is the durable state; requiring the closing ``**``
+        # immediately after it silently downgraded those records to PROPOSED.
+        status_match = re.search(r"Status:\s*\*\*([A-Z_]+)", body)
         raw_status = status_match.group(1) if status_match else "PROPOSED"
         status = STATUS_MAP.get(raw_status, "exploring")
 

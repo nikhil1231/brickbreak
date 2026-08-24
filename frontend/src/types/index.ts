@@ -210,6 +210,24 @@ export interface ProviderCatalogue {
   providers: ProviderOption[];
 }
 
+export interface BreezeSettings {
+  configured: boolean;
+  has_session_token: boolean;
+  session_refreshed_at: string | null;
+  totp_configured: boolean;
+  callback_url: string;
+  login_path: string;
+  login_url?: string;
+  error: string | null;
+}
+
+export interface BreezeTotp {
+  code: string;
+  period_seconds: number;
+  valid_for_seconds: number;
+  expires_at: string;
+}
+
 export interface CompareResult {
   pairwise_rank_correlation?: Record<string, Record<string, number>>;
   pairwise_top_k_overlap_pct?: Record<string, Record<string, number>>;

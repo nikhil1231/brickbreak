@@ -380,6 +380,22 @@ class TestForwardReturn:
         assert np.isfinite(frame.forward_return(d, 5, entry="open",
                                                 bars=bars).iloc[0])
 
+    def test_excess_return_uses_same_entry_clock_and_horizon(self):
+        dates = pd.bdate_range("2021-01-01", periods=3)
+        rows = []
+        for symbol, scale in (("A", 1.0), ("B", 2.0), ("C", 3.0)):
+            for i, date in enumerate(dates):
+                rows.append((symbol, date, 100.0 * scale, (100.0 + i) * scale))
+        bars = pd.DataFrame(rows, columns=["symbol", "date", "open", "close"])
+        panel = bars[["symbol", "date"]].copy()
+        out = frame.forward_excess_return(
+            panel, 1, entry="open", bars=bars,
+            min_breadth=3, ret_guard=100.0)
+        # The cross-sectional market benchmark is formed from the identical
+        # open-to-D+1-close labels, so excess returns sum to zero each day.
+        valid = panel.assign(excess=out).dropna(subset=["excess"])
+        assert np.allclose(valid.groupby("date")["excess"].mean(), 0.0)
+
     def test_bad_entry_argument_raises(self):
         d = pd.DataFrame({"symbol": ["AAA"], "date": [pd.Timestamp("2021-01-01")]})
         with pytest.raises(frame.FrameError, match="entry must be"):

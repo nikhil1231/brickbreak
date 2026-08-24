@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, Badge, Box, Button, Checkbox, Code, Collapse, Group, Paper,
-  Loader, Progress, Select, SimpleGrid, Stack, Switch, Text, TextInput, Textarea,
-  ThemeIcon, UnstyledButton,
+  Loader, Progress, ScrollArea, Select, SimpleGrid, Stack, Switch, Text,
+  TextInput, Textarea, ThemeIcon, UnstyledButton,
 } from '@mantine/core';
 import {
   IconAlertTriangle, IconArrowDown, IconCheck, IconChevronDown,
   IconChevronRight, IconDatabase, IconFileCheck, IconFlask, IconGitBranch,
-  IconLock, IconPlayerPlay, IconPlus, IconRefresh, IconRobot, IconShieldCheck,
-  IconSparkles,
+  IconLock, IconPlayerPlay, IconPlus, IconRefresh, IconRobot, IconSearch,
+  IconShieldCheck, IconSparkles,
 } from '@tabler/icons-react';
 import { useLocalStorage } from '@mantine/hooks';
 
@@ -21,6 +21,7 @@ import type {
 
 type StageKey = 'discover' | 'attack' | 'qualify' | 'compile' | 'execute';
 type StageStatus = 'locked' | 'ready' | 'running' | 'complete' | 'failed' | 'blocked';
+type AttackAction = 'review' | 'skip' | 'waive';
 interface StageActivity {
   stage: StageKey;
   title: string;
@@ -48,6 +49,32 @@ interface PipelineListItem {
 }
 const DEFAULT_MODEL = '__cli_default__';
 const NEW_RUN_KEY = '__new_pipeline__';
+const SCOUT_LENSES = [
+  { value: 'market_structure', label: 'Market structure' },
+  { value: 'participant_constraints', label: 'Participant constraints' },
+  { value: 'external_research', label: 'External research' },
+  { value: 'data_catalogue', label: 'Existing data catalogue' },
+  { value: 'graveyard_branch', label: 'Branch from a prior failure' },
+] as const;
+
+function nextScoutLens(state: DirectorState): string {
+  const known = new Set<string>(SCOUT_LENSES.map((item) => item.value));
+  const attempts: Array<{ createdAt: string; lens: string }> = [];
+  for (const run of state.runs || []) {
+    const candidate = String(run.config?.lens || '');
+    if (known.has(candidate)) attempts.push({ createdAt: run.created_at, lens: candidate });
+  }
+  for (const dossier of state.dossiers || []) {
+    const match = dossier.proposer?.match(/scout_([a-z_]+)/);
+    const candidate = match?.[1] || '';
+    if (known.has(candidate)) attempts.push({ createdAt: dossier.created_at, lens: candidate });
+  }
+  attempts.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const last = attempts.at(-1)?.lens;
+  if (!last) return SCOUT_LENSES[0].value;
+  const index = SCOUT_LENSES.findIndex((item) => item.value === last);
+  return SCOUT_LENSES[(index + 1) % SCOUT_LENSES.length].value;
+}
 
 const emptyState: DirectorState = {
   runs: [], dossiers: [], adjudications: [], qualifications: [], contracts: [], executions: [], withdrawals: [],
@@ -148,7 +175,55 @@ function newRunId() {
 
 function hasPipeline(state: DirectorState, id: string) {
   return (state.runs || []).some((run) => run.run_id === id)
-    || state.dossiers.some((dossier) => dossier.dossier_id === id);
+    || state.dossiers?.some((dossier) => dossier.dossier_id === id);
+}
+
+function condensedPipelineTitle(item: PipelineListItem): string {
+  const claim = item.dossier?.claim || item.run?.claim || '';
+  const text = claim.toLowerCase();
+  if (!claim) {
+    const lens = String(item.run?.config?.lens || '').replace(/_/g, ' ');
+    return lens ? `${lens.replace(/\b\w/g, (letter) => letter.toUpperCase())} scout` : 'New mechanism';
+  }
+  if ((text.includes('15:00-to-close') || text.includes('late sell-down')
+      || text.includes('closing-price pressure')) && text.includes('revers')) {
+    return 'Late-session pressure reversal';
+  }
+  if ((text.includes('progressively diminishes') || text.includes('diminishing price impact'))
+      && text.includes('deliver')) return 'Delivery exhaustion reversal';
+  if ((text.includes('financial year') || text.includes('first trading day of april'))
+      && text.includes('revers')) return 'Fiscal-year loser reversal';
+  if (text.includes('gap-down') && (text.includes('fails to extend')
+      || text.includes('not confirmed'))) return 'Failed gap-down reversal';
+  if (text.includes('deliver') && text.includes('selloff') && text.includes('revers')) {
+    return 'Delivery selloff reversal';
+  }
+  if (text.includes('idiosyncratic one-day price decline') && text.includes('deliver')) {
+    return 'Delivery shock reversal';
+  }
+  if (text.includes('gap-down') && (text.includes('rebound') || text.includes('revers'))) {
+    return 'Gap-down rebound';
+  }
+  if (text.includes('opening') && text.includes('activity')) return 'Opening activity persistence';
+
+  const mechanism = claim.replace(/^(?:among|for)\b.{0,240}?,\s*/i, '');
+  const terms = [
+    'idiosyncratic', 'gap-down', 'gap-up', 'delivery', 'selloff', 'opening',
+    'closing', 'pressure', 'exhaustion', 'reversal', 'rebound', 'continuation',
+    'breakout', 'resilience', 'liquidity', 'turnover', 'volatility', 'momentum',
+  ];
+  const found = terms
+    .map((term) => ({ term, index: mechanism.toLowerCase().indexOf(term) }))
+    .filter((item) => item.index >= 0)
+    .sort((left, right) => left.index - right.index)
+    .slice(0, 4)
+    .map((item) => item.term);
+  if (found.length) {
+    const title = found.join(' ');
+    return title.charAt(0).toUpperCase() + title.slice(1);
+  }
+  const words = mechanism.replace(/[^a-zA-Z0-9-]+/g, ' ').trim().split(/\s+/).slice(0, 5);
+  return words.join(' ') || 'Untitled pipeline';
 }
 
 function activityFor(stage: StageKey, payload: Record<string, unknown>): StageActivity {
@@ -228,14 +303,18 @@ function pipelineIndicator(
   if (!dossier) {
     return { color: persistedRun?.status === 'stopped' ? 'red' : 'yellow', label: 'Pending dossier', running: false };
   }
-  const adjudication = state.adjudications.find((item) => item.dossier?.dossier_id === dossier.dossier_id);
-  const qualification = state.qualifications.find((item) => item.dossier?.dossier_id === dossier.dossier_id);
-  const contract = state.contracts.find((item) => item.qualification_id === qualification?.qualification_id);
-  const execution = state.executions.find((item) => item.contract_id === contract?.contract_id);
+  const adjudication = state.adjudications?.find((item) => item.dossier?.dossier_id === dossier.dossier_id);
+  const qualification = state.qualifications?.find((item) => item.dossier?.dossier_id === dossier.dossier_id);
+  const contract = state.contracts?.find((item) => item.qualification_id === qualification?.qualification_id);
+  const execution = state.executions?.find((item) => item.contract_id === contract?.contract_id);
   if (execution) {
     return (execution as any).status === 'succeeded'
       ? { color: 'teal', label: 'Complete', running: false }
       : { color: 'red', label: 'Execution stopped', running: false };
+  }
+  if (contract && state.withdrawals?.some(
+      (item) => item.contract_id === contract.contract_id)) {
+    return { color: 'yellow', label: 'Withdrawn unopened', running: false };
   }
   if (contract) return { color: 'orange', label: 'Awaiting reveal', running: false };
   if (qualification) return qualification.approved
@@ -310,6 +389,7 @@ interface StageCardProps {
   number: number;
   title: string;
   subtitle: string;
+  summary?: string;
   status: StageStatus;
   icon: React.ReactNode;
   error?: string;
@@ -319,17 +399,14 @@ interface StageCardProps {
 }
 
 const StageCard: React.FC<StageCardProps> = ({
-  stage, number, title, subtitle, status, icon, error, activity, children, last,
+  stage, number, title, subtitle, summary, status, icon, error, activity, children, last,
 }) => {
   const visual = statusStyle[status];
-  const [expanded, setExpanded] = useState<boolean>(status !== 'complete');
+  const [expanded, setExpanded] = useState<boolean>(
+    status === 'ready' || status === 'running' || status === 'failed');
 
   useEffect(() => {
-    if (status === 'complete') {
-      setExpanded(false);
-    } else if (status === 'running' || status === 'ready' || status === 'failed') {
-      setExpanded(true);
-    }
+    setExpanded(status === 'ready' || status === 'running' || status === 'failed');
   }, [status]);
 
   return (
@@ -352,7 +429,10 @@ const StageCard: React.FC<StageCardProps> = ({
             <Box style={{ minWidth: 0 }}>
               <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Step {number}</Text>
               <Text fw={750} size="md">{title}</Text>
-              <Text size="xs" c="dimmed" mt={2}>{subtitle}</Text>
+              <Text size={expanded ? 'xs' : 'sm'} c={expanded ? 'dimmed' : undefined}
+                fw={expanded ? 400 : 600} mt={2} lineClamp={expanded ? 2 : 1}>
+                {expanded ? subtitle : summary || subtitle}
+              </Text>
             </Box>
           </Group>
           <Group gap="xs" wrap="nowrap">
@@ -392,12 +472,14 @@ export const ExploreConsole: React.FC = () => {
   const [state, setState] = useState<DirectorState>(emptyState);
   const [providers, setProviders] = useState<ProviderCatalogue | null>(null);
   const [selectedId, setSelectedId] = useLocalStorage<string | null>({ key: 'explore-selected-id', defaultValue: null, getInitialValueInEffect: false });
-  const [operation, setOperation] = useState<ActiveOperation | null>(null);
-  const [attackAction, setAttackAction] = useState<'review' | 'skip' | 'waive' | null>(null);
+  const [operationsByRun, setOperationsByRun] = useState<Record<string, ActiveOperation>>({});
+  const [attackActionsByRun, setAttackActionsByRun] = useState<Record<string, AttackAction>>({});
   const [stageErrorsByRun, setStageErrorsByRun] = useState<Record<string, Partial<Record<StageKey, string>>>>({});
   const [autoAdvance, setAutoAdvance] = useState(true);
   const [skipIndependentAttack, setSkipIndependentAttack] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [pipelineBrowserOpen, setPipelineBrowserOpen] = useState(false);
+  const [pipelineSearch, setPipelineSearch] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [lens, setLens] = useState('market_structure');
   const [family, setFamily] = useState('discovery');
@@ -413,6 +495,7 @@ export const ExploreConsole: React.FC = () => {
   const [authorProvider, setAuthorProvider] = useLocalStorage({ key: 'explore-author-provider', defaultValue: '', getInitialValueInEffect: false });
   const [authorModel, setAuthorModel] = useLocalStorage({ key: 'explore-author-model', defaultValue: '', getInitialValueInEffect: false });
   const selectedIdRef = useRef<string | null>(selectedId);
+  const operationsRef = useRef<Record<string, ActiveOperation>>({});
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -489,40 +572,43 @@ export const ExploreConsole: React.FC = () => {
     const persisted: PipelineListItem[] = (state.runs || []).map((run) => ({
       key: run.run_id,
       run,
-      dossier: state.dossiers.find((item) => item.dossier_id === run.dossier_id) || null,
+      dossier: state.dossiers?.find((item) => item.dossier_id === run.dossier_id) || null,
     }));
     const linkedDossiers = new Set((state.runs || []).map((run) => run.dossier_id).filter(Boolean));
-    const legacy: PipelineListItem[] = state.dossiers
+    const legacy: PipelineListItem[] = (state.dossiers || [])
       .filter((item) => !linkedDossiers.has(item.dossier_id))
       .map((item) => ({ key: item.dossier_id, run: null, dossier: item }));
-    if (operation?.runId && !persisted.some((item) => item.key === operation.runId)
-        && !legacy.some((item) => item.key === operation.runId)) {
-      persisted.unshift({ key: operation.runId, run: null, dossier: null });
-    } else if (selectedId?.startsWith('RUN_')
+    for (const operation of Object.values(operationsByRun)) {
+      if (operation.runId && !persisted.some((item) => item.key === operation.runId)
+          && !legacy.some((item) => item.key === operation.runId)) {
+        persisted.unshift({ key: operation.runId, run: null, dossier: null });
+      }
+    }
+    if (selectedId?.startsWith('RUN_')
         && !persisted.some((item) => item.key === selectedId)
         && !legacy.some((item) => item.key === selectedId)) {
       persisted.unshift({ key: selectedId, run: null, dossier: null });
     }
     return [...persisted, ...legacy];
-  }, [operation?.runId, selectedId, state.dossiers, state.runs]);
+  }, [operationsByRun, selectedId, state.dossiers, state.runs]);
   const selectedRun = (state.runs || []).find((item) => item.run_id === selectedId) || null;
   const selectedDossierId = selectedRun?.dossier_id
-    || (state.dossiers.some((item) => item.dossier_id === selectedId) ? selectedId : null);
-  const dossier = state.dossiers.find((item) => item.dossier_id === selectedDossierId) || null;
+    || (state.dossiers?.some((item) => item.dossier_id === selectedId) ? selectedId : null);
+  const dossier = state.dossiers?.find((item) => item.dossier_id === selectedDossierId) || null;
   const adjudication = useMemo<DirectorAdjudication | null>(
-    () => state.adjudications.find((item) => item.dossier?.dossier_id === selectedDossierId) || null,
+    () => state.adjudications?.find((item) => item.dossier?.dossier_id === selectedDossierId) || null,
     [selectedDossierId, state.adjudications]);
   const qualification = useMemo<DirectorQualification | null>(
-    () => state.qualifications.find((item) => item.dossier?.dossier_id === selectedDossierId) || null,
+    () => state.qualifications?.find((item) => item.dossier?.dossier_id === selectedDossierId) || null,
     [selectedDossierId, state.qualifications]);
   const contract = useMemo<DirectorContract | null>(
-    () => state.contracts.find((item) => item.qualification_id === qualification?.qualification_id) || null,
+    () => state.contracts?.find((item) => item.qualification_id === qualification?.qualification_id) || null,
     [qualification, state.contracts]);
   const execution = useMemo<DirectorExecution | null>(
-    () => state.executions.find((item) => item.contract_id === contract?.contract_id) || null,
+    () => state.executions?.find((item) => item.contract_id === contract?.contract_id) || null,
     [contract, state.executions]);
   const withdrawal = useMemo(
-    () => state.withdrawals.find((item) => item.contract_id === contract?.contract_id) || null,
+    () => state.withdrawals?.find((item) => item.contract_id === contract?.contract_id) || null,
     [contract, state.withdrawals]);
 
   const proposer = proposerIdentity(dossier);
@@ -542,9 +628,16 @@ export const ExploreConsole: React.FC = () => {
     payload: Record<string, unknown>,
     targetRunId: string | null,
   ) => {
+    let operationKey = runKey(targetRunId);
+    if (operationsRef.current[operationKey]) return null;
     const startedWithSelection = selectedIdRef.current;
     const stageActivity = activityFor(stage, payload);
-    setOperation({ ...stageActivity, runId: targetRunId });
+    const initialOperation = { ...stageActivity, runId: targetRunId };
+    operationsRef.current = {
+      ...operationsRef.current,
+      [operationKey]: initialOperation,
+    };
+    setOperationsByRun(operationsRef.current);
     setStageErrorsByRun((current) => ({
       ...current,
       [runKey(targetRunId)]: { ...current[runKey(targetRunId)], [stage]: undefined },
@@ -552,7 +645,15 @@ export const ExploreConsole: React.FC = () => {
     try {
       const response = await runDirectorStage<Record<string, any>>(stage, payload);
       const resolvedRunId = responseRunId(response, targetRunId);
-      setOperation({ ...stageActivity, runId: resolvedRunId });
+      const resolvedKey = runKey(resolvedRunId);
+      if (resolvedKey !== operationKey) {
+        const nextOperations = { ...operationsRef.current };
+        delete nextOperations[operationKey];
+        nextOperations[resolvedKey] = { ...stageActivity, runId: resolvedRunId };
+        operationKey = resolvedKey;
+        operationsRef.current = nextOperations;
+        setOperationsByRun(nextOperations);
+      }
       await reload(resolvedRunId || undefined, startedWithSelection);
       return response;
     } catch (reason) {
@@ -565,7 +666,10 @@ export const ExploreConsole: React.FC = () => {
       if (selectedIdRef.current === targetRunId) stageScroll(stage);
       return null;
     } finally {
-      setOperation(null);
+      const nextOperations = { ...operationsRef.current };
+      delete nextOperations[operationKey];
+      operationsRef.current = nextOperations;
+      setOperationsByRun(nextOperations);
     }
   }, [reload]);
 
@@ -658,27 +762,51 @@ export const ExploreConsole: React.FC = () => {
       stageScroll('attack'); return;
     }
     const settings = sequenceSettings();
-    setAttackAction('review');
-    await runSafeSequence('attack', attackPayload(dossier.dossier_id, settings), settings, selectedId || dossier.dossier_id);
-    setAttackAction(null);
+    const actionKey = runKey(selectedId || dossier.dossier_id);
+    setAttackActionsByRun((current) => ({ ...current, [actionKey]: 'review' }));
+    try {
+      await runSafeSequence('attack', attackPayload(dossier.dossier_id, settings), settings, selectedId || dossier.dossier_id);
+    } finally {
+      setAttackActionsByRun((current) => {
+        const next = { ...current };
+        delete next[actionKey];
+        return next;
+      });
+    }
   };
   const skipAttack = async () => {
     if (!dossier) return;
     const settings = sequenceSettings();
-    setAttackAction('skip');
-    await runSafeSequence('attack', attackPayload(dossier.dossier_id, settings, true), settings, selectedId || dossier.dossier_id);
-    setAttackAction(null);
+    const actionKey = runKey(selectedId || dossier.dossier_id);
+    setAttackActionsByRun((current) => ({ ...current, [actionKey]: 'skip' }));
+    try {
+      await runSafeSequence('attack', attackPayload(dossier.dossier_id, settings, true), settings, selectedId || dossier.dossier_id);
+    } finally {
+      setAttackActionsByRun((current) => {
+        const next = { ...current };
+        delete next[actionKey];
+        return next;
+      });
+    }
   };
   const waiveFailedAttack = async () => {
     if (!dossier) return;
     const settings = sequenceSettings();
-    setAttackAction('waive');
-    await runSafeSequence('attack', {
-      dossier_id: dossier.dossier_id,
-      waive_failed_independent_attack: true,
-      waiver_reason: 'Owner chose to continue after reviewing the failed independent attack; objections remain attached.',
-    }, settings, selectedId || dossier.dossier_id);
-    setAttackAction(null);
+    const actionKey = runKey(selectedId || dossier.dossier_id);
+    setAttackActionsByRun((current) => ({ ...current, [actionKey]: 'waive' }));
+    try {
+      await runSafeSequence('attack', {
+        dossier_id: dossier.dossier_id,
+        waive_failed_independent_attack: true,
+        waiver_reason: 'Owner chose to continue after reviewing the failed independent attack; objections remain attached.',
+      }, settings, selectedId || dossier.dossier_id);
+    } finally {
+      setAttackActionsByRun((current) => {
+        const next = { ...current };
+        delete next[actionKey];
+        return next;
+      });
+    }
   };
   const startQualify = () => {
     const settings = sequenceSettings();
@@ -695,7 +823,7 @@ export const ExploreConsole: React.FC = () => {
 
   const exposurePercent = state.exposure.weekly_ceiling
     ? Math.min(100, (state.exposure.weekly_used / state.exposure.weekly_ceiling) * 100) : 0;
-  const localSelectedOperation = operation?.runId === selectedId ? operation : null;
+  const localSelectedOperation = operationsByRun[runKey(selectedId)] || null;
   const recoveringMissingRun = Boolean(
     selectedId?.startsWith('RUN_') && !selectedRun && !localSelectedOperation);
   const recoveredOperation: ActiveOperation | null = selectedRun?.status === 'running'
@@ -721,8 +849,9 @@ export const ExploreConsole: React.FC = () => {
   if (selectedRun?.status === 'failed' && selectedRun.stage !== 'complete') {
     stageErrors[selectedRun.stage as StageKey] = selectedRun.error || 'This step stopped before it completed.';
   }
-  const isBusy = operation !== null || recoveringMissingRun
-    || (state.runs || []).some((run) => run.status === 'running');
+  const isBusy = Boolean(localSelectedOperation || recoveringMissingRun
+    || selectedRun?.status === 'running');
+  const attackAction = attackActionsByRun[runKey(selectedId)] || null;
 
   const stageStatus = (stage: StageKey): StageStatus => {
     if (selectedOperation?.stage === stage) return 'running';
@@ -772,10 +901,59 @@ export const ExploreConsole: React.FC = () => {
     setSelectedId(runId);
     setConfirmed(false);
     setShowDetails(false);
+    setPipelineBrowserOpen(false);
   };
   const criticReview = adjudication?.reviews.find((review) => review.critic_role.startsWith('independent_model_critic:'));
   const attackWaiver = adjudication?.independent_attack_waiver;
   const visibleDissents = attackWaiver?.original_all_dissents || adjudication?.all_dissents || [];
+  const selectedPipeline = pipelineRuns.find((item) => item.key === selectedId) || null;
+  const selectedPipelineTitle = selectedPipeline
+    ? condensedPipelineTitle(selectedPipeline) : 'New research pipeline';
+  const selectedPipelineClaim = selectedPipeline?.dossier?.claim
+    || selectedPipeline?.run?.claim || 'Configure an outcome-blind mechanism search.';
+  const selectedIndicator = selectedPipeline
+    ? pipelineIndicator(
+        selectedPipeline.key, selectedPipeline.dossier, selectedPipeline.run,
+        state, operationsByRun[selectedPipeline.key] || null, stageErrorsByRun[selectedPipeline.key])
+    : { color: 'blue', label: 'Not started', running: false };
+  const normalizedSearch = pipelineSearch.trim().toLowerCase();
+  const filteredPipelines = pipelineRuns.filter((item) => {
+    if (!normalizedSearch) return true;
+    const haystack = [
+      condensedPipelineTitle(item), item.dossier?.claim, item.run?.claim,
+      item.dossier?.dossier_id, item.run?.run_id,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(normalizedSearch);
+  });
+  const discoverSummary = selectedOperation?.stage === 'discover'
+    ? selectedOperation.detail
+    : dossier
+      ? `${selectedPipelineTitle} · ${proposer.provider || 'unknown provider'}/${proposer.model} · ${dossier.expected_horizon_days} sessions · ${dossier.min_effect_bps} bps bar`
+      : selectedRun ? `${selectedRun.provider || 'Scout'} / ${selectedRun.model || 'CLI default'} · ${selectedRun.status}`
+        : 'No dossier has been created yet';
+  const attackSummary = selectedOperation?.stage === 'attack'
+    ? selectedOperation.detail
+    : adjudication
+      ? `${attackWaiver ? 'Owner waiver' : adjudication.approved ? 'Approved' : 'Rejected'} · ${criticReview ? criticReview.critic_role.replace('independent_model_critic:', '') : 'deterministic gates only'} · ${visibleDissents.length} dissent${visibleDissents.length === 1 ? '' : 's'}`
+      : dossier ? `Awaiting ${criticProvider || 'reviewer'} / ${criticModel || 'CLI default'}` : 'Waiting for a dossier';
+  const qualifySummary = selectedOperation?.stage === 'qualify'
+    ? selectedOperation.detail
+    : qualification
+      ? `${qualification.signal_name} · ${qualification.approved ? 'E0 passed' : 'E0 stopped'} · ${qualification.provider}/${qualification.model || 'CLI default'} · coverage ${objectValue(qualification.preflight, ['coverage', 'coverage_fraction'])}`
+      : adjudication?.approved && !dossier?.has_data_gap
+        ? `Ready to author ${signalName || 'a signal'} with ${authorProvider || 'author'} / ${authorModel || 'CLI default'}`
+        : dossier?.has_data_gap ? 'Blocked by the dossier data contract' : 'Waiting for an approved review';
+  const compileSummary = selectedOperation?.stage === 'compile'
+    ? selectedOperation.detail
+    : contract
+      ? `${contract.contract_id} · ${contract.min_magnitude_bps} bps · t ≥ ${contract.min_significance_t} · ${contract.exposure_level_incurred}`
+      : qualification?.approved ? `${qualification.signal_name} passed E0 and is ready to freeze` : 'Waiting for an approved qualification';
+  const executeSummary = selectedOperation?.stage === 'execute'
+    ? selectedOperation.detail
+    : withdrawal ? `Withdrawn unopened · ${withdrawal.reason}`
+      : execution ? `${String((execution as any).status || 'recorded')} · ${contract?.contract_id || 'contract'}`
+        : contract ? `${contract.contract_id} · awaiting explicit outcome access · budget ${state.exposure.weekly_used}/${state.exposure.weekly_ceiling}`
+          : 'No frozen contract yet';
 
   return <Box p={{ base: 'md', md: 'xl' }} style={{ maxWidth: 1120, margin: '0 auto' }}>
     <Group justify="space-between" align="flex-start" mb="lg">
@@ -786,53 +964,80 @@ export const ExploreConsole: React.FC = () => {
       <Button variant="subtle" leftSection={<IconRefresh size={15} />} onClick={() => reload()}>Refresh</Button>
     </Group>
 
-    <Paper p="md" radius="lg" mb="md" style={{ borderColor: 'var(--border-light)' }}>
-      <Text size="xs" fw={700} c="dimmed" mb="sm">PIPELINE RUNS</Text>
-      <Box role="list" aria-label="Pipeline runs" style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10,
-      }}>
-        {pipelineRuns.map((item) => {
-          const indicator = pipelineIndicator(
-            item.key, item.dossier, item.run, state, operation, stageErrorsByRun[item.key]);
-          const selected = selectedId === item.key;
-          return <UnstyledButton key={item.key} role="listitem" aria-pressed={selected}
-            onClick={() => chooseRun(item.key)} style={{ display: 'block', minWidth: 0 }}>
-            <Paper p="sm" radius="md" h="100%" style={{
-              border: `2px solid ${selected ? 'var(--mantine-color-blue-6)' : 'var(--border-light)'}`,
-              background: selected ? 'rgba(34, 139, 230, .08)' : 'var(--surface)',
-              boxShadow: selected ? '0 0 0 2px rgba(34, 139, 230, .12)' : undefined,
-              transition: 'border-color 120ms ease, background 120ms ease',
-              }}>
-              <Group justify="space-between" gap="xs" wrap="nowrap">
-                <Text size="xs" fw={750} c={selected ? 'blue.3' : 'dimmed'} truncate>
-                  {item.dossier?.dossier_id || item.run?.run_id || item.key}
-                </Text>
-                <Badge size="xs" color={indicator.color} variant="light" leftSection={indicator.running ? <Loader size={8} color={indicator.color} /> : undefined} style={{ flexShrink: 0 }}>
-                  {indicator.label}
+    <Paper radius="lg" mb="md" style={{ borderColor: 'var(--border-light)', overflow: 'hidden' }}>
+      <Box p="md">
+        <Group justify="space-between" align="flex-start" gap="md" wrap="nowrap">
+          <Group align="flex-start" gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+            <ThemeIcon size={34} radius="md" variant="light" color={selectedIndicator.color}>
+              {selectedIndicator.running ? <Loader size={15} color={selectedIndicator.color} /> : <IconGitBranch size={17} />}
+            </ThemeIcon>
+            <Box style={{ minWidth: 0, flex: 1 }}>
+              <Group gap="xs" wrap="nowrap">
+                <Text fw={800} size="md" truncate>{selectedPipelineTitle}</Text>
+                <Badge size="xs" color={selectedIndicator.color} variant="light" style={{ flexShrink: 0 }}>
+                  {selectedIndicator.label}
                 </Badge>
               </Group>
-              <Text size="sm" fw={650} mt={7} lineClamp={2}>
-                {item.dossier?.claim || item.run?.claim || 'Discovering a new mechanism…'}
-              </Text>
-            </Paper>
-          </UnstyledButton>;
-        })}
-        <UnstyledButton role="listitem" aria-pressed={selectedId === null}
-          onClick={() => { chooseRun(null); stageScroll('discover'); }} style={{ display: 'block', minWidth: 0 }}>
-          <Paper p="sm" radius="md" h="100%" style={{
-            border: `2px ${selectedId === null ? 'solid var(--mantine-color-blue-6)' : 'dashed var(--border-light)'}`,
-            background: selectedId === null ? 'rgba(34, 139, 230, .08)' : 'transparent',
-          }}>
-            <Group gap="xs" h="100%" mih={54} justify="center">
-              <ThemeIcon variant="light" size="sm"><IconPlus size={14} /></ThemeIcon>
-              <Text size="sm" fw={700}>New pipeline</Text>
-              {stageErrorsByRun[NEW_RUN_KEY]?.discover
-                  ? <Badge size="xs" color="red">Discovery stopped</Badge>
-                  : null}
-            </Group>
-          </Paper>
-        </UnstyledButton>
+              <Text size="xs" c="dimmed" mt={3} lineClamp={2}>{selectedPipelineClaim}</Text>
+              {selectedPipeline && <Text size="10px" c="dimmed" mt={5} ff="monospace">
+                {selectedPipeline.dossier?.dossier_id || selectedPipeline.run?.run_id || selectedPipeline.key}
+              </Text>}
+            </Box>
+          </Group>
+          <Group gap="xs" wrap="nowrap">
+            <Button variant="default" size="xs" onClick={() => setPipelineBrowserOpen((open) => !open)}>
+              {pipelineBrowserOpen ? 'Close browser' : `Browse ${pipelineRuns.length}`}
+            </Button>
+            <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => {
+              setLens(nextScoutLens(state));
+              chooseRun(null);
+              stageScroll('discover');
+            }}>New</Button>
+          </Group>
+        </Group>
       </Box>
+      <Collapse expanded={pipelineBrowserOpen}>
+        <Box px="md" pb="md" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+          <TextInput value={pipelineSearch} onChange={(event) => setPipelineSearch(event.currentTarget.value)}
+            leftSection={<IconSearch size={14} />} placeholder="Search title, claim, run or dossier ID…"
+            aria-label="Search pipelines" mb="xs" />
+          <ScrollArea.Autosize mah={330} type="auto" offsetScrollbars>
+            <Stack gap={4} role="listbox" aria-label="Choose a pipeline">
+              {filteredPipelines.map((item) => {
+                const indicator = pipelineIndicator(
+                  item.key, item.dossier, item.run, state,
+                  operationsByRun[item.key] || null, stageErrorsByRun[item.key]);
+                const selected = selectedId === item.key;
+                const claim = item.dossier?.claim || item.run?.claim || 'Discovery has not produced a dossier yet.';
+                return <UnstyledButton key={item.key} role="option" aria-selected={selected}
+                  onClick={() => chooseRun(item.key)} style={{ width: '100%' }}>
+                  <Box px="sm" py={9} style={{
+                    borderLeft: `3px solid ${selected ? 'var(--mantine-color-blue-6)' : 'transparent'}`,
+                    background: selected ? 'rgba(34, 139, 230, .09)' : 'transparent',
+                    borderRadius: 6,
+                  }}>
+                    <Group justify="space-between" gap="sm" wrap="nowrap">
+                      <Box style={{ minWidth: 0, flex: 1 }}>
+                        <Text size="sm" fw={750} truncate>{condensedPipelineTitle(item)}</Text>
+                        <Text size="xs" c="dimmed" lineClamp={1}>{claim}</Text>
+                      </Box>
+                      <Box style={{ flexShrink: 0, textAlign: 'right' }}>
+                        <Badge size="xs" color={indicator.color} variant="light">{indicator.label}</Badge>
+                        <Text size="9px" c="dimmed" mt={3} ff="monospace">
+                          {(item.dossier?.dossier_id || item.run?.run_id || item.key).slice(-12)}
+                        </Text>
+                      </Box>
+                    </Group>
+                  </Box>
+                </UnstyledButton>;
+              })}
+              {filteredPipelines.length === 0 && <Text size="sm" c="dimmed" ta="center" py="lg">
+                No pipelines match “{pipelineSearch}”.
+              </Text>}
+            </Stack>
+          </ScrollArea.Autosize>
+        </Box>
+      </Collapse>
     </Paper>
 
     <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm" mb="xl">
@@ -841,17 +1046,11 @@ export const ExploreConsole: React.FC = () => {
       <Paper p="md" radius="lg"><Group justify="space-between"><Text size="xs" c="dimmed" fw={700}>SAMPLE BUDGET</Text><Badge color={state.exposure.allowed ? 'teal' : 'red'}>{state.exposure.weekly_used}/{state.exposure.weekly_ceiling}</Badge></Group><Progress value={exposurePercent} mt={8} color={exposurePercent >= 100 ? 'red' : 'blue'} /></Paper>
     </SimpleGrid>
 
-    <StageCard key={`${selectedId || NEW_RUN_KEY}-discover`} stage="discover" number={1} title="Discover a mechanism" subtitle="Outcome-blind proposal using the current catalogue and full research ledger." status={stageStatus('discover')} icon={<IconSparkles size={18} />} error={stageErrors.discover} activity={selectedOperation?.stage === 'discover' ? selectedOperation : null}>
+    <StageCard key={`${selectedId || NEW_RUN_KEY}-discover`} stage="discover" number={1} title="Discover a mechanism" subtitle="Outcome-blind proposal using the current catalogue and full research ledger." summary={discoverSummary} status={stageStatus('discover')} icon={<IconSparkles size={18} />} error={stageErrors.discover} activity={selectedOperation?.stage === 'discover' ? selectedOperation : null}>
       {!dossier ? <Stack gap="md">
         <ProviderPicker title="Scout model" provider={scoutProvider} model={scoutModel} catalogue={providers} onProvider={setScoutProvider} onModel={setScoutModel} disabled={isBusy} note="Creates the dossier. The reviewer must use another provider lane; changing only the model is not enough." />
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-          <Select label="Research lens" value={lens} onChange={(value) => setLens(value || 'market_structure')} data={[
-            { value: 'market_structure', label: 'Market structure' },
-            { value: 'participant_constraints', label: 'Participant constraints' },
-            { value: 'external_research', label: 'External research' },
-            { value: 'data_catalogue', label: 'Existing data catalogue' },
-            { value: 'graveyard_branch', label: 'Branch from a prior failure' },
-          ]} />
+          <Select label="Research lens" description="Defaults to the next lens after the most recent scout run; you can still override it." value={lens} onChange={(value) => setLens(value || 'market_structure')} data={SCOUT_LENSES.map((item) => ({ ...item }))} />
           <TextInput label="Family" value={family} onChange={(event) => setFamily(event.currentTarget.value)} />
         </SimpleGrid>
         <Textarea label="Optional direction" placeholder="Leave blank for a broad search, or name a behavior worth exploring." value={hint} onChange={(event) => setHint(event.currentTarget.value)} autosize minRows={2} maxRows={4} />
@@ -870,7 +1069,7 @@ export const ExploreConsole: React.FC = () => {
       </Stack>}
     </StageCard>
 
-    <StageCard key={`${selectedId || NEW_RUN_KEY}-attack`} stage="attack" number={2} title="Independent attack" subtitle="A separate provider challenges mechanism, leakage, power, costs and novelty." status={stageStatus('attack')} icon={<IconShieldCheck size={18} />} error={stageErrors.attack} activity={selectedOperation?.stage === 'attack' ? selectedOperation : null}>
+    <StageCard key={`${selectedId || NEW_RUN_KEY}-attack`} stage="attack" number={2} title="Independent attack" subtitle="A separate provider challenges mechanism, leakage, power, costs and novelty." summary={attackSummary} status={stageStatus('attack')} icon={<IconShieldCheck size={18} />} error={stageErrors.attack} activity={selectedOperation?.stage === 'attack' ? selectedOperation : null}>
       {!dossier ? <LockedMessage>Create a dossier first.</LockedMessage> : adjudication ? <Stack gap="sm">
         <Group justify="space-between"><Box><Text fw={700} c={adjudication.approved ? 'teal.3' : 'red.3'}>{attackWaiver ? 'Continuing under owner waiver' : adjudication.approved ? 'Approved for E0' : 'Rejected before sample use'}</Text><Text size="xs" c="dimmed" mt={3}>{adjudication.verdict}</Text></Box>{attackWaiver ? <Badge color="yellow" variant="light">Attack waived after failure</Badge> : criticReview ? <Badge variant="outline">{criticReview.critic_role.replace('independent_model_critic:', '')}</Badge> : <Badge color="yellow" variant="light">Model attack skipped</Badge>}</Group>
         {visibleDissents.length > 0 && <Box>{visibleDissents.slice(0, 3).map((item, index) => <Text size="xs" mt={4} key={index} c={item.severity === 'fatal' ? 'red.3' : 'yellow.3'}>{item.severity.toUpperCase()} · {item.objection}</Text>)}</Box>}
@@ -882,7 +1081,7 @@ export const ExploreConsole: React.FC = () => {
       </Stack>}
     </StageCard>
 
-    <StageCard key={`${selectedId || NEW_RUN_KEY}-qualify`} stage="qualify" number={3} title="Author signal + E0 gates" subtitle="The selected model writes one deterministic score; the harness checks structure without returns." status={stageStatus('qualify')} icon={<IconFlask size={18} />} error={stageErrors.qualify} activity={selectedOperation?.stage === 'qualify' ? selectedOperation : null}>
+    <StageCard key={`${selectedId || NEW_RUN_KEY}-qualify`} stage="qualify" number={3} title="Author signal + E0 gates" subtitle="The selected model writes one deterministic score; the harness checks structure without returns." summary={qualifySummary} status={stageStatus('qualify')} icon={<IconFlask size={18} />} error={stageErrors.qualify} activity={selectedOperation?.stage === 'qualify' ? selectedOperation : null}>
       {!adjudication ? <LockedMessage>Independent review comes first.</LockedMessage>
         : !adjudication.approved ? <LockedMessage>The dossier was rejected. Start a new branch instead.</LockedMessage>
         : dossier?.has_data_gap ? <LockedMessage>Resolve the blocking data contract before qualification.</LockedMessage>
@@ -901,7 +1100,7 @@ export const ExploreConsole: React.FC = () => {
         </Stack>}
     </StageCard>
 
-    <StageCard key={`${selectedId || NEW_RUN_KEY}-compile`} stage="compile" number={4} title="Freeze experiment contract" subtitle="Lock the bar, cost, capacity, population and signal identity before outcomes exist." status={stageStatus('compile')} icon={<IconFileCheck size={18} />} error={stageErrors.compile} activity={selectedOperation?.stage === 'compile' ? selectedOperation : null}>
+    <StageCard key={`${selectedId || NEW_RUN_KEY}-compile`} stage="compile" number={4} title="Freeze experiment contract" subtitle="Lock the bar, cost, capacity, population and signal identity before outcomes exist." summary={compileSummary} status={stageStatus('compile')} icon={<IconFileCheck size={18} />} error={stageErrors.compile} activity={selectedOperation?.stage === 'compile' ? selectedOperation : null}>
       {!qualification ? <LockedMessage>The signal must pass E0 first.</LockedMessage>
         : !qualification.approved ? <LockedMessage>E0 failed; no contract can be frozen.</LockedMessage>
         : contract ? <Stack gap="sm">
@@ -914,7 +1113,7 @@ export const ExploreConsole: React.FC = () => {
         </Stack>}
     </StageCard>
 
-    <StageCard key={`${selectedId || NEW_RUN_KEY}-execute`} stage="execute" number={5} title="Reveal outcomes" subtitle="The only sample-bearing step. It is never triggered by automation." status={stageStatus('execute')} icon={<IconDatabase size={18} />} error={stageErrors.execute} activity={selectedOperation?.stage === 'execute' ? selectedOperation : null} last>
+    <StageCard key={`${selectedId || NEW_RUN_KEY}-execute`} stage="execute" number={5} title="Reveal outcomes" subtitle="The only sample-bearing step. It is never triggered by automation." summary={executeSummary} status={stageStatus('execute')} icon={<IconDatabase size={18} />} error={stageErrors.execute} activity={selectedOperation?.stage === 'execute' ? selectedOperation : null} last>
       {!contract ? <LockedMessage>Freeze an experiment contract first.</LockedMessage> : withdrawal ? <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Withdrawn unopened">{withdrawal.reason}</Alert> : execution ? <Stack gap="sm">
         <Group justify="space-between"><Text fw={700} c={(execution as any).status === 'succeeded' ? 'teal.3' : 'red.3'}>Outcome-bearing execution recorded</Text><Badge>{String((execution as any).status || 'unknown')}</Badge></Group>
         <Code block style={{ maxHeight: 240, overflow: 'auto', fontSize: 11 }}>{JSON.stringify((execution as any).result || execution, null, 2)}</Code>

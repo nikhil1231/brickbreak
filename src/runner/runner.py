@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Callable
 import pandas as pd
 
+from ..alpha_eval import backtest as backtest_mod
 from ..alpha_eval import evaluate_signal
 from ..alpha_eval.guards import assert_no_forward_labels
 from ..persistence import (
@@ -56,6 +57,7 @@ def run_exploration(
     enforce_exposure: bool = True,
     panel: pd.DataFrame | None = None,
     exposure_source_id: str = "",
+    defer_batch_promotion: bool = False,
 ) -> dict[str, Any]:
     """Executes one complete, clean exploration end-to-end."""
     t0 = time.time()
@@ -97,19 +99,44 @@ def run_exploration(
         gate.reserve_outcome_access(
             spec, source_id=exposure_source_id or exp_id, batch_id=batch_id)
     for h in spec.horizons:
-        df[f"fwd_ret_{h}d_pct"] = frame.forward_return(
-            df, horizon=h, version=spec.dataset_version, bars=bars
-        )
+        if spec.outcome_kind == "market_excess":
+            df[f"excess_ret_{h}d_pct"] = frame.forward_excess_return(
+                df, horizon=h, version=spec.dataset_version,
+                entry=spec.entry_price, bars=bars)
+        else:
+            df[f"fwd_ret_{h}d_pct"] = frame.forward_return(
+                df, horizon=h, version=spec.dataset_version,
+                entry=spec.entry_price, bars=bars)
 
     # 4. Standard alpha evaluation battery
-    primary_fwd = f"fwd_ret_{spec.primary_horizon}d_pct"
+    outcome_prefix = "excess_ret" if spec.outcome_kind == "market_excess" else "fwd_ret"
+    primary_fwd = f"{outcome_prefix}_{spec.primary_horizon}d_pct"
+    eval_df = df
+    if spec.eligibility_name:
+        if spec.eligibility_name not in df.columns:
+            raise ValueError(
+                f"Frozen eligibility column {spec.eligibility_name!r} is missing")
+        eligibility = df[spec.eligibility_name]
+        if not pd.api.types.is_bool_dtype(eligibility) or eligibility.isna().any():
+            raise ValueError("Frozen eligibility must be a complete boolean column")
+        eval_df = df[eligibility].copy()
+        if eval_df.empty:
+            raise ValueError("Frozen eligibility population is empty at evaluation")
     eval_report = evaluate_signal(
-        df,
+        eval_df,
         signal_col=spec.signal_name,
         forward_col=primary_fwd,
         horizons=spec.horizons,
         run_backtest=True,
         run_neutralisation=True,
+        baseline_col=spec.baseline_name or None,
+        selector_mode=spec.signal_kind == "selector",
+        backtest_cfg=backtest_mod.BacktestConfig(
+            top_k=spec.backtest_top_k,
+            holding_sessions=spec.backtest_holding,
+            cost_pct=spec.cost_round_trip_bps / 100.0,
+            entry_price=spec.entry_price,
+        ),
     )
 
     # 5. Failure classification & interpretation
@@ -122,7 +149,10 @@ def run_exploration(
     # Where this sits among everything else asked of the same partition. Not a
     # veto — a label, so "significant" cannot quietly mean "significant among
     # the fifty things we tried" (the refactor plan §9).
-    primary_t = (eval_report.get("predictive_content", {})
+    baseline_comparison = eval_report.get("baseline_comparison", {})
+    primary_t = (baseline_comparison.get("lift_t")
+                 if spec.signal_kind == "selector"
+                 else eval_report.get("predictive_content", {})
                  .get("primary_ic", {}).get("t_stat"))
     h_for_burden = store.get_hypothesis(spec.hypothesis_id)
     multiplicity = burden_mod.assess(
@@ -135,7 +165,10 @@ def run_exploration(
         hypothesis_id=spec.hypothesis_id,
         spec=spec.to_dict(),
         partition=spec.partition,
-        result_metrics=eval_report.get("predictive_content", {}),
+        result_metrics={
+            "predictive_content": eval_report.get("predictive_content", {}),
+            "baseline_comparison": baseline_comparison,
+        },
         dataset_version=spec.dataset_version,
         provider_used=provider_used,
         model_used=model_used,
@@ -212,6 +245,7 @@ def run_exploration(
             "spread_bps": eval_report.get("quantiles", {}).get("q5_spread_bps"),
             "monotonicity": eval_report.get("quantiles", {}).get("q5_monotonicity"),
             "failure_class": failure_class,
+            "baseline_comparison": baseline_comparison,
         },
         verdict_statement=interpretation,
         manifest_hash=manifest_data["hash"],
@@ -239,7 +273,7 @@ def run_exploration(
 
     # 9. Update Hypothesis status & Idea Graph
     if h:
-        if failure_class == "SUCCESS":
+        if failure_class == "SUCCESS" and not defer_batch_promotion:
             h.status = "validated" if spec.role == "confirmatory" else "promising"
         elif failure_class in ("NO_SIGNAL", "SIGNAL_TOO_SMALL", "HIGH_TURNOVER"):
             h.status = "rejected"

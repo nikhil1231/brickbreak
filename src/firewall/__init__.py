@@ -12,7 +12,7 @@ from .exposure import (
     record_exposure,
     save_exposure_log,
 )
-from .shape_gate import ShapeGateReport, evaluate_shape_gate
+from .shape import ShapeGateReport, evaluate_shape_gate
 from .structural_gate import StructuralGateReport, evaluate_structural_gate
 from .zones import (
     FirewallAccessError,

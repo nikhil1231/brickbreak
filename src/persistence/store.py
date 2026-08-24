@@ -6,7 +6,10 @@ records under `data/metadata/research_store/`.
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
@@ -32,6 +35,24 @@ def _ensure_dirs() -> None:
         d.mkdir(parents=True, exist_ok=True)
 
 
+def _atomic_write_record(path: Path, payload: dict) -> Path:
+    """Replace one JSON record without exposing a partial file to readers."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w") as handle:
+            json.dump(payload, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    finally:
+        if os.path.exists(temp_name):
+            os.unlink(temp_name)
+    return path
+
+
 # ---------------------------------------------------------------------------
 # Hypotheses
 # ---------------------------------------------------------------------------
@@ -39,8 +60,7 @@ def _ensure_dirs() -> None:
 def save_hypothesis(h: Hypothesis) -> Path:
     _ensure_dirs()
     p = HYPOTHESES_DIR / f"{h.id}.json"
-    p.write_text(json.dumps(h.to_dict(), indent=2) + "\n")
-    return p
+    return _atomic_write_record(p, h.to_dict())
 
 
 def get_hypothesis(id: str) -> Hypothesis | None:
@@ -85,6 +105,90 @@ def next_hypothesis_id() -> str:
     return f"H{highest + 1:03d}"
 
 
+@contextmanager
+def _hypothesis_id_lock():
+    """Serialize durable H-ID allocation across CLI/UI worker processes."""
+    import fcntl
+
+    director_dir = STORE_DIR / "director"
+    director_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = director_dir / ".hypothesis_id.lock"
+    with lock_path.open("a+") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield director_dir
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def reserve_hypothesis_id(source_key: str, statement: str,
+                          family: str) -> str:
+    """Bind one provisional dossier identity to one permanent H-ID.
+
+    Qualification is intentionally retryable while it remains outcome-free.
+    Without this mapping, every failed authoring attempt called
+    ``next_hypothesis_id`` again and registered the same dossier as H049 and
+    H050.  The mapping and allocation happen under one process lock, and an
+    exact pre-existing ledger statement is adopted to repair older retries.
+    """
+    if not source_key.strip() or not statement.strip() or not family.strip():
+        raise ValueError("source_key, statement and family are required")
+    _ensure_dirs()
+    with _hypothesis_id_lock() as director_dir:
+        mapping_path = director_dir / "hypothesis_promotions.json"
+        if mapping_path.exists():
+            try:
+                raw = json.loads(mapping_path.read_text())
+                if not isinstance(raw, dict):
+                    raise ValueError("promotion map must be an object")
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"hypothesis promotion map is unreadable; refusing ID allocation: {exc}") from exc
+        else:
+            raw = {}
+
+        existing_id = raw.get(source_key)
+        if existing_id:
+            return str(existing_id)
+
+        # Adopt the earliest exact ledger match. This makes the mapping repair
+        # H049/H050-style duplicates instead of allocating H052 on the retry.
+        exact = sorted(
+            (h for h in list_hypotheses()
+             if h.statement == statement and h.family == family),
+            key=lambda h: int(h.id[1:]) if h.id[1:].isdigit() else 10**9,
+        )
+        if exact:
+            assigned = exact[0].id
+        else:
+            highest = 0
+            for p in HYPOTHESES_DIR.glob("H*.json"):
+                match = re.fullmatch(r"H(\d+)", p.stem)
+                if match:
+                    highest = max(highest, int(match.group(1)))
+            for value in raw.values():
+                match = re.fullmatch(r"H(\d+)", str(value))
+                if match:
+                    highest = max(highest, int(match.group(1)))
+            assigned = f"H{highest + 1:03d}"
+
+        raw[source_key] = assigned
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{mapping_path.name}.", suffix=".tmp",
+            dir=str(mapping_path.parent))
+        try:
+            with os.fdopen(fd, "w") as handle:
+                json.dump(raw, handle, indent=2, sort_keys=True)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_name, mapping_path)
+        finally:
+            if os.path.exists(temp_name):
+                os.unlink(temp_name)
+        return assigned
+
+
 # ---------------------------------------------------------------------------
 # Explorations
 # ---------------------------------------------------------------------------
@@ -92,8 +196,7 @@ def next_hypothesis_id() -> str:
 def save_exploration(exp: Exploration) -> Path:
     _ensure_dirs()
     p = EXPLORATIONS_DIR / f"{exp.id}.json"
-    p.write_text(json.dumps(exp.to_dict(), indent=2) + "\n")
-    return p
+    return _atomic_write_record(p, exp.to_dict())
 
 
 def get_exploration(id: str) -> Exploration | None:
@@ -146,8 +249,7 @@ def list_explorations(hypothesis_id: str | None = None,
 def save_signal(sig: Signal) -> Path:
     _ensure_dirs()
     p = SIGNALS_DIR / f"{sig.name}.json"
-    p.write_text(json.dumps(sig.to_dict(), indent=2) + "\n")
-    return p
+    return _atomic_write_record(p, sig.to_dict())
 
 
 def get_signal(name: str) -> Signal | None:
@@ -175,8 +277,7 @@ def list_signals(hypothesis_id: str | None = None) -> list[Signal]:
 def add_evidence(ev: Evidence) -> Path:
     _ensure_dirs()
     p = EVIDENCE_DIR / f"{ev.id}.json"
-    p.write_text(json.dumps(ev.to_dict(), indent=2) + "\n")
-    return p
+    return _atomic_write_record(p, ev.to_dict())
 
 
 def get_evidence(id: str) -> Evidence | None:
@@ -225,8 +326,7 @@ def get_idea_graph() -> IdeaGraph:
 def save_suggestion(sug: Suggestion) -> Path:
     _ensure_dirs()
     p = SUGGESTIONS_DIR / f"{sug.id}.json"
-    p.write_text(json.dumps(sug.to_dict(), indent=2) + "\n")
-    return p
+    return _atomic_write_record(p, sug.to_dict())
 
 
 def get_suggestion(id: str) -> Suggestion | None:
@@ -270,8 +370,7 @@ def next_suggestion_id() -> str:
 def save_preflight(res: PreFlightResult) -> Path:
     _ensure_dirs()
     p = PREFLIGHTS_DIR / f"{res.id}.json"
-    p.write_text(json.dumps(res.to_dict(), indent=2) + "\n")
-    return p
+    return _atomic_write_record(p, res.to_dict())
 
 
 def get_preflight(id: str) -> PreFlightResult | None:
@@ -307,8 +406,7 @@ def list_preflights(
 def save_proposal(prop: QueueProposal) -> Path:
     _ensure_dirs()
     p = QUEUE_DIR / f"{prop.id}.json"
-    p.write_text(json.dumps(prop.to_dict(), indent=2) + "\n")
-    return p
+    return _atomic_write_record(p, prop.to_dict())
 
 
 def get_proposal(id: str) -> QueueProposal | None:
@@ -346,8 +444,7 @@ def next_proposal_id() -> str:
 def save_batch(batch: BatchManifest) -> Path:
     _ensure_dirs()
     p = BATCHES_DIR / f"{batch.batch_id}.json"
-    p.write_text(json.dumps(batch.to_dict(), indent=2) + "\n")
-    return p
+    return _atomic_write_record(p, batch.to_dict())
 
 
 def get_batch(id: str) -> BatchManifest | None:
@@ -366,4 +463,3 @@ def list_batches(partition: str | None = None) -> list[BatchManifest]:
             continue
         out.append(batch)
     return out
-

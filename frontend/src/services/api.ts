@@ -9,6 +9,8 @@ import {
   CatalogueData,
   ProviderCatalogue,
   CompareResult,
+  BreezeSettings,
+  BreezeTotp,
 } from '../types';
 
 const API_BASE = '';
@@ -109,6 +111,21 @@ export async function fetchCatalogue(signal?: AbortSignal): Promise<CatalogueDat
 export async function fetchProviders(signal?: AbortSignal): Promise<ProviderCatalogue> {
   const res = await fetch(`${API_BASE}/api/providers`, { signal });
   if (!res.ok) throw new Error(`Failed to fetch LLM providers: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchBreezeSettings(signal?: AbortSignal): Promise<BreezeSettings> {
+  const res = await fetch(`${API_BASE}/api/settings/breeze`, { signal });
+  if (!res.ok) throw new Error(`Failed to fetch Breeze settings: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchBreezeTotp(signal?: AbortSignal): Promise<BreezeTotp> {
+  const res = await fetch(`${API_BASE}/api/settings/breeze/totp`, { signal, cache: 'no-store' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to generate Breeze TOTP: ${res.statusText}`);
+  }
   return res.json();
 }
 

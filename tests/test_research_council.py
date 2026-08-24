@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 
 import pytest
 
 from src.contracts.dossier import MechanismDossier
 from src.council import (
+    SCOUT_SYSTEM_PROMPT,
     ScoutLens,
     adjudicate_dossier,
     build_scout_prompt,
@@ -40,7 +42,7 @@ def _sample_dossier():
         confounds=("Quarterly result dates",),
         capacity_notes="Liquid top 500",
         min_effect_bps=55.0,
-        nearest_hypothesis_ids=(),
+        nearest_hypothesis_ids=("H001",),
         required_observations_absent=(),
         memory_risk_classification="anonymised_unrecognised",
         forward_confirmation_path="Accrue 60 clean forward sessions",
@@ -50,9 +52,19 @@ def _sample_dossier():
 
 
 def test_scout_prompt_and_json_parsing():
-    prompt = build_scout_prompt(ScoutLens.MARKET_STRUCTURE, domain_hint="Auction prints")
+    features = [f"feature_{i}" for i in range(25)]
+    ledger = [f"H{i:03d}" for i in range(1, 8)]
+    prompt = build_scout_prompt(
+        ScoutLens.MARKET_STRUCTURE, domain_hint="Auction prints",
+        catalogue_features=features, graveyard_notes=ledger)
     assert "MARKET_STRUCTURE" in prompt
     assert "Auction prints" in prompt
+    assert "feature_24" in prompt
+    assert "H007" in prompt
+    assert "optional_observations_absent" in SCOUT_SYSTEM_PROMPT
+    assert "weak, repeatable conditional relationships" in SCOUT_SYSTEM_PROMPT
+    assert "small size is an advantage" in SCOUT_SYSTEM_PROMPT
+    assert "INR 5-10 lakh book's small size" in prompt
 
     mock_json = """
     {
@@ -72,7 +84,16 @@ def test_scout_prompt_and_json_parsing():
       "capacity_notes": "Liquid",
       "min_effect_bps": 50.0,
       "nearest_hypothesis_ids": [],
+      "available_observations": ["daily bhavcopy"],
       "required_observations_absent": [],
+      "optional_observations_absent": ["institutional ownership"],
+      "estimated_engineering_days": 0,
+      "estimated_cash_cost_usd": 0,
+      "required_feature_names": ["open", "prev_close"],
+      "data_adapter": "daily_panel_asof_open",
+      "entry_price": "open",
+      "outcome_kind": "market_excess",
+      "signal_kind": "dense",
       "memory_risk_classification": "anonymised_unrecognised",
       "forward_confirmation_path": "Accrue 60 clean forward sessions"
     }
@@ -146,6 +167,21 @@ def test_novelty_and_adjudication():
     assert adj.approved
     assert adj.priority_score > 5.0
     assert "APPROVED" in adj.verdict
+
+
+def test_adjudication_requires_a_valid_lineage_link():
+    dos = replace(_sample_dossier(), nearest_hypothesis_ids=())
+    adj = adjudicate_dossier(dos)
+    assert not adj.approved
+    assert not adj.novelty.lineage_complete
+
+
+def test_priority_prices_incremental_engineering_and_cash_cost():
+    cheap = adjudicate_dossier(_sample_dossier())
+    expensive = adjudicate_dossier(replace(
+        _sample_dossier(), estimated_engineering_days=6,
+        estimated_cash_cost_usd=100))
+    assert cheap.priority_score > expensive.priority_score
 
 
 def test_discover_cli_persists_a_deterministically_named_dossier(

@@ -277,6 +277,46 @@ def forward_return(
     return pd.Series(out, index=df.index, name=f"fwd_ret_{horizon}d_pct")
 
 
+def forward_excess_return(
+    df: pd.DataFrame,
+    horizon: int,
+    version: str = "v1",
+    entry: str = "close",
+    bars: pd.DataFrame | None = None,
+    max_staleness: int = 3,
+    ret_guard: float = 60.0,
+    min_breadth: int = 50,
+) -> pd.Series:
+    """Forward symbol return minus the same-clock equal-weighted market.
+
+    The benchmark is built from every tape row using the identical entry date,
+    entry price, horizon, and staleness rule. A missing or too-narrow market is
+    unknown rather than silently treated as flat.
+    """
+    if bars is None:
+        if not BARS_ADJ_PATH.exists():
+            raise FrameError(
+                "daily_bars_adj.parquet missing. Run sync-nse and sync-corp-actions")
+        bars = pd.read_parquet(
+            BARS_ADJ_PATH, columns=["symbol", "date", "open", "close"])
+    raw = forward_return(
+        df, horizon=horizon, version=version, entry=entry, bars=bars,
+        max_staleness=max_staleness)
+    market_frame = bars[["symbol", "date"]].copy()
+    market_frame["_ret"] = forward_return(
+        market_frame, horizon=horizon, version=version, entry=entry, bars=bars,
+        max_staleness=max_staleness)
+    guarded = market_frame["_ret"].where(market_frame["_ret"].abs() < ret_guard)
+    breadth = guarded.notna().groupby(market_frame["date"]).sum()
+    market = guarded.groupby(market_frame["date"]).mean().where(
+        breadth >= min_breadth)
+    benchmark = pd.to_datetime(df["date"]).map(market)
+    out = raw - benchmark.to_numpy()
+    return pd.Series(
+        out.to_numpy(), index=df.index,
+        name=f"excess_ret_{horizon}d_pct")
+
+
 # ---------------------------------------------------------------------------
 # market regime
 # ---------------------------------------------------------------------------
@@ -522,4 +562,3 @@ def load_raw_file_slice(file_path: Path | str, nrows: int | None = None) -> pd.D
         return pd.read_csv(p, nrows=nrows)
     else:
         raise ValueError(f"Unsupported file format {p.suffix!r}")
-

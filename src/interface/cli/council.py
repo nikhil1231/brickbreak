@@ -16,7 +16,7 @@ from ...contracts import (
     MechanismDossier,
 )
 from ...contracts.compiler import (
-    compile_qualification,
+    compile_batch,
     load_qualification,
     save_contract,
 )
@@ -66,10 +66,9 @@ def cmd_discover(args: argparse.Namespace) -> int:
     from ...research_data.catalogue import DEFAULT as FEATURE_CATALOGUE
 
     hypotheses = store.list_hypotheses()
-    graveyard = [
+    ledger_context = [
         f"{h.id} [{h.family}/{h.status}] {h.title}: {h.rationale}"
         for h in hypotheses
-        if h.status in ("rejected", "decayed", "superseded")
     ]
     prompt = build_scout_prompt(
         lens=lens,
@@ -79,7 +78,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
             f"{'PIT' if feature.point_in_time else 'not-PIT'})"
             for feature in FEATURE_CATALOGUE
         ],
-        graveyard_notes=graveyard,
+        graveyard_notes=ledger_context,
     )
 
     try:
@@ -90,6 +89,7 @@ def cmd_discover(args: argparse.Namespace) -> int:
             role=ProviderRole.SCOUT,
             prompt=prompt,
             system_prompt=SCOUT_SYSTEM_PROMPT,
+            model=getattr(args, "model", "") or "",
             preferred_provider=preferred,
         )
         response_id = hashlib.sha256(resp.encode()).hexdigest()[:10].upper()
@@ -99,7 +99,8 @@ def cmd_discover(args: argparse.Namespace) -> int:
             hypothesis_id=(getattr(args, "hypothesis", None)
                            or f"PROP_{response_id}"),
             family=getattr(args, "family", "general"),
-            proposer=f"{provider.value}:scout_{lens.value}",
+            proposer=(f"{provider.value}:scout_{lens.value};model="
+                      f"{getattr(args, 'model', None) or 'cli-default'}"),
         )
         output_arg = getattr(args, "output", None)
         out_path = (Path(output_arg) if output_arg else
@@ -161,11 +162,13 @@ def cmd_attack(args: argparse.Namespace) -> int:
                 role=ProviderRole.CRITIC,
                 prompt=build_hostile_review_prompt(dossier),
                 system_prompt=HOSTILE_REVIEW_SYSTEM_PROMPT,
+                model=getattr(args, "model", "") or "",
                 preferred_provider=preferred,
                 proposer_provider=proposer_provider,
             )
             extra_reviews = (parse_hostile_review(
-                response, provider=reviewer_provider.value),)
+                response, provider=reviewer_provider.value,
+                model=getattr(args, "model", "") or ""),)
         except (ProviderError, ValueError) as exc:
             print(f"[-] Independent hostile review failed without fallback: {exc}")
             return 1
@@ -200,12 +203,21 @@ def cmd_qualify(args: argparse.Namespace) -> int:
         adjudication = json.loads(adjudication_path.read_text())
         supplied_source = (Path(args.signal_file).read_text()
                            if getattr(args, "signal_file", None) else None)
+        supplied_baseline = (Path(args.baseline_file).read_text()
+                             if getattr(args, "baseline_file", None) else None)
+        supplied_eligibility = (Path(args.eligibility_file).read_text()
+                                if getattr(args, "eligibility_file", None) else None)
         artifact, path = qualify_adjudication(
             adjudication,
             signal_name=args.signal,
             provider=args.provider,
             model=args.model,
             signal_source=supplied_source,
+            baseline_source=supplied_baseline,
+            baseline_name=getattr(args, "baseline_name", None),
+            eligibility_source=supplied_eligibility,
+            eligibility_name=getattr(args, "eligibility_name", None),
+            signal_kind=getattr(args, "signal_kind", None),
             dataset_version=args.dataset_version,
             timeout_s=args.timeout,
             max_turns=args.max_turns,
@@ -231,31 +243,35 @@ def cmd_qualify(args: argparse.Namespace) -> int:
 def cmd_compile(args: argparse.Namespace) -> int:
     """Compile a passed qualification into a frozen one-shot contract."""
     try:
-        qualification = load_qualification(args.qualification)
-        contract, lifecycle, batch = compile_qualification(
-            qualification,
+        qualification_args = (args.qualification if isinstance(args.qualification, list)
+                              else [args.qualification])
+        qualifications = [load_qualification(value) for value in qualification_args]
+        contracts, lifecycles, batch = compile_batch(
+            qualifications,
             reviewer=args.reviewer,
             cost_round_trip_bps=args.cost_bps,
             capacity_limit_inr=args.capacity_inr,
             min_significance_t=args.min_t,
         )
-        canonical_path = save_contract(contract, lifecycle)
-        path = canonical_path
+        canonical_paths = [
+            save_contract(contract, lifecycle)
+            for contract, lifecycle in zip(contracts, lifecycles)
+        ]
+        if args.output and len(contracts) != 1:
+            raise ValueError("--output is only valid for a one-member batch")
+        paths = canonical_paths
         if args.output:
-            path = save_contract(contract, lifecycle, Path(args.output))
+            paths = [save_contract(contracts[0], lifecycles[0], Path(args.output))]
     except Exception as exc:
         print(f"[-] Compile failed: {type(exc).__name__}: {exc}")
         return 1
     print("\n=== EXPERIMENT CONTRACT FROZEN ===")
-    print(f"ID: {contract.contract_id} (Hash: {contract.contract_hash})")
+    print(f"Members: {len(contracts)}")
     print(f"Batch: {batch.batch_id} (Hash: {batch.batch_hash})")
-    print(f"Outcome access: {contract.exposure_level_incurred} on {contract.partition}")
-    print(f"Magnitude bar: {contract.min_magnitude_bps} bps")
-    print(f"Saved: {path}")
-    if path != canonical_path:
-        print(f"Canonical: {canonical_path}")
-    print(f"Run explicitly with: python -m src.cli execute {contract.contract_id} "
-          "--confirm-outcome-access")
+    for contract, path in zip(contracts, paths):
+        print(f"  {contract.contract_id} ({contract.contract_hash}) -> {path}")
+        print(f"    run: python -m src.cli execute {contract.contract_id} "
+              "--confirm-outcome-access")
     return 0
 
 

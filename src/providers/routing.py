@@ -32,6 +32,7 @@ def route_council_call(pool: SubscriptionPool,
                        role: ProviderRole,
                        prompt: str,
                        system_prompt: str = "",
+                       model: str = "",
                        preferred_provider: ProviderType | None = None,
                        proposer_provider: ProviderType | None = None) -> tuple[str, ProviderType]:
     """Route a council call ensuring asymmetric separation from proposer."""
@@ -39,13 +40,13 @@ def route_council_call(pool: SubscriptionPool,
     if target is None:
         if role == ProviderRole.SCOUT:
             preference = (ProviderType.CLAUDE, ProviderType.CODEX,
-                          ProviderType.GOOGLE_ANTIGRAVITY)
+                          ProviderType.ANTIGRAVITY)
         elif role in (ProviderRole.CRITIC, ProviderRole.ADJUDICATOR):
             preference = (ProviderType.CODEX, ProviderType.CLAUDE,
-                          ProviderType.GOOGLE_ANTIGRAVITY)
+                          ProviderType.ANTIGRAVITY)
         else:
             preference = (ProviderType.CLAUDE, ProviderType.CODEX,
-                          ProviderType.GOOGLE_ANTIGRAVITY)
+                          ProviderType.ANTIGRAVITY)
         available = set(pool.available_provider_types(
             exclude=(proposer_provider,) if proposer_provider else ()))
         target = next((provider for provider in preference if provider in available), None)
@@ -57,5 +58,7 @@ def route_council_call(pool: SubscriptionPool,
     if proposer_provider is not None and role != ProviderRole.SCOUT:
         validate_asymmetric_assignment(proposer_provider, target, context=f"Role {role.value}")
 
-    resp = pool.dispatch(target, prompt=prompt, system_prompt=system_prompt, role=role)
+    resp = pool.dispatch(
+        target, prompt=prompt, system_prompt=system_prompt,
+        model=model, role=role)
     return resp, target

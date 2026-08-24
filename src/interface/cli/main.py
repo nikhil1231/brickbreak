@@ -246,7 +246,7 @@ def main(argv=None) -> int:
     pl.add_argument("--with-columns", action="store_true",
                     help="show the planner the available columns (slower)")
     pl.add_argument("--json", action="store_true")
-    pl.add_argument("--provider", choices=("claude", "codex"), default="claude")
+    pl.add_argument("--provider", choices=("claude", "codex", "antigravity"), default="claude")
     pl.add_argument("--model", default=None)
     pl.set_defaults(fn=iface_cli.cmd_plan)
 
@@ -259,7 +259,7 @@ def main(argv=None) -> int:
     sg.add_argument("--refresh", default=None, metavar="Sxxx",
                     help="replace one open suggestion with a new one")
     sg.add_argument("--json", action="store_true")
-    sg.add_argument("--provider", choices=("claude", "codex"), default="claude")
+    sg.add_argument("--provider", choices=("claude", "codex", "antigravity"), default="claude")
     sg.add_argument("--model", default=None)
     sg.set_defaults(fn=iface_cli.cmd_suggest)
 
@@ -272,7 +272,7 @@ def main(argv=None) -> int:
     jb_.add_argument("--horizon", type=int, default=10)
     jb_.add_argument("--timeout", type=int, default=1800)
     jb_.add_argument("--max-turns", type=int, default=40)
-    jb_.add_argument("--provider", choices=("claude", "codex"), default="claude")
+    jb_.add_argument("--provider", choices=("claude", "codex", "antigravity"), default="claude")
     jb_.add_argument("--model", default=None)
     jb_.add_argument("--keep-worktree", action="store_true")
     jb_.set_defaults(fn=iface_cli.cmd_job)
@@ -349,7 +349,7 @@ def main(argv=None) -> int:
     exp_p.add_argument("--signal", default=None, help="signal name")
     exp_p.add_argument("--partition", default="train", help="partition (train/validation/test/forward)")
     exp_p.add_argument("--role", default="exploratory", help="role (exploratory/confirmatory)")
-    exp_p.add_argument("--provider", choices=("claude", "codex"), default="claude")
+    exp_p.add_argument("--provider", choices=("claude", "codex", "antigravity"), default="claude")
     exp_p.add_argument("--model", default=None, help="provider model (default: CLI default)")
     exp_p.set_defaults(fn=iface_cli.cmd_explore)
 
@@ -373,15 +373,17 @@ def main(argv=None) -> int:
         "--hypothesis", default=None,
         help="existing hypothesis ID; omitted dossiers remain provisional until qualify")
     disc_p.add_argument("--family", default="general", help="family name")
-    disc_p.add_argument("--provider", choices=("claude", "codex"), default="claude")
+    disc_p.add_argument("--provider", choices=("claude", "codex", "antigravity"), default="claude")
+    disc_p.add_argument("--model", default=None)
     disc_p.add_argument("--output", default=None,
                         help="dossier JSON path (default: research store)")
     disc_p.set_defaults(fn=council.cmd_discover)
 
     att_p = sub.add_parser("attack", help="attack a mechanism dossier across council critics")
     att_p.add_argument("dossier_file", help="path to mechanism dossier JSON file")
-    att_p.add_argument("--provider", choices=("auto", "claude", "codex"),
+    att_p.add_argument("--provider", choices=("auto", "claude", "codex", "antigravity"),
                        default="auto", help="independent reviewer lane")
+    att_p.add_argument("--model", default=None)
     att_p.add_argument(
         "--deterministic-only", action="store_true",
         help="explicitly skip the independent model critic (diagnostics/tests only)")
@@ -395,7 +397,14 @@ def main(argv=None) -> int:
     qual_p.add_argument(
         "--signal-file", default=None,
         help="use supplied compute(df) source instead of spending a model call")
-    qual_p.add_argument("--provider", choices=("claude", "codex"), default="claude")
+    qual_p.add_argument("--baseline-file", default=None,
+                        help="frozen baseline compute(df) source for a supplied signal")
+    qual_p.add_argument("--eligibility-file", default=None,
+                        help="frozen boolean eligibility compute(df) source")
+    qual_p.add_argument("--baseline-name", default=None)
+    qual_p.add_argument("--eligibility-name", default=None)
+    qual_p.add_argument("--signal-kind", choices=("dense", "selector"), default=None)
+    qual_p.add_argument("--provider", choices=("claude", "codex", "antigravity"), default="claude")
     qual_p.add_argument("--model", default=None)
     qual_p.add_argument("--dataset-version", default="v1")
     qual_p.add_argument("--timeout", type=int, default=1800)
@@ -405,7 +414,9 @@ def main(argv=None) -> int:
 
     comp_p = sub.add_parser(
         "compile", help="freeze a passed qualification into a one-shot contract")
-    comp_p.add_argument("qualification", help="qualification path or ID")
+    comp_p.add_argument(
+        "qualification", nargs="+",
+        help="one or more qualification paths/IDs frozen into the same batch")
     comp_p.add_argument("--reviewer", default="human_owner")
     comp_p.add_argument("--cost-bps", type=float, default=40.0)
     comp_p.add_argument("--capacity-inr", type=float, default=1_000_000.0)

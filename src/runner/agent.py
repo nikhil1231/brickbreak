@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULT_PROVIDER = "claude"
-PROVIDERS = ("claude", "codex")
+PROVIDERS = ("claude", "codex", "antigravity")
 
 CLAUDE_INSTALL_HINT = (
     "Claude Code CLI not found. Install it with:\n"
@@ -40,6 +40,10 @@ CODEX_INSTALL_HINT = (
     "    npm install -g @openai/codex\n"
     "then run `codex login`. Set CODEX_CLI to an explicit path if it lives "
     "somewhere unusual."
+)
+ANTIGRAVITY_INSTALL_HINT = (
+    "Antigravity CLI not found. Install it and ensure `agy` is on your PATH. "
+    "Set ANTIGRAVITY_CLI to an explicit path if it lives somewhere unusual."
 )
 
 # Backward-compatible name used by the existing CLI and tests.
@@ -58,6 +62,11 @@ _CODEX_CANDIDATES = (
     "/usr/local/bin/codex",
     "/opt/homebrew/bin/codex",
 )
+_ANTIGRAVITY_CANDIDATES = (
+    "~/.local/bin/agy",
+    "/usr/local/bin/agy",
+    "/opt/homebrew/bin/agy",
+)
 
 # Backward-compatible alias for callers that patch the old constant.
 _CANDIDATES = _CLAUDE_CANDIDATES
@@ -74,6 +83,14 @@ _CODEX_FALLBACK_MODELS = (
     ("gpt-5.6-terra", "GPT-5.6-Terra"),
     ("gpt-5.6-luna", "GPT-5.6-Luna"),
     ("gpt-5.5", "GPT-5.5"),
+)
+_ANTIGRAVITY_MODELS = (
+    ("", "CLI default"),
+    ("gemini-3.7-flash-high", "Gemini 3.7 Flash (High)"),
+    ("gemini-3.7-flash-medium", "Gemini 3.7 Flash (Medium)"),
+    ("gemini-3.7-flash-low", "Gemini 3.7 Flash (Low)"),
+    ("gemini-3.1-pro-high", "Gemini 3.1 Pro (High)"),
+    ("gemini-3.1-pro-low", "Gemini 3.1 Pro (Low)"),
 )
 
 
@@ -137,17 +154,32 @@ def validate_provider(provider: str) -> str:
 
 
 def install_hint(provider: str = DEFAULT_PROVIDER) -> str:
-    return CODEX_INSTALL_HINT if validate_provider(provider) == "codex" \
-        else CLAUDE_INSTALL_HINT
+    provider = validate_provider(provider)
+    if provider == "codex":
+        return CODEX_INSTALL_HINT
+    elif provider == "antigravity":
+        return ANTIGRAVITY_INSTALL_HINT
+    return CLAUDE_INSTALL_HINT
 
 
 def find_cli(explicit: str | None = None,
              provider: str = DEFAULT_PROVIDER) -> str:
     """Locate one provider's CLI, or say how to install it."""
     provider = validate_provider(provider)
-    env_name = "CODEX_CLI" if provider == "codex" else "CLAUDE_CLI"
-    command = provider
-    candidates = _CODEX_CANDIDATES if provider == "codex" else _CANDIDATES
+
+    if provider == "codex":
+        env_name = "CODEX_CLI"
+        command = "codex"
+        candidates = _CODEX_CANDIDATES
+    elif provider == "antigravity":
+        env_name = "ANTIGRAVITY_CLI"
+        command = "agy"
+        candidates = _ANTIGRAVITY_CANDIDATES
+    else:
+        env_name = "CLAUDE_CLI"
+        command = "claude"
+        candidates = _CANDIDATES
+
     hint = install_hint(provider)
 
     for cand in (explicit, os.environ.get(env_name)):
@@ -199,11 +231,13 @@ def provider_catalog() -> dict:
     """Provider/model choices for CLI and UI surfaces."""
     out = []
     for provider, label in (("claude", "Claude Code"),
-                            ("codex", "OpenAI Codex")):
+                            ("codex", "OpenAI Codex"),
+                            ("antigravity", "Google Antigravity")):
         is_available = available(provider=provider)
         exe = find_cli(provider=provider) if is_available else None
         models = (_codex_models(exe) if provider == "codex" and exe
                   else _CLAUDE_MODELS if provider == "claude"
+                  else _ANTIGRAVITY_MODELS if provider == "antigravity"
                   else _CODEX_FALLBACK_MODELS)
         out.append({
             "id": provider,
@@ -258,6 +292,15 @@ def run_agent(
         ]
         if model:
             cmd += ["--model", model]
+    elif provider == "antigravity":
+        cmd = [
+            exe, "-p", prompt,
+            "--output-format", "json",
+            "--sandbox",
+            "--disable-slash-commands",
+        ]
+        if model:
+            cmd += ["--model", model]
     else:
         cmd = [
             exe, "exec", "--json", "--ephemeral",
@@ -286,26 +329,56 @@ def run_agent(
                            stderr=f"timed out after {timeout_s}s")
     dur = time.time() - t0
 
-    if provider == "claude":
+    if provider in ("claude", "antigravity"):
         payload: dict = {}
         output_text = proc.stdout.strip()
         if output_text:
             try:
-                payload = json.loads(output_text)
-                if isinstance(payload, dict):
-                    output_text = str(payload.get("result", output_text))
+                parsed = json.loads(output_text)
+                if isinstance(parsed, dict):
+                    payload = parsed
             except json.JSONDecodeError:
-                pass          # older CLIs, or a plain-text fallback
+                for line in output_text.splitlines():
+                    line_s = line.strip()
+                    if line_s.startswith("{") and line_s.endswith("}"):
+                        try:
+                            parsed = json.loads(line_s)
+                            if isinstance(parsed, dict):
+                                payload = parsed
+                                break
+                        except json.JSONDecodeError:
+                            continue
+            if payload and isinstance(payload, dict):
+                response_key = "response" if provider == "antigravity" else "result"
+                output_text = str(payload.get(response_key, output_text))
+
+        status_failed = (
+            provider == "antigravity"
+            and bool(payload.get("status"))
+            and str(payload["status"]).upper() != "SUCCESS"
+        )
+        is_error = (bool(payload.get("is_error", False))
+                    or status_failed or proc.returncode != 0)
+        err_msg = proc.stderr.strip()
+        if not err_msg and is_error:
+            if payload.get("error"):
+                err_msg = _error_detail(payload.get("error"))
+            elif payload.get("result") and payload.get("is_error"):
+                err_msg = str(payload.get("result"))
+            elif output_text:
+                err_msg = output_text
+
         return AgentResult(
-            ok=proc.returncode == 0 and not payload.get("is_error", False),
+            ok=not is_error,
             text=output_text,
             returncode=proc.returncode,
             duration_s=dur,
             num_turns=int(payload.get("num_turns", 0) or 0),
             cost_usd=payload.get("total_cost_usd"),
-            session_id=str(payload.get("session_id", "")),
+            session_id=str(payload.get(
+                "conversation_id" if provider == "antigravity" else "session_id", "")),
             raw=payload if isinstance(payload, dict) else {},
-            stderr=proc.stderr.strip(),
+            stderr=err_msg,
         )
 
     events, parse_errors = [], []

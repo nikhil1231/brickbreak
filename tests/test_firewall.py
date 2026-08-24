@@ -102,6 +102,23 @@ def test_invalid_exposure_timestamp_cannot_be_ignored():
         check_weekly_exposure_limit([bad])
 
 
+def test_voided_exposure_is_preserved_but_does_not_spend_quota():
+    from src.firewall.exposure import ExposureEntry
+
+    entry = ExposureEntry(
+        entry_id="EXP_TEST_FIXTURE", hypothesis_id="H1", family="fam",
+        batch_id="B", exposure_level=ExposureLevel.E2_DIRECTIONAL_TRAIN,
+        dataset_version="v1", partition="train", target_columns=("future",),
+        actor="vault", reason="fixture", source_id="replay:RPL_TEST",
+        timestamp="2026-08-23 18:17:21",
+        voided_reason="fixture wrote to production by mistake",
+        voided_at="2026-08-24 00:00:00")
+    used, allowed = check_weekly_exposure_limit(
+        [entry], now=pd.Timestamp("2026-08-24 01:00:00").to_pydatetime())
+    assert used == 0
+    assert allowed
+
+
 def test_source_id_makes_reservation_idempotent(tmp_path):
     from src.firewall import load_exposure_log
 
@@ -168,6 +185,24 @@ def test_structural_gate_evaluation():
     assert rep.missingness_pct == 0.0
 
 
+def test_structural_gate_counts_selector_cases_not_nan_noncandidates():
+    dates = pd.bdate_range("2021-01-04", periods=100)
+    df = pd.DataFrame({
+        "symbol": np.tile(["A", "B", "C", "D", "E"], 100),
+        "date": np.repeat(dates, 5),
+        "selector": np.tile([1.0, 0.5, np.nan, np.nan, np.nan], 100),
+    })
+    rep = evaluate_structural_gate(
+        df, predictor_col="selector", horizon=10,
+        min_independent_blocks=8, target_effect_bps=1000.0,
+        selector_mode=True)
+    assert rep.passed
+    assert rep.cases_per_session == 2.0
+    assert rep.missingness_pct == 0.0
+    assert rep.metrics["active_rows"] == 200
+    assert rep.metrics["noncandidate_pct"] == 60.0
+
+
 def test_structural_gate_fails_on_degenerate_and_underpowered():
     # Degenerate single value
     df_degen = pd.DataFrame({
@@ -185,37 +220,35 @@ def test_structural_gate_fails_on_degenerate_and_underpowered():
     assert any("degenerate" in r.lower() for r in rep.failure_reasons)
 
 
-def test_shape_gate_with_permutation_null(tmp_path, monkeypatch):
+def test_shape_gate_uses_canonical_session_matched_second_moment(tmp_path, monkeypatch):
     from src.firewall import exposure as exp_mod
     monkeypatch.setattr(exp_mod, "EXPOSURE_LOG_PATH", tmp_path / "exposure_log.json")
 
     rng = np.random.default_rng(123)
-    n = 300
     dates = pd.bdate_range("2021-01-04", periods=50)
-    # Plant distinct group means
-    groups = ["A", "B", "C"] * 100
-    outcomes = [10.0 if g == "A" else (-5.0 if g == "B" else 0.0) for g in groups]
-    noise = rng.normal(0, 1.0, n)
-    df = pd.DataFrame({
-        "symbol": [f"S{i%10}" for i in range(n)],
-        "date": np.repeat(dates, 6),
-        "cluster_group": groups,
-        "fwd_ret_10d_pct": np.array(outcomes) + noise,
-    })
+    rows, event_rows = [], []
+    for date in dates:
+        for i in range(12):
+            symbol = f"S{i:02d}"
+            is_event = i < 6
+            rows.append({
+                "symbol": symbol, "date": date,
+                "excess_pct": rng.normal(0, 8.0 if is_event else 1.0),
+            })
+            if is_event:
+                event_rows.append({"symbol": symbol, "date": date})
+    outcome_panel = pd.DataFrame(rows)
 
     rep = evaluate_shape_gate(
-        df,
+        pd.DataFrame(event_rows),
+        outcome_loader=lambda: outcome_panel,
         hypothesis_id="H046",
         family="test_fam",
-        group_col="cluster_group",
-        outcome_col="fwd_ret_10d_pct",
-        min_required_excess_ratio=1.2,
-        n_permutations=100,
-        record_exposure_log=True,
+        horizon=10,
+        source_id="shape:H046:registered",
     )
     assert rep.passed
-    assert rep.excess_dispersion_ratio > 1.2
-    assert rep.p_value <= 0.05
+    assert rep.shape["dispersion_ratio"] > 1.15
 
 
 def test_shape_gate_reserves_quota_before_evaluation(tmp_path):
@@ -229,13 +262,15 @@ def test_shape_gate_reserves_quota_before_evaluation(tmp_path):
             partition="train", target_columns=["future"], actor="gate",
             reason="reserve", path=log_file)
 
-    df = pd.DataFrame({
+    events = pd.DataFrame({
+        "symbol": ["A", "B"],
         "date": pd.to_datetime(["2026-01-01", "2026-01-01"]),
-        "group": ["A", "B"],
-        "future": [1.0, -1.0],
     })
+    called = []
     with pytest.raises(ExposureLimitError):
         evaluate_shape_gate(
-            df, hypothesis_id="H_NEW", family="shape", group_col="group",
-            outcome_col="future", exposure_path=log_file)
+            events, outcome_loader=lambda: called.append(True),
+            hypothesis_id="H_NEW", family="shape", horizon=10,
+            source_id="shape:H_NEW:registered", exposure_path=log_file)
+    assert not called
     assert len(load_exposure_log(log_file)) == 5

@@ -166,7 +166,12 @@ def test_freeze_does_not_touch_the_budget(rid, monkeypatch):
     assert called == []
 
 
-def test_reveal_consults_the_gate_before_reading_an_outcome(rid, monkeypatch):
+def test_reveal_consults_the_gate_before_reading_an_outcome(
+        rid, monkeypatch, tmp_path):
+    from src.firewall import exposure as exposure_mod
+
+    monkeypatch.setattr(
+        exposure_mod, "EXPOSURE_LOG_PATH", tmp_path / "exposure_log.json")
     cases = _cases()
     _seed(rid, cases, _decisions(cases))
     order = []

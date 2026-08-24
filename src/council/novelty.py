@@ -43,6 +43,7 @@ def _ledger_claims() -> list[dict[str, str]]:
 @dataclass(frozen=True)
 class NoveltyReport:
     is_novel: bool
+    lineage_complete: bool
     max_semantic_similarity: float
     nearest_hypothesis_id: str
     overlap_reasons: tuple[str, ...]
@@ -57,6 +58,7 @@ def check_dossier_novelty(dossier: MechanismDossier,
                           ) -> NoveltyReport:
     """Evaluate whether a proposed dossier is genuinely novel or a restatement."""
     claims = _ledger_claims() if existing_claims is None else list(existing_claims)
+    known_ids = {c.get("id", "") for c in claims}
 
     target_claim = _tokens(dossier.claim)
     target_context = _tokens(
@@ -65,6 +67,20 @@ def check_dossier_novelty(dossier: MechanismDossier,
     max_sim = 0.0
     nearest_id = ""
     overlaps = []
+
+    declared_neighbours = {
+        value for value in dossier.nearest_hypothesis_ids
+        if value and value != dossier.hypothesis_id
+    }
+    unknown_neighbours = sorted(declared_neighbours - known_ids)
+    lineage_complete = not claims or bool(declared_neighbours & known_ids)
+    if not dossier.nearest_hypothesis_ids and claims:
+        overlaps.append(
+            "No nearest hypothesis ID supplied; a new or contradictory claim "
+            "must still link to the closest ledger node")
+    if unknown_neighbours:
+        overlaps.append(
+            "Unknown nearest hypothesis ID(s): " + ", ".join(unknown_neighbours))
 
     for c in claims:
         other_claim = _tokens(c.get("claim", ""))
@@ -87,10 +103,15 @@ def check_dossier_novelty(dossier: MechanismDossier,
                 f"{c.get('claim', '')}")
 
     is_novel = max_sim < 0.6
-    verdict = "Novel mechanism proposed" if is_novel else f"Potential restatement of {nearest_id}"
+    if not lineage_complete:
+        verdict = "Lineage incomplete; nearest prior hypothesis must be linked"
+    else:
+        verdict = ("Novel mechanism proposed" if is_novel
+                   else f"Potential restatement of {nearest_id}")
 
     return NoveltyReport(
         is_novel=is_novel,
+        lineage_complete=lineage_complete,
         max_semantic_similarity=round(max_sim, 3),
         nearest_hypothesis_id=nearest_id,
         overlap_reasons=tuple(overlaps),

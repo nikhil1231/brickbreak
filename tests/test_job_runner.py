@@ -172,6 +172,27 @@ class TestAgentAdapter:
         assert "rate limit reached" in res.stderr
         assert "rate_limit" in res.stderr
 
+    def test_antigravity_print_flags_and_json_are_normalized(self, tmp_path):
+        p = tmp_path / "fake_antigravity"
+        p.write_text(
+            "#!/bin/bash\n"
+            'echo "$@" > "$PWD/antigravity_argv.txt"\n'
+            "echo '{\"conversation_id\":\"agy-thread\",\"status\":\"SUCCESS\","
+            "\"response\":\"done by antigravity\",\"num_turns\":1}'\n")
+        p.chmod(p.stat().st_mode | stat.S_IEXEC)
+
+        res = agent.run_agent(
+            "hello", cwd=tmp_path, cli=str(p), provider="antigravity",
+            model="gemini-3.7-flash-medium")
+
+        argv = (tmp_path / "antigravity_argv.txt").read_text()
+        assert "-p hello --output-format json" in argv
+        assert "--sandbox --disable-slash-commands" in argv
+        assert "--model gemini-3.7-flash-medium" in argv
+        assert " run " not in f" {argv} "
+        assert res.ok and res.text == "done by antigravity"
+        assert res.session_id == "agy-thread" and res.num_turns == 1
+
     def test_unknown_provider_is_rejected_before_a_subprocess(self, tmp_path):
         with pytest.raises(agent.AgentError, match="unknown LLM provider"):
             agent.run_agent("x", cwd=tmp_path, provider="other")
@@ -186,9 +207,20 @@ class TestAgentAdapter:
                                                   ("gpt-test", "GPT Test")))
         catalog = agent.provider_catalog()
         assert catalog["default_provider"] == "claude"
-        assert [p["id"] for p in catalog["providers"]] == ["claude", "codex"]
+        assert [p["id"] for p in catalog["providers"]] == [
+            "claude", "codex", "antigravity"]
         codex = next(p for p in catalog["providers"] if p["id"] == "codex")
         assert codex["models"][1]["id"] == "gpt-test"
+        antigravity = next(
+            p for p in catalog["providers"] if p["id"] == "antigravity")
+        assert [model["id"] for model in antigravity["models"]] == [
+            "",
+            "gemini-3.7-flash-high",
+            "gemini-3.7-flash-medium",
+            "gemini-3.7-flash-low",
+            "gemini-3.1-pro-high",
+            "gemini-3.1-pro-low",
+        ]
 
 
 # ---------------------------------------------------------------------------
