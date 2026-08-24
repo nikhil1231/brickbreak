@@ -24,6 +24,14 @@ data/metadata/*
 !data/metadata/*_frozen.json
 !data/metadata/family_holdout.json
 !data/metadata/resilience_semi_stale.json
+# Frozen intraday request manifests are evidence and remain trackable; fetched
+# vendor bytes and resumable machine-local checkpoints are not source control.
+data/intraday_acquisition/*/raw/
+data/intraday_acquisition/*/normalised/
+data/intraday_acquisition/*/session_markers/
+data/intraday_acquisition/*/closing_markers/
+data/intraday_acquisition/*/attempts/
+data/intraday_acquisition/*/pull_status.json
 logs/
 .pytest_cache/
 data/whatsapp_gc/
