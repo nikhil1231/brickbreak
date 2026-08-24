@@ -317,12 +317,18 @@ def run_agent(
         ]
         if model:
             cmd += ["--model", model]
+        # `--image <FILE>...` is greedy in the Codex CLI.  The positional
+        # prompt must precede it or the CLI consumes the prompt as a second
+        # image path and silently falls back to reading stdin.
+        cmd.append(prompt)
         if images:
             cmd += ["--image", *(str(path) for path in images)]
-        cmd.append(prompt)
 
     import time
-    t0 = time.time()
+    # Elapsed time must not jump when the laptop clock is corrected or wakes
+    # from sleep. Subprocess timeout already uses a monotonic clock; report the
+    # same kind of duration alongside it.
+    t0 = time.monotonic()
     try:
         # Both CLIs read stdin when it is a terminal or an inherited pipe:
         # they stall three seconds waiting for input that is never coming and
@@ -333,9 +339,9 @@ def run_agent(
                               stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return AgentResult(ok=False, text="", returncode=-1,
-                           duration_s=time.time() - t0,
+                           duration_s=time.monotonic() - t0,
                            stderr=f"timed out after {timeout_s}s")
-    dur = time.time() - t0
+    dur = time.monotonic() - t0
 
     if provider in ("claude", "antigravity"):
         payload: dict = {}

@@ -1,6 +1,7 @@
 """Sealed, resumable model annotation passes for the H055 E0 fidelity set."""
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import os
@@ -21,6 +22,14 @@ class PriceActionAnnotationError(RuntimeError):
 
 
 _JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _read_annotation_table(path: Path) -> pd.DataFrame:
+    """Read experiment metadata without creating a second market-data door."""
+    with path.open(newline="") as handle:
+        reader = csv.DictReader(handle)
+        return pd.DataFrame.from_records(
+            list(reader), columns=list(reader.fieldnames or []))
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -165,6 +174,7 @@ def run_model_pass(
     max_cases: int | None = None,
     timeout_s: int = 300,
     agent_fn: Callable[..., agent.AgentResult] = agent.run_agent,
+    progress_fn: Callable[[int, int, str, bool, float], None] | None = None,
 ) -> dict[str, Any]:
     """Run or resume one frozen model pass and publish it only when complete."""
     annotator = _safe_annotator(annotator)
@@ -175,7 +185,7 @@ def run_model_pass(
         raise PriceActionAnnotationError("an explicit frozen model is required")
     manifest, cases = _load_bundle(bundle)
     annotations_path = bundle / "annotations.csv"
-    existing = pd.read_csv(annotations_path)
+    existing = _read_annotation_table(annotations_path)
     if annotator in set(existing.get("annotator", pd.Series(dtype=str)).astype(str)):
         raise PriceActionAnnotationError(
             f"completed annotator already exists: {annotator}")
@@ -203,7 +213,8 @@ def run_model_pass(
                if not (checkpoints / f"{case['case_id']}.json").exists()]
     if max_cases is not None:
         pending = pending[:max(0, max_cases)]
-    for case in pending:
+    total_pending = len(pending)
+    for index, case in enumerate(pending, start=1):
         chart = bundle / "charts" / f"{case['case_id']}.png"
         with tempfile.TemporaryDirectory(prefix="pa_annotate_") as empty:
             result = agent_fn(
@@ -218,9 +229,12 @@ def run_model_pass(
         if result.ok:
             try:
                 checkpoint.update({"ok": True, "annotation": _parse_reply(result.text)})
-            except PriceActionAnnotationError as exc:
+            except (PriceActionAnnotationError, pa_e0.PriceActionE0Error) as exc:
                 checkpoint["error"] = str(exc)
         _atomic_json(checkpoints / f"{case['case_id']}.json", checkpoint)
+        if progress_fn is not None:
+            progress_fn(index, total_pending, case["case_id"],
+                        bool(checkpoint["ok"]), float(result.duration_s))
 
     artifacts = {
         path.stem: json.loads(path.read_text())

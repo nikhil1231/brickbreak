@@ -243,3 +243,85 @@ export interface CompareResult {
   };
   error?: string;
 }
+
+export interface SetupReviewOption {
+  value: string;
+  label: string;
+}
+
+export interface SetupReviewField {
+  name: string;
+  label: string;
+  description?: string;
+  type: 'boolean' | 'choice' | 'number' | 'scale' | 'text';
+  required?: boolean;
+  required_when?: Record<string, unknown>;
+  options?: Array<SetupReviewOption | string>;
+  min?: number;
+  max?: number;
+  step?: number;
+  max_length?: number;
+  ui_control?: string;
+}
+
+export interface SetupReviewSchema {
+  review_id: string;
+  title: string;
+  description?: string;
+  case_label?: string;
+  instructions?: string;
+  guide?: {
+    heading: string;
+    summary: string;
+    steps?: Array<{ title: string; body: string }>;
+    glossary?: Array<{ term: string; definition: string }>;
+  };
+  fields: SetupReviewField[];
+}
+
+export interface SetupReviewJudgement {
+  annotator: string;
+  annotator_kind: 'human' | 'model' | string;
+  provider: string;
+  model: string;
+  values: Record<string, unknown>;
+}
+
+export interface SetupReviewSummary {
+  review_id: string;
+  title: string;
+  description: string;
+  case_count: number;
+  human_passes: number;
+  outcome_accessed: false;
+}
+
+export interface SetupReviewQueue {
+  review_id: string;
+  schema: SetupReviewSchema;
+  case_set_hash: string;
+  prompt_hash: string;
+  outcome_accessed: false;
+  annotator: string;
+  finalized: boolean;
+  progress: { completed: number; total: number };
+  cases: Array<{
+    case_id: string;
+    case_status: string;
+    reviewed: boolean;
+  }>;
+  completion?: Record<string, unknown>;
+}
+
+export interface SetupReviewCase {
+  review_id: string;
+  case_id: string;
+  case_hash: string;
+  sidecar: Record<string, unknown>;
+  media: { kind: string; url: string; sha256: string };
+  draft: Record<string, unknown> | null;
+  finalized: boolean;
+  judgements_locked: boolean;
+  judgements?: SetupReviewJudgement[];
+  outcome_accessed: false;
+}

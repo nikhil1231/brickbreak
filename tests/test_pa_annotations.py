@@ -64,3 +64,22 @@ def test_model_pass_is_sealed_resumable_and_published_only_when_complete(tmp_pat
     assert all(kwargs["allowed_tools"] == () for _, kwargs in seen)
     assert all(kwargs["sandbox"] == "read-only" for _, kwargs in seen)
     assert all(len(kwargs["image_paths"]) == 1 for _, kwargs in seen)
+
+
+def test_malformed_model_reply_is_recorded_not_dropped(tmp_path):
+    bundle = _bundle(tmp_path)
+
+    def malformed_agent(prompt, cwd, **kwargs):
+        return AgentResult(
+            ok=True, text=json.dumps({
+                "zone_exists": "boolean", "zone_center_atr_from_close": None,
+                "interaction": "none", "stance": "neutral",
+                "confidence": 0.0, "notes": "malformed",
+            }), returncode=0, duration_s=0.1)
+
+    result = run_model_pass(
+        bundle, annotator="malformed", provider="codex", model="luna",
+        agent_fn=malformed_agent)
+    assert result["status"] == "complete" and result["failed_calls"] == 2
+    rows = pd.read_csv(bundle / "annotations.csv")
+    assert rows["notes"].str.startswith("CALL_FAILED:").all()

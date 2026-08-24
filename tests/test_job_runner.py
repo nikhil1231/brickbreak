@@ -173,7 +173,7 @@ class TestAgentAdapter:
             image_paths=(image,))
 
         argv = (tmp_path / "codex_image_argv.txt").read_text()
-        assert f"--image {image.resolve()} label" in argv
+        assert f"label --image {image.resolve()}" in argv
         assert result.ok
 
         with pytest.raises(agent.AgentError, match="attachment missing"):

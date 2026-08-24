@@ -43,6 +43,8 @@ def test_annotation_bundle_is_anonymised_and_future_stable(tmp_path):
     assert manifest["ready_cases"] > 0
     assert manifest["adapter_schema_hash"] == PriceActionAdapter(
         show_zone_overlay=False, include_zone_features=False).schema_hash
+    assert manifest["review_schema"]["fields"]
+    assert manifest["review_schema"]["instructions"] == pa_e0.ANNOTATION_PROMPT.strip()
     assert "TEST" not in public
     assert "2026-01" not in public
 

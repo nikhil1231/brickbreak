@@ -40,3 +40,7 @@ data/whatsapp_gc/
 frontend/node_modules/
 frontend/dist/
 *.tsbuildinfo
+# In-progress human reviews are local checkpoints; only finalized annotations
+# in the frozen bundle are research evidence.
+data/metadata/research_store/**/human_drafts/
+data/metadata/research_store/**/.review.lock

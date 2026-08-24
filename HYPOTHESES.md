@@ -2957,3 +2957,11 @@ diagnostic and cannot qualify until an independent provider attack (or a
 recorded owner waiver) exists. PA4 source admission is complete; representation,
 shape, directional, validation and forward claims remain unpassed, and no
 outcome has been opened.
+
+**Representation update, 2026-08-25.** Both frozen blind model annotation
+passes are complete on all 60 cases (`gpt-5.6-luna`: two recorded failed calls;
+`gpt-5.6-terra`: none). A generic outcome-locked setup-review page now guides
+the human observer, supports click-to-place ATR-normalised levels, checkpoints
+drafts, freezes only a complete pass, and reveals model explanations only after
+that freeze. Representation remains blocked pending the human pass; no outcome
+has been opened and no alpha claim exists.

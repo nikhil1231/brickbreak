@@ -21,9 +21,10 @@ import {
   IconFlame,
   IconSettings,
   IconChevronDown,
+  IconChartCandle,
 } from '@tabler/icons-react';
 
-export type TabType = 'explore' | 'replays' | 'hypotheses' | 'graph' | 'compare' | 'ledger' | 'catalogue' | 'screener' | 'settings';
+export type TabType = 'explore' | 'setups' | 'replays' | 'hypotheses' | 'graph' | 'compare' | 'ledger' | 'catalogue' | 'screener' | 'settings';
 
 interface HeaderProps {
   activeTab: TabType;
@@ -40,6 +41,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const primaryTabs = [
     { id: 'explore', label: 'Explore', icon: IconCompass },
+    { id: 'setups', label: 'Setup Review', icon: IconChartCandle },
     { id: 'hypotheses', label: 'Hypotheses', icon: IconBook },
     { id: 'ledger', label: 'Budget Ledger', icon: IconDatabase },
     { id: 'catalogue', label: 'Catalogue', icon: IconLayersLinked },
@@ -208,4 +210,3 @@ export const Header: React.FC<HeaderProps> = ({
     </Box>
   );
 };
-

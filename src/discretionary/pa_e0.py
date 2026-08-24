@@ -41,6 +41,112 @@ observed-facts note. Do not use or ask for future prices. Complete every ready
 case; do not omit awkward cases.
 """
 
+REVIEW_SCHEMA = {
+    "review_id": "h055-pa7-representation",
+    "title": "Suggested setup review",
+    "description": (
+        "Review anonymised, outcome-locked market setups using only the "
+        "information that was available at the decision time."
+    ),
+    "case_label": "setup",
+    "instructions": ANNOTATION_PROMPT.strip(),
+    "guide": {
+        "heading": "Decide what the bars say at the right edge",
+        "summary": (
+            "Each chart was selected by a deliberately broad machine rule. "
+            "That does not mean a real setup exists; unclear charts and false "
+            "positives are expected and useful."
+        ),
+        "steps": [
+            {
+                "title": "1. Look left for memory",
+                "body": (
+                    "Find a nearby horizontal area with repeated reactions, "
+                    "a clear prior pivot, or a consolidation boundary."
+                ),
+            },
+            {
+                "title": "2. Judge the latest bars",
+                "body": (
+                    "At the far-right bar, decide whether price rejected, "
+                    "broke, retested, or did nothing meaningful at that area."
+                ),
+            },
+            {
+                "title": "3. Say no when it is vague",
+                "body": (
+                    "If you cannot point to one convincing area, choose No "
+                    "zone, None, and the stance that honestly matches the chart."
+                ),
+            },
+        ],
+        "glossary": [
+            {"term": "Rejection", "definition": "Price probes an area and closes away from it."},
+            {"term": "Break", "definition": "A completed bar closes through the area."},
+            {"term": "Retest", "definition": "Price revisits an area after an earlier break."},
+            {"term": "None", "definition": "No clear interaction is visible at the right edge."},
+        ],
+    },
+    "fields": [
+        {
+            "name": "zone_exists",
+            "label": "Relevant horizontal zone?",
+            "description": "Repeated reactions, a clear pivot, or a consolidation boundary.",
+            "type": "boolean",
+            "required": True,
+        },
+        {
+            "name": "zone_center_atr_from_close",
+            "label": "Zone centre (ATR from close)",
+            "description": "Negative is below the last close; positive is above it.",
+            "type": "number",
+            "ui_control": "chart_level_atr",
+            "step": 0.05,
+            "required_when": {"zone_exists": True},
+        },
+        {
+            "name": "interaction",
+            "label": "Current interaction",
+            "type": "choice",
+            "required": True,
+            "options": [
+                {"value": "rejection", "label": "Rejection"},
+                {"value": "break", "label": "Break"},
+                {"value": "retest", "label": "Retest"},
+                {"value": "none", "label": "None"},
+            ],
+        },
+        {
+            "name": "stance",
+            "label": "Stance",
+            "type": "choice",
+            "required": True,
+            "options": [
+                {"value": "long", "label": "Long"},
+                {"value": "neutral", "label": "Neutral"},
+                {"value": "avoid", "label": "Avoid"},
+            ],
+        },
+        {
+            "name": "confidence",
+            "label": "Confidence",
+            "type": "scale",
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "required": True,
+        },
+        {
+            "name": "notes",
+            "label": "Observed facts",
+            "description": "Briefly describe what is visible; do not infer identity or future prices.",
+            "type": "text",
+            "required": True,
+            "max_length": 500,
+        },
+    ],
+}
+
 
 def _canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
@@ -230,6 +336,7 @@ def freeze_annotation_bundle(
         ).hexdigest(),
         "annotation_columns": list(ANNOTATION_COLUMNS),
         "annotation_prompt_hash": prompt_hash,
+        "review_schema": REVIEW_SCHEMA,
         "acceptance_bar": {"min_class_kappa": 0.40,
                            "max_median_zone_centre_disagreement_atr": 0.50},
     }

@@ -2667,3 +2667,14 @@ relative time ending at `t=0`, one frozen prompt, and zero outcome fields. Its
 representation gate remains **BLOCKED, UNSPENT** pending one human and two
 frozen model passes. No case was transmitted to an external provider and no
 shape or directional outcome was opened.
+
+**Annotation execution update, 2026-08-25.** The two frozen model passes have
+now completed on the replacement blind set. `gpt-5.6-luna` accounted for all
+60 cases with 58 valid structured judgements and two explicit failed calls;
+`gpt-5.6-terra` accounted for all 60 with no failed calls. Failed calls were
+retained as neutral `CALL_FAILED` rows rather than dropped or retried. Both
+passes used the identical content-hashed charts, prompt hash and case-set hash,
+with no tools, a read-only empty working directory, anonymised identity and no
+outcome fields. The representation gate remains **BLOCKED, UNSPENT** pending
+the complete frozen human pass; model answers remain hidden from that reviewer
+until finalisation. No shape or directional outcome has been opened.

@@ -27,7 +27,10 @@ def main() -> int:
     result = run_model_pass(
         options.bundle, annotator=options.annotator, provider=options.provider,
         model=options.model, max_cases=options.max_cases,
-        timeout_s=options.timeout)
+        timeout_s=options.timeout,
+        progress_fn=lambda index, total, case_id, ok, duration: print(
+            f"[{index}/{total}] {case_id}: {'ok' if ok else 'failed'} "
+            f"({duration:.1f}s)", flush=True))
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if result["status"] == "complete" else 4
 
