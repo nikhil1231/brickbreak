@@ -2918,3 +2918,15 @@ Status: **PROPOSED — OUTCOME UNTESTED, 2026-08-24.** Registered by the researc
 **Frozen economic bar.** 80.0 bps. Strongest baseline: The strongest simple baseline is the identical high-turnover, negative-return, bottom-20%-of-range selloff followed by a next-session open no more than 30 bps below the prior close, estimated on Monday-through-Thursday signal sessions. Compare Friday and non-Friday cases within turnover deciles, Friday-return bins, ATR-ratio bins, market-regime bins, and calendar blocks. Also compare against an unconditional Friday effect in the same point-in-time liquidity universe.
 
 **Lineage.** Nearest prior hypotheses: H051, H039, H048, H049.
+
+## H055 — Causal, contextual price action on NSE equities
+
+Status: **PROPOSED — OUTCOME UNTESTED, 2026-08-24.** Registered by the research director before outcome access.
+
+**Population.** NSE EQ cash equities, ETFs excluded; initial 20-session median traded-value band of ₹3–25 crore.
+
+**Mechanism.** Traders may react to remembered price regions; causal representation of those regions may contain information; context may determine which interactions matter; and an AI may be better at that contextual selection than one fixed score.
+
+**Frozen economic bar.** 80.0 bps gross per taken trade, positive after the 40 bp round-trip cost floor. Strongest baseline: the full coded zone score without the AI.
+
+**Lineage.** Nearest prior hypotheses: H033, H037, H047.
