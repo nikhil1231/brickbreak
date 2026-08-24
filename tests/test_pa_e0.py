@@ -1,6 +1,7 @@
 import pandas as pd
 
 from src.discretionary import pa_e0
+from src.discretionary.pa_adapter import PriceActionAdapter
 from src.research_data.pipelines.causal_zones import build_zone_state_machine
 
 
@@ -40,6 +41,8 @@ def test_annotation_bundle_is_anonymised_and_future_stable(tmp_path):
         candidates, features, tmp_path / "bundle", n_cases=2, seed=1)
     public = (tmp_path / "bundle" / "cases.jsonl").read_text()
     assert manifest["ready_cases"] > 0
+    assert manifest["adapter_schema_hash"] == PriceActionAdapter(
+        show_zone_overlay=False, include_zone_features=False).schema_hash
     assert "TEST" not in public
     assert "2026-01" not in public
 

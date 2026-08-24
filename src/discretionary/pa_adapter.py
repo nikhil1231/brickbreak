@@ -16,7 +16,7 @@ class PriceActionCaseError(RuntimeError):
     pass
 
 
-CASE_SCHEMA_VERSION = "price_action_case.v1"
+CASE_SCHEMA_VERSION = "price_action_case.v3"
 DECISION_SCHEMA = {
     "action": ["TAKE", "SKIP"],
     "confidence": "number between 0 and 1",
@@ -43,6 +43,8 @@ class PriceActionAdapter:
     width: int = 800
     height: int = 450
     max_bars: int = 156
+    show_zone_overlay: bool = True
+    include_zone_features: bool = True
 
     @property
     def schema_hash(self) -> str:
@@ -52,6 +54,8 @@ class PriceActionAdapter:
             "width": self.width,
             "height": self.height,
             "max_bars": self.max_bars,
+            "show_zone_overlay": self.show_zone_overlay,
+            "include_zone_features": self.include_zone_features,
         })).hexdigest()[:16]
 
     def render_case(
@@ -117,12 +121,12 @@ class PriceActionAdapter:
             "decision_at": decision_label,
             "bars": int(len(frame)),
             "last_close_rebased": round(float(rebased["close"].iloc[-1]), 6),
+            "atr_20_rebased": _finite(
+                float(latest.get("atr_20")) / base * 100.0
+                if pd.notna(latest.get("atr_20")) else None),
+            "visible_low_rebased": round(float(rebased["low"].min()), 6),
+            "visible_high_rebased": round(float(rebased["high"].max()), 6),
             "rolling_hour_trend_pct": _finite(latest.get("rolling_hour_trend_pct")),
-            "zone_distance_atr": _finite(latest.get("zone_distance_atr")),
-            "zone_overlap_frac": _finite(latest.get("zone_overlap_frac")),
-            "rejection_strength_atr": _finite(latest.get("rejection_strength_atr")),
-            "support_zone_kind": str(latest.get("support_zone_kind", "")),
-            "support_touch_count": _integer(latest.get("support_touch_count")),
             "volume_surprise": _finite(
                 latest.get("lagged_time_of_day_volume_surprise")),
             "relative_bars": [
@@ -134,9 +138,20 @@ class PriceActionAdapter:
                     "c": round(float(row.close), 5),
                     "v": round(float(row.volume), 2),
                 }
-                for i, row in enumerate(rebased.tail(24).itertuples(index=False))
+                for i, row in enumerate(
+                    rebased.tail(24).itertuples(index=False),
+                    start=len(rebased) - min(24, len(rebased)))
             ],
         }
+        if self.include_zone_features:
+            sidecar.update({
+                "zone_distance_atr": _finite(latest.get("zone_distance_atr")),
+                "zone_overlap_frac": _finite(latest.get("zone_overlap_frac")),
+                "rejection_strength_atr": _finite(
+                    latest.get("rejection_strength_atr")),
+                "support_zone_kind": str(latest.get("support_zone_kind", "")),
+                "support_touch_count": _integer(latest.get("support_touch_count")),
+            })
         sidecar_bytes = _canonical_json(sidecar)
         case_hash = hashlib.sha256(
             self.schema_hash.encode() + b"\0" + chart + b"\0" + sidecar_bytes
@@ -186,7 +201,7 @@ class PriceActionAdapter:
 
         zone_low = _finite(latest.get("support_zone_lower"))
         zone_high = _finite(latest.get("support_zone_upper"))
-        if zone_low is not None and zone_high is not None:
+        if self.show_zone_overlay and zone_low is not None and zone_high is not None:
             base_raw = float(latest.get("close_raw", latest.get("close", 1.0)))
             last_rebased = float(bars["close"].iloc[-1])
             scale = last_rebased / base_raw if base_raw else 1.0

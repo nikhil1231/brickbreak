@@ -2947,8 +2947,13 @@ rejected 241 whole responses merely because Breeze included non-regular
 pre-open, terminal-close, or special-session records. v3 is failed-ingestion
 provenance, not a dataset. The corrected v4 contract preserves those records
 separately, excludes them from decisions, and gates on explicit requested-
-session coverage; it remains to be frozen and fetched. The real dossier
+session coverage. v4 completed and verified 97.6667% requested-session
+coverage with no hard source failures. The outcome-free E0 source, identity,
+capacity and useful-effect-power gates pass. Its first annotation bundle was
+invalidated before use because it exposed the coded zone; the replacement is
+blind, frozen and unannotated, so representation remains blocked. The real dossier
 `DOS_MARK_40127F9C04` has only deterministic criticism; it is explicitly
 diagnostic and cannot qualify until an independent provider attack (or a
-recorded owner waiver) exists. No PA4–PA12 claim has passed and no outcome has
-been opened.
+recorded owner waiver) exists. PA4 source admission is complete; representation,
+shape, directional, validation and forward claims remain unpassed, and no
+outcome has been opened.

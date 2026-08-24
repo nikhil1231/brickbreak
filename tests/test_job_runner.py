@@ -158,6 +158,29 @@ class TestAgentAdapter:
         assert res.session_id == "codex-thread" and res.num_turns == 1
         assert res.cost_usd is None
 
+    def test_codex_image_attachment_is_explicit_and_verified(self, tmp_path):
+        p = tmp_path / "fake_codex"
+        p.write_text(
+            "#!/bin/bash\n"
+            'echo "$@" > "$PWD/codex_image_argv.txt"\n'
+            "echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{}\"}}'\n")
+        p.chmod(p.stat().st_mode | stat.S_IEXEC)
+        image = tmp_path / "case.png"
+        image.write_bytes(b"not-a-real-png")
+
+        result = agent.run_agent(
+            "label", cwd=tmp_path, cli=str(p), provider="codex",
+            image_paths=(image,))
+
+        argv = (tmp_path / "codex_image_argv.txt").read_text()
+        assert f"--image {image.resolve()} label" in argv
+        assert result.ok
+
+        with pytest.raises(agent.AgentError, match="attachment missing"):
+            agent.run_agent(
+                "label", cwd=tmp_path, cli=str(p), provider="codex",
+                image_paths=(tmp_path / "missing.png",))
+
     def test_codex_nested_abort_reason_is_preserved(self, tmp_path):
         p = tmp_path / "failed_codex"
         p.write_text(

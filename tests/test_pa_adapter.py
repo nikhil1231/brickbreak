@@ -53,6 +53,28 @@ def test_anonymised_case_contains_no_identity_or_calendar_date():
     assert b"2026-01-02" not in combined
     assert case["sidecar"]["instrument"] == "ASSET"
     assert case["sidecar"]["decision_at"] == "t=0"
+    assert case["sidecar"]["relative_bars"][-1]["t"] == 0
+    assert case["sidecar"]["relative_bars"][0]["t"] == -23
+
+
+def test_blind_representation_case_does_not_reveal_the_coded_zone():
+    frame = bars()
+    latest = frame.index[-1]
+    frame.loc[latest, "support_zone_lower"] = frame.loc[latest, "close_raw"] - 0.3
+    frame.loc[latest, "support_zone_upper"] = frame.loc[latest, "close_raw"] + 0.3
+    frame.loc[latest, "support_zone_kind"] = "flip_support"
+    frame.loc[latest, "support_touch_count"] = 3
+    visible = PriceActionAdapter().render_case(frame, anonymised=True)
+    blind = PriceActionAdapter(
+        show_zone_overlay=False, include_zone_features=False
+    ).render_case(frame, anonymised=True)
+    assert visible["chart_bytes"] != blind["chart_bytes"]
+    assert visible["schema_hash"] != blind["schema_hash"]
+    assert not ({
+        "zone_distance_atr", "zone_overlap_frac", "rejection_strength_atr",
+        "support_zone_kind", "support_touch_count",
+    } & set(blind["sidecar"]))
+    assert blind["sidecar"]["atr_20_rebased"] is not None
 
 
 def test_identity_reveal_is_a_distinct_paired_case():

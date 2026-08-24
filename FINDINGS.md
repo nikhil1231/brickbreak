@@ -2641,5 +2641,29 @@ session-marker shard, excludes it from decision data, and measures requested
 session coverage explicitly. A partial archival response is settled with its
 missing sessions declared and counted against coverage; cap, authentication,
 schema, duplicate, timestamp, and unrequested-session errors still block
-admission. v4 must be frozen and fetched before PA4 can pass. No coverage,
-representation, E0, shape, or directional claim has passed.
+admission.
+
+v4 then ran the same 250-request, 3,000-symbol-session bootstrap on `hp-ts` in
+78 seconds and passed local content verification: 235 complete responses, 10
+declared partials, 5 empty responses, 221,482 source rows, 217,928 admitted
+regular bars, 70 missing sessions, and **97.6667% requested-session coverage**.
+There were no capped, authentication, schema, duplicate, timestamp, or
+unrequested-session failures. The admitted data product contains 967 sessions
+and 47 symbols after frozen split/purge handling.
+
+The outcome-free E0 distribution is not dry: the broad causal generator yields
+1,007 train candidates across 529 independent sessions and 45 symbols (median
+2 and maximum 6 candidates per session). Under the transparent 400-bp block-
+sigma assumption, the two-sided 5%/80% MDE is 48.7 bps against the frozen
+80-bp useful-effect bar. Source, PIT identity, capacity and useful-effect-power
+gates therefore pass. This is feasibility and density, not predictive evidence.
+
+The first 60-case annotation bundle was invalidated before annotation because
+its charts highlighted the coded zone and its sidecar supplied the coded zone
+kind, distance, touch count and rejection score. Agreement on that bundle would
+have been circular. The replacement is a content-hashed, anonymised blind set:
+no zone overlay or derived zone answer, neutral ATR/price-scale context, correct
+relative time ending at `t=0`, one frozen prompt, and zero outcome fields. Its
+representation gate remains **BLOCKED, UNSPENT** pending one human and two
+frozen model passes. No case was transmitted to an external provider and no
+shape or directional outcome was opened.

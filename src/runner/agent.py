@@ -274,6 +274,7 @@ def run_agent(
     cli: str | None = None,
     provider: str = DEFAULT_PROVIDER,
     sandbox: str = "workspace-write",
+    image_paths: tuple[Path, ...] = (),
 ) -> AgentResult:
     """Run the selected coding agent headless and normalize its result.
 
@@ -281,6 +282,11 @@ def run_agent(
     worktree, and a killed job is a recorded outcome rather than a silence.
     """
     provider = validate_provider(provider)
+    images = tuple(Path(path).resolve() for path in image_paths)
+    if images and provider != "codex":
+        raise AgentError("image attachments are currently supported only by codex")
+    if missing_images := [path for path in images if not path.is_file()]:
+        raise AgentError(f"image attachment missing: {missing_images[0]}")
     exe = find_cli(cli, provider=provider)
     if provider == "claude":
         cmd = [
@@ -311,6 +317,8 @@ def run_agent(
         ]
         if model:
             cmd += ["--model", model]
+        if images:
+            cmd += ["--image", *(str(path) for path in images)]
         cmd.append(prompt)
 
     import time

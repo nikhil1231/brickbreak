@@ -27,12 +27,18 @@ ANNOTATION_COLUMNS = (
 )
 INTERACTIONS = {"rejection", "break", "retest", "none"}
 STANCES = {"long", "neutral", "avoid"}
-ANNOTATION_PROMPT = """Inspect only the anonymised chart and numeric sidecar for each case.
-Do not infer or guess the instrument or calendar date. Record whether a relevant
-support/resistance zone exists, its centre as signed ATR distance from the last
-close, the current interaction (rejection, break, retest, none), stance (long,
-neutral, avoid), confidence, and a short observed-facts note. Do not use or ask
-for future prices. Complete every ready case; do not omit awkward cases.
+ANNOTATION_PROMPT = """Inspect only the anonymised chart and neutral numeric sidecar for each case.
+Do not infer or guess the instrument or calendar date. Independently identify
+the most relevant nearby horizontal support/resistance region; no candidate
+zone or algorithm label is shown. A zone should have repeated reactions, a
+clear prior pivot, or a consolidation boundary rather than a single arbitrary
+price. Record whether such a zone exists. If it does, record its centre as
+(zone centre - last close) / ATR: negative is below the close and positive is
+above it. Classify the current interaction as rejection (probe then close away),
+break (completed close through), retest (revisit after an earlier break), or
+none. Record stance (long, neutral, avoid), confidence from 0 to 1, and a short
+observed-facts note. Do not use or ask for future prices. Complete every ready
+case; do not omit awkward cases.
 """
 
 
@@ -161,7 +167,10 @@ def freeze_annotation_bundle(
     charts = output / "charts"
     charts.mkdir()
     selected = _stratified_sample(candidates, n_cases, seed)
-    renderer = adapter or PriceActionAdapter()
+    # Agreement would be circular if observers saw the coded zone overlay or
+    # its derived labels.  E0 supplies only the causal tape and neutral context.
+    renderer = adapter or PriceActionAdapter(
+        show_zone_overlay=False, include_zone_features=False)
     records: list[dict[str, Any]] = []
     failures = 0
     for index, row in selected.iterrows():
