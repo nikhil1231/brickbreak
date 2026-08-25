@@ -2965,3 +2965,14 @@ the human observer, supports click-to-place ATR-normalised levels, checkpoints
 drafts, freezes only a complete pass, and reveals model explanations only after
 that freeze. Representation remains blocked pending the human pass; no outcome
 has been opened and no alpha claim exists.
+
+**PA7 representation result, 2026-08-25.** The frozen human pass completed all
+60 cases, making the annotation design complete. The representation gate
+failed materially: median composite kappa 0.0868 versus 0.40 required and
+median centre disagreement 1.52 ATR versus 0.50 allowed. Human–model agreement
+is near zero and model–model agreement also misses the composite bar. This
+rejects the present claim that the coded cases, prompt and judges share one
+support/resistance concept; it does not reject price action or measure alpha.
+H055 remains outcome-untested and E1 is blocked pending an outcome-free
+disagreement audit and a genuinely redesigned representation, not parameter
+tuning on returns.

@@ -2678,3 +2678,18 @@ with no tools, a read-only empty working directory, anonymised identity and no
 outcome fields. The representation gate remains **BLOCKED, UNSPENT** pending
 the complete frozen human pass; model answers remain hidden from that reviewer
 until finalisation. No shape or directional outcome has been opened.
+
+**H055 PA7 representation result, 2026-08-25.** The owner completed and froze
+all 60 human cases before model answers were revealed. The design is complete,
+but the preregistered representation gate **FAILS**: median pairwise composite
+class kappa is 0.0868 against the 0.40 bar, and median zone-centre disagreement
+is 1.52 lagged ATR against the 0.50 bar. Pairwise diagnosis is also weak rather
+than one bad aggregate: Luna–Terra composite kappa is 0.231 with 0.575 ATR
+centre disagreement; owner–Luna is 0.023 and 2.095 ATR; owner–Terra is 0.087
+and 2.130 ATR. The models moderately agree on interaction alone (kappa 0.466)
+but not on stance (0.227); owner–model interaction and stance kappas are near
+zero. The owner selects fewer zones, more retests, fewer breaks, more avoids,
+and materially more distant levels than either model. This does not test alpha
+and does not prove that price action is useless. It shows that the current
+case/prompt/representation does not encode one shared discretionary concept.
+E1 remains blocked and no outcome was opened.
