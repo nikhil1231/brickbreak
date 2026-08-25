@@ -3062,9 +3062,31 @@ resumable pull can start. No H056 outcome has been opened.
 
 ## H057 — Levels interrupt the path more than matched fake levels do
 
-Status: **REGISTERED — OUTCOME UNTESTED, 2026-08-25.** Written before any
-H057 reaction statistic was computed on real data. The frozen bar below was
-fixed before the study ran.
+Status: **REJECTED at the frozen bar, 2026-08-25.** Registered before any
+H057 reaction statistic was computed on real data; the registration is
+timestamped in git at `d421f6c`, before the read. The frozen bar below was fixed
+before the study ran and is preserved verbatim.
+
+**Result.** On 13,860,800 five-minute bars across 302 symbols and 1,081 sessions
+of the point-in-time stock-futures universe, no detector clears the bar at the
+primary cell. Largest primary contrast is `fractal` at +0.0034 (t=+6.23) against
+a required +0.02; the most positive cell anywhere in the 72-cell grid is
+`volume_profile` at +0.0120 with t=1.95. `anchor` — the canonical
+prior-session/prior-week/opening-range/round-number levels, the ones a trader
+actually draws — is **negative in all 18 of its cells**, reaching -0.0201 at
+t=-16.97: price penetrates the most-watched prices more readily than a matched
+fake price at the same distance. Median session ATR is 283 bps, so the observed
+effects are worth roughly 1-3 bps per resolved race against a 6-10 bps futures
+round trip; even the bar itself implied only 5.66 bps, as the registration
+stated. Full report and limits in FINDINGS.md; machine-readable at
+`data/metadata/research_store/price_action/h057_reaction_study.json`.
+
+This is not an underpowered null — with 1,081 independent sessions a +0.02 effect
+would have been unmissable. The failure is located in the representation, not in
+coverage, power or costs. H056 does not resume on this representation. The
+inverted `anchor` effect is a direction read off a registered statistic whose
+falsification clause contemplated it, so reporting it is in bounds; **trading it
+is a new hypothesis with its own multiplicity burden and is not opened here.**
 
 **Why this supersedes the H056 configuration.** H056 asked whether machine-
 discovered role-reversal geometry predicts executable outcomes. Two facts

@@ -75,7 +75,15 @@ def main() -> int:
         "symbol_asof": "symbol", "open_raw": "open", "high_raw": "high",
         "low_raw": "low", "close_raw": "close", "volume_raw": "volume"})
     panel = panel[["symbol", "session", "bar_end", "open", "high", "low",
-                   "close", "volume"]]
+                   "close", "volume"]].copy()
+    # Parquet can hand back pyarrow-backed columns. Any later element access on
+    # one re-materialises a ChunkedArray slice, which is invisible until it
+    # turns an inner loop into hours of thrashing. Force numpy dtypes once here.
+    for column in ("open", "high", "low", "close", "volume"):
+        panel[column] = np.asarray(panel[column], dtype=float)
+    panel["symbol"] = np.asarray(panel["symbol"], dtype=object)
+    panel["session"] = pd.to_datetime(np.asarray(panel["session"]))
+    panel["bar_end"] = pd.to_datetime(np.asarray(panel["bar_end"]))
 
     def progress(number: int, total: int, batch: list[str]) -> None:
         print(f"batch {number}/{total} ({len(batch)} symbols, "

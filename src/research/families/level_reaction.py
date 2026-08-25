@@ -152,10 +152,23 @@ def find_approaches(decision_bars: pd.DataFrame, book: pd.DataFrame,
         sessions = group["session"].to_numpy()
         atrs = group["atr"].to_numpy(float)
 
-        for level in symbol_levels.itertuples(index=False):
-            lower, upper = float(level.lower), float(level.upper)
-            known = np.datetime64(pd.Timestamp(level.known_at))
-            expiry = np.datetime64(pd.Timestamp(level.valid_until))
+        # Columns are pulled out as numpy arrays once. `itertuples` over a
+        # frame whose columns are pyarrow-backed re-materialises a ChunkedArray
+        # on every attribute access, which is what turned this loop into hours
+        # of thrashing on the full panel.
+        level_lower = symbol_levels["lower"].to_numpy(float)
+        level_upper = symbol_levels["upper"].to_numpy(float)
+        level_known = pd.to_datetime(
+            symbol_levels["known_at"]).to_numpy("datetime64[ns]")
+        level_expiry = pd.to_datetime(
+            symbol_levels["valid_until"]).to_numpy("datetime64[ns]")
+        level_ids = symbol_levels["level_id"].to_numpy()
+        level_detectors = symbol_levels["detector"].to_numpy()
+
+        for row_number in range(len(symbol_levels)):
+            lower, upper = level_lower[row_number], level_upper[row_number]
+            known = level_known[row_number]
+            expiry = level_expiry[row_number]
             # Only bars inside the level's own validity window are compared.
             # Scanning a level against the symbol's whole history is both wrong
             # — it lets a level match long after it stopped being a level — and
@@ -193,7 +206,8 @@ def find_approaches(decision_bars: pd.DataFrame, book: pd.DataFrame,
                     continue
                 records.append({
                     "symbol": symbol, "session": sessions[position],
-                    "level_id": level.level_id, "detector": level.detector,
+                    "level_id": level_ids[row_number],
+                    "detector": level_detectors[row_number],
                     "book": book_label, "approach_at": times[position],
                     "approach_from": approach_from,
                     "reference_price": float(closes[position]), "atr": float(atr),
@@ -229,9 +243,9 @@ def _path_index(path_bars: pd.DataFrame) -> dict[str, Any]:
     }
 
 
-def race_grid(approaches: pd.DataFrame, path_bars: pd.DataFrame,
-              barriers: tuple[float, ...], horizons: tuple[int, ...],
-              chunk_size: int = 200_000) -> pd.DataFrame:
+def race_outcomes(approaches: pd.DataFrame, path_bars: pd.DataFrame,
+                  barriers: tuple[float, ...], horizons: tuple[int, ...],
+                  chunk_size: int = 200_000) -> dict[tuple[float, int], np.ndarray]:
     """Which symmetric barrier is touched first, for every declared cell.
 
     `rejection` is movement back the way price came; `penetration` is movement
@@ -248,9 +262,8 @@ def race_grid(approaches: pd.DataFrame, path_bars: pd.DataFrame,
     first crossing index does not depend on the horizon, only on the barrier, so
     a shorter horizon is a comparison against that index rather than a re-scan.
     """
-    columns = list(approaches.columns) + ["barrier_atr", "horizon_bars", "outcome"]
     if approaches.empty:
-        return pd.DataFrame(columns=columns)
+        return {}
     index = _path_index(path_bars)
     max_horizon = int(max(horizons))
 
@@ -274,7 +287,11 @@ def race_grid(approaches: pd.DataFrame, path_bars: pd.DataFrame,
     atr = events["atr"].to_numpy(float)
     from_below = events["approach_from"].to_numpy() == "below"
 
-    frames: list[pd.DataFrame] = []
+    # One compact array of outcome codes per cell, aligned to `approaches`.
+    # Materialising a full copy of the event frame per cell — nine of them on
+    # the declared grid — is what drove the peak footprint to 37 GB.
+    results = {(barrier, horizon): np.empty(len(events), dtype=object)
+               for barrier in barriers for horizon in horizons}
     offsets = np.arange(max_horizon, dtype=np.int64)
     for begin in range(0, len(events), chunk_size):
         stop = min(begin + chunk_size, len(events))
@@ -316,21 +333,18 @@ def race_grid(approaches: pd.DataFrame, path_bars: pd.DataFrame,
                 # knowable at this resolution, so it is not guessed.
                 outcome[both & (first_rejection == first_penetration)] = "ambiguous"
                 outcome[~usable] = "no_path"
-                chunk = events.iloc[rows].copy()
-                chunk["barrier_atr"] = barrier
-                chunk["horizon_bars"] = horizon
-                chunk["outcome"] = outcome
-                frames.append(chunk)
-    return pd.concat(frames, ignore_index=True)[columns]
+                results[(barrier, horizon)][rows] = outcome
+    return results
 
 
 def race_barriers(approaches: pd.DataFrame, path_bars: pd.DataFrame,
                   barrier_atr: float, horizon_bars: int) -> pd.DataFrame:
-    """Single-cell view of `race_grid`, kept as the readable entry point."""
-    scored = race_grid(approaches, path_bars, (barrier_atr,), (horizon_bars,))
-    if scored.empty:
+    """Single-cell view of `race_outcomes`, kept as the readable entry point."""
+    outcomes = race_outcomes(
+        approaches, path_bars, (barrier_atr,), (horizon_bars,))
+    if not outcomes:
         return approaches.assign(outcome=pd.Series(dtype=str))
-    return scored.drop(columns=["barrier_atr", "horizon_bars"])
+    return approaches.assign(outcome=outcomes[(barrier_atr, horizon_bars)])
 
 
 def build_pseudo_book(book: pd.DataFrame, reference: pd.DataFrame, mode: str,
@@ -621,16 +635,21 @@ def run_reaction_study(five_minute_bars: pd.DataFrame,
         for key, value in events["book"].value_counts().items():
             event_counts[str(key)] = event_counts.get(str(key), 0) + int(value)
 
-        scored = race_grid(events, path, cfg.barrier_grid, cfg.horizon_grid)
-        for key, value in scored["outcome"].value_counts().items():
-            outcome_counts[str(key)] = outcome_counts.get(str(key), 0) + int(value)
-        for (barrier, horizon), cell in scored.groupby(
-                ["barrier_atr", "horizon_bars"], sort=True):
-            summary = rejection_rate(cell)
+        # One scan resolves every cell: the first crossing index depends on the
+        # barrier but not on the horizon. Only a compact outcome array is kept
+        # per cell, and each is reduced to per-session sums before the next.
+        outcomes = race_outcomes(events, path, cfg.barrier_grid, cfg.horizon_grid)
+        keys = events[["symbol", "session", "detector", "book"]]
+        for (barrier, horizon), outcome in sorted(outcomes.items()):
+            values, counts = np.unique(outcome.astype(str), return_counts=True)
+            for key, value in zip(values, counts):
+                outcome_counts[str(key)] = outcome_counts.get(str(key), 0) + int(value)
+            summary = rejection_rate(keys.assign(outcome=outcome))
             for control in controls:
                 accumulated.append(_accumulate(
                     paired_contrast(summary, control), barrier, horizon, control))
-        del events, scored, approaches
+            del summary
+        del events, outcomes, keys, approaches
         if progress is not None:
             progress(number, len(batches), batch)
 

@@ -2763,3 +2763,148 @@ complete, 7 declared partial, 1 empty, 9 unsettled errors, 89,834 rows, zero
 authentication failures and zero capped responses in 37.9 seconds. Errors are
 retained for supervisor retry; this is a progress snapshot, not an admitted
 dataset or coverage result.
+
+---
+
+# H057 — levels do not interrupt the path, and the most-watched ones interrupt it *less* (2026-08-25)
+
+Registered in HYPOTHESES.md with its statistic, grid, controls, primary cell and
+frozen bar fixed before the study ran; the registration is timestamped in git at
+`d421f6c`, before this read. This spends logged path exposure on the development
+partitions (train plus the former validation). No sign, directional hit rate or
+payoff was opened. Test and forward are absent from the dataset by construction.
+
+## What was measured
+
+13,860,800 five-minute bars, 302 symbols, 1,081 sessions, 2020-01-22 to
+2026-07-21, over the point-in-time stock-futures universe. Decisions on completed
+hourly bars; the barrier race on the five-minute path. 203,296,543 approach
+events — 18,625,512 real, the rest matched controls.
+
+For every first touch of a knowable level, two symmetric barriers are placed at
+`barrier x lagged session ATR` from the touch bar's close: `rejection` back the
+way price came, `penetration` onward. Whichever is hit first inside the horizon
+wins. Both barriers are equidistant from the same starting price, so **0.5 is a
+coin flip by construction** — the null needs no model.
+
+32.6% of races resolved (595,964,675 of 1,829,668,887 cell-events); 67.4% hit
+neither barrier within the horizon and 0.06% were `ambiguous` — both barriers
+inside one five-minute bar, where the order is genuinely unknowable and is
+recorded rather than guessed.
+
+## The result: FAIL, on every detector, at the primary cell
+
+Barrier 0.50 ATR, horizon 24 bars. Frozen bar was contrast >= +0.02 with
+session-clustered t >= 3.0 and permutation p <= 0.05.
+
+| detector | control | real | pseudo | contrast | t | sessions |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| anchor | permuted_geometry | 0.4718 | 0.4778 | **-0.0060** | -5.26 | 1,078 |
+| anchor | random_price | 0.4708 | 0.4845 | **-0.0122** | -8.79 | 1,077 |
+| fractal | permuted_geometry | 0.4932 | 0.4902 | +0.0034 | +6.23 | 1,079 |
+| fractal | random_price | 0.4934 | 0.4893 | +0.0042 | +8.56 | 1,079 |
+| multi_touch | permuted_geometry | 0.4639 | 0.4682 | -0.0033 | -1.45 | 1,077 |
+| multi_touch | random_price | 0.4647 | 0.4711 | -0.0065 | -2.92 | 1,077 |
+| volume_profile | permuted_geometry | 0.4664 | 0.4652 | +0.0037 | +0.87 | 1,060 |
+| volume_profile | random_price | 0.4722 | 0.4666 | +0.0023 | +0.58 | 1,060 |
+
+The **single most positive cell in the entire 72-cell grid** is
+`volume_profile / permuted_geometry / 0.50 / 12` at +0.0120 with t=1.95: 60% of
+the required magnitude and failing significance. Nothing anywhere in the
+registered neighbourhood approaches the bar.
+
+This is not an underpowered null. With 1,081 independent sessions and 18.6M real
+events the standard errors are in the third decimal place; a +0.02 effect would
+have been unmissable. The study had ample power to find the thing and did not.
+
+## The one large effect points the wrong way
+
+The largest statistic in the grid is `anchor / random_price / 0.35 / 48` at
+**-0.0201, t = -16.97**, and the whole `anchor` family is negative in all 18 of
+its cells (mean -0.0046 against `permuted_geometry`, -0.0117 against
+`random_price`).
+
+`anchor` is prior-session high/low/close, prior-week extremes, the opening range
+and round numbers — precisely the levels a discretionary trader draws, and the
+only detector with no free parameters. Price **penetrates those prices more
+readily than it penetrates a matched fake price at the same distance**.
+
+A coherent mechanism exists and it is the opposite of the folk model: the most
+watched prices are where resting stops and breakout orders sit, so arriving
+there triggers continuation rather than reversal. This lab has met this shape
+before — H034/H038's resilience score inverted the same way.
+
+This is a direction read off a registered statistic, and its falsification
+clause explicitly contemplated a contrast at or below zero, so reporting it is
+in bounds. **Trading it is not.** An inverted-level breakout claim is a new
+hypothesis carrying its own multiplicity burden and its own economics, and the
+economics below do not obviously support it either.
+
+## What the numbers are worth in money
+
+Median session ATR on this universe is 283 bps of price. At a 0.50 ATR barrier,
+an expected edge is `(2 x contrast) x 0.5 ATR`:
+
+| | contrast | bps per resolved race |
+| --- | ---: | ---: |
+| fractal, primary cell | +0.0034 | +0.96 |
+| volume_profile, best cell in grid | +0.0120 | +3.40 |
+| **the frozen bar itself** | +0.0200 | **+5.66** |
+| anchor, primary cell | -0.0060 | -1.70 |
+
+Against a futures round trip of roughly 6-10 bps. Note the third row: **even
+clearing the registered bar would not have been tradable as an average.** That
+was stated in the registration — the bar was a detectability threshold, not an
+economic one — and it holds. The observed effects are a fifth of a threshold
+that was itself below cost.
+
+`fractal` deserves one sentence of its own: +0.0034 at t = +6.23 is the exact
+failure mode this lab has recorded before. Across 115,728 stock-days the
+standard error is tiny, so a 0.3-percentage-point nothing reads as six sigma.
+The frozen bar demanded magnitude as well as significance, and that is the only
+reason this is not being written up as a discovery.
+
+## What survives
+
+`volume_profile` is the only detector with a consistently positive sign
+(mean +0.0054 / +0.0069, positive in every one of its 18 cells) and it is the
+only one with a mechanism behind it — participants hold inventory where volume
+transacted. It never reaches the bar and mostly fails significance, so it is not
+a result. It is the one place a redesign would start rather than a new idea.
+
+## Limits of this read
+
+1. **Resolution.** Only a third of races resolve inside the horizon. The rate is
+   computed on resolved races; both books face this identically, but a mechanism
+   that acts only over longer horizons would be under-served by a 48-bar cap.
+2. **The revisit confound is unfixed.** Real levels sit at prices price has
+   already visited; a random fake may sit where it never has.
+   `permuted_geometry` matches distance-from-reference, width and volatility but
+   not prior-visit frequency. This would matter most if the result had been
+   positive. It cuts against the `anchor` inversion less than it might appear,
+   since the inversion is *negative* and the confound would if anything inflate
+   real levels' reaction.
+3. **First touches only.** A level's second or third test is not distinguished
+   from its first. Practitioner lore says the two differ; this design cannot see
+   that and a descendant would have to.
+4. **No selection.** This is an unconditional average over every approach. It
+   says information is not present *on average*; it does not prove no selector
+   could find a subset. That is a weaker statement than "levels are useless",
+   and it is the honest one.
+
+## Consequence for the programme
+
+H057 is **REJECTED at its frozen bar**. Level geometry does not carry the
+reaction information the price-action programme was resting on, and the failure
+is located precisely: not in coverage, not in power, not in costs, but in the
+representation itself.
+
+H056 does not resume on this representation. Its manual retest priors sit on top
+of a level concept that has now been measured and does not do what the priors
+assume. Reviving it would require a different object, not different thresholds.
+
+What this does not say: it does not say discretionary traders cannot make money,
+and it does not say no conditional subset exists. It says that the unconditional
+claim — that arriving at a level makes reversal more likely than a matched
+non-level — is false on this universe, at this horizon, over six years, and that
+the most-watched levels invert it.
