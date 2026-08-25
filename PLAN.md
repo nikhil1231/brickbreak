@@ -20,6 +20,119 @@ plan means `archive/plan/PLAN_2026-08-24.md`. The earlier throughput and refacto
 plans retain the force assigned to them by `AGENTS.md`. Nothing here revives a
 claim or a plan from the archive as current evidence.
 
+### 2026-08-25 branch: H057 level reaction, and the universe correction
+
+Two facts retired the H056 *configuration* on the day it started acquiring, and
+neither is about whether price action works.
+
+**The universe was not tradable.** Every intraday and every bearish claim in
+this programme is executable only in F&O for this account: an NRI cannot square
+off intraday in the cash segment and cannot short cash equities. NSE's
+stock-futures eligibility floor sits far above the ₹3-25 crore cash turnover
+band the manifest screened, so the two universes barely intersect. The H056 pull
+was stopped at 9,526 of 53,303 requests. Its 7.18M rows are retained as
+cash-delivery research data and are resumable; they are not H057 provenance.
+
+The replacement universe is point-in-time NSE stock-futures membership,
+reconstructed from each session's own derivatives bhavcopy — a symbol was in the
+universe on a session if and only if a `stock_future` row for it appears in that
+session's file. This is not a convenience: 305 distinct symbols appear over
+2020-2026 and only 102 are present throughout, so a present-day F&O list is a
+survivorship trap. Levels are drawn on the continuous cash series; execution,
+costs and capacity come from the futures series, which also supplies open
+interest and lot size.
+
+The correction is not merely a restriction. It moves the programme out of the
+worst corner of the cost/horizon/liquidity space and into the best one available
+to it: a futures round trip is roughly 6-10 bps of notional against the 40 bp
+cash floor, so the gross move a setup must produce to be worth taking falls by
+more than half without any new information being found.
+
+**The detector was measuring its own density.** `causal_zones` seeded levels
+from 2/2 five-minute fractals, which fire every few bars. That single choice
+explains both prior failures: PA7's composite kappa of 0.087 with 1.52 ATR of
+centre disagreement (the owner drew distant, older levels; the machine drew
+micro-pivots), and the 3,222 → 16 structural funnel whose dominant rejections
+were `target_room` and `reward_risk` — with a level every few bars the nearest
+opposing level is a fraction of an ATR away, so a structural target can never
+clear 80 bps. Neither number was a fact about the market.
+
+`research_data.pipelines.levels` replaces the seeder with four detectors on one
+schema — `fractal` (the incumbent, retained as a baseline), `anchor`,
+`volume_profile`, `multi_touch` — and H057 chooses between them on evidence
+rather than on aesthetics.
+
+**H057 asks the question underneath H056.** Before asking whether a retest
+predicts anything, ask whether a level interrupts the path at all more than a
+matched fake level does. It is the necessary condition every later claim rests
+on and the cheapest thing that can falsify the mechanism. Its statistic, grid,
+controls, primary cell and frozen bar are registered in HYPOTHESES.md and were
+fixed before the study ran. H056 remains outcome-untested; its manual retest
+priors are unchanged and it resumes only if H057 survives.
+
+**Decisions move to completed hourly bars.** The five-minute series is retained
+and is not optional: an hourly bar reports a high and a low but not their order,
+so an hourly-only backtest cannot say whether a stop or a target was hit first
+whenever both sit inside one bar — which, at a sub-ATR barrier, is most of them.
+Five-minute data is the intra-hour path; hourly is the decision.
+
+---
+
+### 2026-08-25 branch: H056 machine geometry
+
+H055's PA7 result is retained: its frozen human/coded representation failed
+agreement and does not advance. H056 asks a different question—whether a
+machine-discovered representation can predict executable outcomes without
+resembling human annotations. For H056 only, the human-agreement requirement in
+§7, the representation part of E0 in §10, and PA7's representation exit
+condition in §13 do not gate outcome access. Source, PIT, density, power,
+capacity, leakage, exposure, multiplicity, cost and once-only final-test gates
+all remain in force.
+
+H056 may repeatedly adapt on old NSE and separately contracted foreign-market
+data, but every market and period used for that adaptation is development data.
+Development uses nested chronological walk-forward folds and leave-one-market-
+out transfer tests. It may not turn the best-looking fold into “validation.” A
+survivor is frozen—geometry, model, abstention, entry, exit, costs and portfolio
+construction—before one untouched NSE test/forward read.
+
+The manual setup prior is intentionally narrow: trade only a completed
+support/resistance role reversal and later retest, in the direction of a
+completed 60-minute EMA trend. The first configuration requires 12 completed
+five-minute bars from zone confirmation to break and three from break to
+retest. The retest must close on the new-role side; a completed close through
+the far edge invalidates the level. Entry is the next available five-minute
+open, the structural stop sits beyond that far edge, and the preferred target
+is the nearest already-known opposing significant zone. Require at least 1.5R
+and 80 bps gross target room. Six-, twelve- and twenty-four-bar stagnation cuts
+are a declared development grid, not discretionary hindsight. The selector may
+abstain, and missing entries, gap-through stops and source failures stay in the
+population.
+
+Practical trading guidance motivates these priors but does not validate them.
+CME and Fidelity describe levels as zones and role reversal after a break;
+Fidelity describes EMA as a lagging trend-direction tool; Schwab discusses
+targets at prior opposing levels and stops beyond invalidation structure. The
+Osler evidence finds that support/resistance can predict intraday *trend
+interruptions* in FX, which is weaker than direction or net alpha. H056 must
+therefore beat trend-only and pseudo-level baselines after costs, and the whole
+adaptive search is judged with a maximum-statistic/data-snooping correction.
+
+The first foreign transfer candidate is US cash equities through a contracted
+historical consolidated feed, not Alpaca's free IEX-only live feed: Alpaca's
+own documentation says IEX is one exchange and roughly 2.5% of US volume,
+while SIP covers the consolidated US tape and historical data reaches 2016.
+Before any pull, freeze the feed, adjustment, regular-session, timestamp,
+delisting, symbol-change, split, coverage, rate and licence contract. A
+current-survivor symbol list may be used only as explicitly survivor-biased
+development data; it cannot serve as the untouched cross-market estimate.
+Alpha Vantage documents 20+ years of month-addressable five-minute history but
+puts historical intraday behind a premium plan; Twelve Data covers many markets
+but its credit/plan and historical-depth terms must be priced before use. Do not
+buy either merely to add rows: first measure whether one consolidated US market
+adds distinct regimes and enough eligible H056 retests to change the power
+calculation.
+
 ---
 
 ## 1. The decision

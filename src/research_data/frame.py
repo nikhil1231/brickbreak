@@ -575,6 +575,7 @@ def load_intraday_panel(
     columns: list[str] | None = None,
     drop_purged: bool = True,
     split_version: str = "v1",
+    context_sessions: int = 0,
 ) -> pd.DataFrame:
     """Load an immutable intraday dataset and attach session partitions.
 
@@ -595,6 +596,13 @@ def load_intraday_panel(
         Select specific columns.
     split_version : str
         Parent daily split version. It must match the dataset manifest.
+    context_sessions : int
+        Warm-up sessions to return *before* each partition session, so that
+        stateful features (ATR, level ages, EMAs) are built on contiguous
+        history rather than across the gaps a quarter-level split leaves.
+        Context rows are marked ``is_context`` and keep their own partition
+        label; they are inputs, never scored rows. Zero preserves the old
+        behaviour.
 
     Returns
     -------
@@ -657,7 +665,40 @@ def load_intraday_panel(
         valid = splits.SETS + ("forward",)
         if partition not in valid:
             raise FrameError(f"unknown partition {partition!r}; choose from {valid}")
-        df = df[df["partition"] == partition].copy()
+        if context_sessions:
+            # WHY CONTEXT SESSIONS EXIST
+            # Splits assign whole calendar quarters by a seeded draw, so a
+            # partition is a set of *non-contiguous* quarters. Handing those
+            # rows to a feature builder as if they were consecutive makes a
+            # level "12 bars old" across a three-month gap, runs ATR windows
+            # over a discontinuity, and — worst for a walk-forward study — gives
+            # a candidate different geometry in train and test for reasons that
+            # have nothing to do with the market.
+            #
+            # Warm-up bars from before each partition session are therefore
+            # returned alongside it, carrying their own true partition label.
+            # This is not leakage: features are past-only by construction, so a
+            # train feature warmed on earlier bars uses no information from
+            # after its own timestamp. The split protects *outcomes*, and
+            # scoring still filters to `partition == <target>`.
+            target_sessions = pd.Index(
+                df.loc[df["partition"] == partition, "session"].unique()).sort_values()
+            if len(target_sessions):
+                all_sessions = pd.Index(df["session"].unique()).sort_values()
+                positions = all_sessions.get_indexer(target_sessions)
+                keep_positions = set()
+                for position in positions:
+                    lower = max(0, position - context_sessions)
+                    keep_positions.update(range(lower, position + 1))
+                keep_sessions = all_sessions[sorted(keep_positions)]
+                df = df[df["session"].isin(keep_sessions)].copy()
+                df["is_context"] = df["partition"] != partition
+            else:
+                df = df[df["partition"] == partition].copy()
+                df["is_context"] = False
+        else:
+            df = df[df["partition"] == partition].copy()
+            df["is_context"] = False
         if df.empty:
             logger.warning("intraday partition %r returned 0 rows", partition)
 
@@ -665,7 +706,7 @@ def load_intraday_panel(
         keep = [
             c for c in (
                 "instrument_id", "symbol_asof", "session", "bar_start",
-                "bar_end", "available_at", "partition", *columns,
+                "bar_end", "available_at", "partition", "is_context", *columns,
             ) if c in df.columns
         ]
         df = df.loc[:, list(dict.fromkeys(keep))]

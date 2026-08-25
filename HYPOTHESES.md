@@ -2976,3 +2976,196 @@ support/resistance concept; it does not reject price action or measure alpha.
 H055 remains outcome-untested and E1 is blocked pending an outcome-free
 disagreement audit and a genuinely redesigned representation, not parameter
 tuning on returns.
+
+
+## H056 — Machine-discovered retest geometry transfers across markets and time
+
+Status: **PROPOSED — OUTCOME UNTESTED, 2026-08-25.** Registered before any
+H056 directional outcome access. H055's failed human-representation gate is
+preserved and is not reinterpreted as evidence for or against this hypothesis.
+
+**Question.** Can a machine learn a selective, causal representation of
+support/resistance *role-reversal retests* whose entries and exits transfer
+across markets and chronological blocks, without requiring its levels to agree
+with a human's drawings?
+
+**Population and development data.** The first executable population remains
+point-in-time NSE EQ cash equities with ETFs excluded and the declared lagged
+liquidity/capacity rules. Old NSE partitions and separately contracted foreign
+cash-equity markets may be used repeatedly for development. Every partition or
+market consulted during representation, feature, threshold, model, entry,
+stop, target, abstention or exit refinement is thereafter labelled
+**development**, never validation. Development uses nested walk-forward folds
+and leave-one-market-out evaluation. The final estimate is one frozen read of
+an NSE test/forward interval untouched by H056 and all descendants. Bearish
+setups may be studied on cash prices, but are not an executable short strategy
+without a PIT futures/borrow contract.
+
+**Manual priors, frozen before outcomes.** Candidate trades are only completed
+role reversals: resistance broken and later retested from above for a long, or
+support broken and later retested from below for a short. The breakout bar is
+never the retest. The first development configuration requires at least three
+completed five-minute bar intervals from the break close to the retest close,
+at least twelve completed bars from zone confirmation to break, and a completed
+retest close back on the
+new-role side. Trend must agree on completed higher-timeframe bars: the initial
+context is a 60-minute 20/50 EMA stack with the fast EMA sloping in the trade
+direction. A completed close through the far edge of the flipped zone
+invalidates it; repeated penetration and cumulative bleed remain continuous
+features, and the selector may abstain rather than rationalise them.
+
+The entry is the next genuinely available five-minute open after the completed
+retest decision. The structural stop is beyond the far edge of the retested
+zone plus a frozen volatility buffer. The preferred target is the nearest
+already-known significant opposing zone; no future-created level may supply a
+target. The initial candidate is rejected when that target offers less than
+1.5 units of structural reward per unit of risk or less than 80 bps gross
+distance. Time exits are an explicit development dimension, initially 6, 12
+and 24 completed five-minute bars without minimum favourable progress; no
+retrospective manual cut is permitted. Costs, gap-through-stop execution and
+unavailable entries are retained.
+
+**Learning claim.** AI may aggressively propose geometry, features and models
+inside the development corpus. Each proposal and outcome read is logged in one
+lineage/multiplicity batch. The search objective rewards after-cost excess bps,
+calibration, abstention stability and worst-market/worst-era performance, not
+training fit or trade count. A setup family is eligible to freeze only if it
+adds value over retest-only, EMA-only, fixed pivot-zone and same-take-rate
+walk-forward baselines and does not depend on one market.
+
+**Frozen economic bar.** Before the final NSE read, the surviving system must
+declare its take rule, position sizing, entry, structural stop, target, time
+cut, cost model and maximum concurrency. The final bar is positive after the
+40-bp round-trip floor, at least 80 bps gross excess per taken trade, positive
+lift over the strongest eligible baseline at the same take rate, and no hidden
+leverage from overlapping cohorts. The exact retention and minimum-trade bars
+will be compiled from development estimates before the final partition opens.
+
+**What would falsify it.** Failure includes: no stable retest population after
+the manual priors; apparent lift that disappears against pseudo-levels or
+trend-only controls; dependence on one exchange/era; targets too close to pay
+costs; excessive abstention that leaves no independent blocks; or failure of
+the once-only untouched NSE estimate.
+
+**Lineage.** `adjacent-to` H055 (same price-action programme, different
+representation claim); `specialises` the role-reversal portion of H055. H055's
+PA7 failure remains final for its frozen human/coded representation.
+
+**Outcome-free kickoff, 2026-08-25.** The first causal implementation and
+bootstrap density report are recorded in FINDINGS.md. The selective prior finds
+16 eligible retests in the small H055 bootstrap, too few to open outcomes. A
+full old-NSE development manifest is frozen over train plus the former
+validation partition; test and forward remain excluded. It is staged on
+`hp-ts` but awaits the ordinary daily Breeze session refresh before its
+resumable pull can start. No H056 outcome has been opened.
+
+
+## H057 — Levels interrupt the path more than matched fake levels do
+
+Status: **REGISTERED — OUTCOME UNTESTED, 2026-08-25.** Written before any
+H057 reaction statistic was computed on real data. The frozen bar below was
+fixed before the study ran.
+
+**Why this supersedes the H056 configuration.** H056 asked whether machine-
+discovered role-reversal geometry predicts executable outcomes. Two facts
+retired its configuration without retiring the idea:
+
+1. *The universe was not tradable by this account.* The manifest screened NSE
+   cash equities in a ₹3-25 crore lagged-turnover band. The owner is an NRI and
+   therefore cannot square off intraday in the cash segment and cannot short
+   cash equities at all, so an intraday or bearish claim is executable only in
+   F&O. NSE's stock-futures eligibility floor sits far above ₹25 crore, so the
+   two universes barely intersect. The H056 pull was stopped at 9,526 of 53,303
+   requests and is retained as cash-delivery research data, not as H057
+   provenance.
+2. *The detector was measuring its own density.* `causal_zones` seeded levels
+   from 2-left/2-right five-minute fractals. That fires every few bars, which
+   explains both the PA7 annotation failure (composite kappa 0.087, centre
+   disagreement 1.52 ATR — the owner drew distant, older levels; the machine
+   drew micro-pivots) and the 3,222 → 16 structural funnel, whose dominant
+   rejections were `target_room` (2,943) and `reward_risk` (2,890). With a level
+   every few bars the nearest opposing level is a fraction of an ATR away, so a
+   structural target can never clear 80 bps. Neither number was a fact about the
+   market.
+
+**Population.** Point-in-time NSE stock-futures membership, reconstructed from
+each session's own derivatives bhavcopy: a symbol was in the universe on a
+session if and only if a `stock_future` row for it appears in that session's
+file. 305 distinct symbols over 2020-2026, 140-216 live per session, of which
+only 102 are present throughout — the churn is real and a present-day F&O list
+cannot reconstruct it. Lagged liquidity floors are declared in
+`fo_universe.UniverseConfig`. Levels are drawn on the continuous cash series;
+execution, costs and capacity come from the futures series.
+
+**Question.** When price arrives at a level, does it turn back before it
+carries on *more often than it does at a matched fake level*? Nothing about
+direction, payoff or profitability is asked. This is the necessary condition
+that every later claim in this programme depends on, and it is the cheapest
+thing that can falsify the whole mechanism.
+
+**Why this question and not a directional one.** Price reacts everywhere, so a
+procedure that draws a line and looks for reactions at it cannot fail and
+therefore carries no information. The only informative measurement is against
+lines that are not levels. Two controls are used, both paired inside the same
+symbol-session:
+
+- `random_price` — centres drawn uniformly within the ATR band the real levels
+  of that symbol-session occupy. Answers "is a level better than any price?"
+- `permuted_geometry` — the real level *offsets* from a different randomly
+  chosen symbol-session, replayed here. Distance-from-reference, width and
+  volatility scaling are preserved; only the link to this symbol's own history
+  is broken. This is the pseudo-zone PLAN.md §9 requires and it is the control
+  that can kill the hypothesis.
+
+A global effect is absorbed by both controls by construction. That is
+deliberate: a claim that survives here has to be local to a price.
+
+**Statistic, frozen.** For each first-touch of a knowable level on a completed
+hourly bar, race two symmetric barriers on the five-minute path from the touch
+bar's close: `rejection` at `barrier × lagged session ATR` back the way price
+came, `penetration` at the same distance onward. First barrier touched wins;
+unresolved races are reported but excluded from the rate. The primary cell is
+**barrier 0.50 ATR, horizon 24 five-minute bars, control `permuted_geometry`**.
+The declared grid is 4 detectors × 2 controls × barriers {0.35, 0.50, 0.75} ×
+horizons {12, 24, 48}; the reported result is the maximum over that grid judged
+against a session-level sign-flip permutation maximum. The independent unit is
+the session.
+
+**Detectors, declared before the read.** `fractal` (the incumbent, expected to
+lose and retained only as a baseline), `anchor` (prior-session high/low/close,
+prior-week high/low, opening range, round numbers), `volume_profile` (high- and
+low-volume nodes from a trailing causal volume-at-price histogram), and
+`multi_touch` (prices that several distinct completed sessions turned at). The
+last three are timeframe-portable by construction and the first is not; that
+difference is asserted as a test, not as an opinion.
+
+**Frozen bar.** The mechanism survives to E2 only if the primary cell shows a
+mean paired contrast of **at least +0.02** in rejection rate with a
+session-clustered **t ≥ 3.0**, and the grid maximum clears a permutation
+**p ≤ 0.05**. Anything less retires level geometry as this programme's
+representation.
+
+**What passing does and does not mean.** Passing is necessary, not sufficient,
+and it is explicitly *not* evidence of tradability. At a 0.50 ATR barrier and a
+session ATR near 2% of price, a contrast of +0.02 implies roughly 4 bps of
+expected edge per resolved race against a futures round trip near 8-10 bps. A
+result at the bar therefore says information exists but is too diffuse to trade
+as an average, and the open question becomes whether selection concentrates it.
+A result far above the bar is what a tradable version would look like. Reporting
+the implied economics beside the contrast is required so that a statistically
+clean 2-point effect is never mistaken for money.
+
+**What would falsify it.** Contrast at or below zero against `permuted_geometry`;
+an effect that exists only against `random_price` and vanishes against the
+matched control; an effect carried by one detector that no other detector
+reproduces; an effect that does not survive the permutation maximum; or too few
+resolved races to estimate anything.
+
+**Exposure.** This reads the future five-minute path on development partitions
+(train and validation) and is logged sample exposure, not an outcome-free
+preflight. It reads no sign, no directional hit rate and no payoff. Test and
+forward are excluded from the manifest and remain untouched.
+
+**Lineage.** `specialises` H056's representation question; `adjacent-to` H055.
+H055's PA7 representation failure stands. H056 remains outcome-untested and its
+manual retest priors are unchanged — H057 tests the layer beneath them.

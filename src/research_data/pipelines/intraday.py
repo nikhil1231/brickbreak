@@ -682,10 +682,59 @@ def build_dataset(
     *,
     split_version: str = "v1",
     split_hash: str,
+    declared_failure_session_pct: float = 0.0,
 ) -> Path:
-    """Consolidate verified shards into an immutable, versioned data product."""
+    """Consolidate verified shards into an immutable, versioned data product.
+
+    `declared_failure_session_pct` is the share of requested symbol-sessions the
+    caller is prepared to lose to hard source failures. It defaults to zero, so
+    an incomplete acquisition is refused unless the caller states a tolerance.
+
+    WHY A TOLERANCE EXISTS AT ALL, AND WHY IT IS NOT A FLAG
+    Some Breeze responses are deterministically bad: duplicate bar timestamps,
+    sessions outside the requested span, or a payload that reached the 1,000-row
+    cap. The source repeats them byte-for-byte, so retrying is not a fix and
+    waiting does not help. The choice is therefore between abandoning an
+    otherwise complete panel and admitting it with the loss measured.
+
+    Admitting it is only legitimate when the loss is *stated, bounded, and
+    carried into the dataset manifest* — PLAN.md §11 forbids a failed request
+    quietly leaving the evaluated population. So the failures are counted, the
+    surviving coverage is recorded in `acquisition_report`, and a build that
+    exceeds the stated tolerance raises rather than trimming the manifest to fit.
+    """
     requests = load_request_manifest(acquisition)
-    acquisition_report = verify_acquisition(acquisition, require_complete=True)
+    if declared_failure_session_pct <= 0:
+        acquisition_report = verify_acquisition(acquisition, require_complete=True)
+    else:
+        acquisition_report = verify_acquisition(acquisition, require_complete=False)
+        attempts = load_attempts(acquisition)
+        settled = set(attempts.loc[
+            attempts["status"].isin(SETTLED_STATUSES), "request_id"].astype(str))
+        unsettled = requests.loc[~requests["request_id"].astype(str).isin(settled)]
+        lost = int(sum(
+            len(json.loads(value)) for value in unsettled["requested_sessions"]))
+        total = int(sum(
+            len(json.loads(value)) for value in requests["requested_sessions"]))
+        lost_pct = (lost / total * 100.0) if total else 0.0
+        if lost_pct > declared_failure_session_pct:
+            raise IntradayError(
+                f"hard source failures cost {lost_pct:.3f}% of requested "
+                f"symbol-sessions, above the declared "
+                f"{declared_failure_session_pct:.3f}% tolerance")
+        failure_kinds = (
+            attempts.loc[~attempts["status"].isin(SETTLED_STATUSES), "status"]
+            .value_counts().to_dict() if not attempts.empty else {})
+        acquisition_report = dict(acquisition_report) | {
+            "declared_failure_session_pct": declared_failure_session_pct,
+            "unsettled_requests": int(len(unsettled)),
+            "unsettled_symbol_sessions": lost,
+            "unsettled_symbol_session_pct": round(lost_pct, 6),
+            "unsettled_symbols": sorted(
+                unsettled["symbol_asof"].astype(str).unique().tolist()),
+            "failure_status_counts": {
+                str(key): int(value) for key, value in failure_kinds.items()},
+        }
 
     version = str(requests["dataset_version"].iloc[0])
     interval = str(requests["interval"].iloc[0])

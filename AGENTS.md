@@ -149,6 +149,7 @@ with a stated caveat. **When lineage is ambiguous, block.**
 | sector / size tiers | NSE `ind_nifty*list.csv` | current snapshot |
 | market regime, breakout levels, RS | `src/research_data/pipelines/context.py` (derived, as-of) | 2020-01-01 onward |
 | ETF exclusion | NSE `eq_etfseclist.csv` | current snapshot |
+| **point-in-time F&O universe, futures OHLC, OI, lot size** | **NSE derivatives bhavcopy — legacy `fo{DDMMMYYYY}bhav.csv.zip` and UDiFF `BhavCopy_NSE_FO_*`** | **2020+ synced; both eras verified live 2026-08-25** |
 | bulk / block deals, short selling | NSE `historicalOR/bulk-block-short-deals` (CSV) | bulk 2004-01-04, block 2005-11-17 |
 | corporate announcements | NSE `api/corporate-announcements` | 2003 onward, dense from 2005 |
 | result filings + XBRL | NSE `corporates-financial-results` **and** `integrated-filing-results` | 2005-03 onward, two regimes |
@@ -219,6 +220,40 @@ feature catalogue**, not in a comment.
 - **`change_date` is the filing date, not the handover.** QUALITY printed on its
   own stated change date. Split on the tape.
 - 9 symbol-days carry negative volume (archive defect) and are excluded.
+
+## Derivatives-archive gotchas (measured 2026-08-25)
+
+The F&O bhavcopy is the only point-in-time source for *which securities were
+tradable in derivatives on a session*. It matters because an NRI cannot trade
+cash intraday and cannot short cash equities, so the executable universe is
+F&O membership — not any cash turnover band.
+
+- **Two eras, and the crossover is abrupt.** The legacy
+  `content/historical/DERIVATIVES/{YYYY}/{MMM}/fo{DDMMMYYYY}bhav.csv.zip` serves
+  through **2024-07-05** and 404s from 2024-07-08. UDiFF
+  `content/fo/BhavCopy_NSE_FO_0_0_0_{YYYYMMDD}_F_0000.csv.zip` serves from
+  ~2024-05 and 404s before. They overlap for about two months. Column names,
+  instrument-type spellings (`FUTSTK`/`OPTIDX` vs `STF`/`IDO`) and units all
+  differ; `sources/nse_derivatives.py` normalises both to one schema.
+- **Units differ silently.** Legacy `VAL_INLAKH` is lakh rupees; UDiFF
+  `TtlTrfVal` is rupees. A naive concat under-reports the legacy era by 10^5.
+- **Only UDiFF reports lot size.** `NewBrdLotQty` exists from 2024 only. Before
+  that the lot is *derived* as `traded_value / (contracts × close)`, which is
+  exact to a rounding error but is a derived field — `lot_size_source` records
+  which, because position quantisation on a small book is decided by the lot.
+- **The holiday trap applies here too.** Same host, same convention as the
+  equity bhavcopy: file the session under the date *inside* the file
+  (`TIMESTAMP` / `TradDt`), never the date in the URL.
+- **`UndrlygPric` is only in UDiFF**, and the legacy era has no underlying
+  column at all — the cash leg must come from the equity bhavcopy.
+- **Stock-futures lots are ~₹3-15 lakh, median ₹6.8 lakh** (measured across
+  303,401 symbol-sessions), *not* ₹15 lakh. SEBI's Oct-2024 ₹15-lakh minimum
+  contract value applies to **index** derivatives; single-stock futures kept the
+  older floor. Only 0.5% of symbol-sessions exceed ₹15 lakh. At ~18% SPAN+
+  exposure that is ~₹1.2 lakh of margin per position.
+- **The universe churns.** 305 distinct symbols over 2020-2026, 140-216 live per
+  session, and **only 102 present throughout**. A present-day F&O list is a
+  survivorship trap for anything before today.
 
 ## Corporate-event gotchas (measured 2026-08-22, all silent)
 

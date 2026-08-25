@@ -59,6 +59,33 @@ def test_break_then_later_retest_is_causal():
     assert result.loc[6, "support_broken_at"] == frame.loc[5, "bar_end"]
 
 
+def test_support_break_then_retest_from_below_is_causal():
+    frame = bars([10, 9, 8, 9, 10, 7.2, 7.65])
+    frame.loc[6, ["low_raw", "close_raw", "high_raw"]] = [7.55, 7.65, 8.05]
+    result = build_zone_state_machine(
+        frame, ZoneConfig(width_atr=0.10, break_atr=0.05, merge_atr=0.20))
+    assert result.loc[5, "resistance_zone_kind"] == "flip_resistance"
+    assert not bool(result.loc[5, "bearish_flip_retest"])
+    assert bool(result.loc[6, "bearish_flip_retest"])
+    assert result.loc[6, "resistance_broken_at"] == frame.loc[5, "bar_end"]
+
+
+def test_higher_timeframe_ema_excludes_a_forming_hour():
+    sessions = pd.bdate_range("2025-01-01", periods=51)
+    frames = []
+    for index, day in enumerate(sessions):
+        frame = bars(
+            np.linspace(100 + index, 100.5 + index, 12),
+            start=f"{day.date()} 09:15")
+        frames.append(frame)
+    result = build_zone_state_machine(pd.concat(frames, ignore_index=True))
+    final_session = result["bar_start"].dt.normalize().eq(sessions[-1])
+    rows = result.loc[final_session].reset_index(drop=True)
+    assert rows.loc[:10, "htf_ema_50"].nunique(dropna=False) == 1
+    assert pd.notna(rows.loc[11, "htf_ema_50"])
+    assert rows.loc[11, "htf_ema_50"] != rows.loc[10, "htf_ema_50"]
+
+
 def test_time_of_day_volume_denominator_excludes_current_session():
     sessions = pd.date_range("2026-01-01", periods=7, freq="D")
     frames = [bars([100], start=f"{day.date()} 09:15") for day in sessions]

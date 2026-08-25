@@ -2693,3 +2693,73 @@ and materially more distant levels than either model. This does not test alpha
 and does not prove that price action is useless. It shows that the current
 case/prompt/representation does not encode one shared discretionary concept.
 E1 remains blocked and no outcome was opened.
+
+---
+
+# H056 machine-geometry kickoff — selective retests exist, but the bootstrap is too small for outcomes (2026-08-25)
+
+H055's human-representation failure is preserved. H056 was registered before
+directional access and asks whether machine-discovered geometry can transfer
+without agreeing with a human drawing. No forward return, excursion, target
+hit, stop hit or trade payoff was opened in this kickoff.
+
+The causal zone state machine now represents both directions of role reversal:
+resistance→support and support→resistance. It also exposes only completed,
+session-aligned 60-minute 20/50 EMAs; records bars and cumulative ATR that wick
+through the far edge of a flipped level; records bars from break to retest; and
+keeps the nearest already-known opposing zone available for structural target
+planning. Future-append, incomplete-hour, bullish-flip and bearish-flip tests
+pass.
+
+The first manual prior is frozen in H056: at least 12 completed five-minute
+bars from zone confirmation to break, at least 3 and no more than 36 bars from
+break to retest, completed retest close on the new-role side, aligned completed
+60-minute 20/50 EMA stack and fast-EMA slope, at most one bleed bar and 0.25 ATR
+cumulative penetration, a stop 0.10 ATR beyond the far edge, and an already-
+known opposing target offering at least 1.5R and 80 bps. Six-, twelve- and
+twenty-four-bar stagnation exits are a declared development grid; they have not
+been scored.
+
+On `pa_bootstrap_v4` train, 149,871 five-minute bars across 643 sessions and 47
+symbols contain **3,222** completed role-reversal retests (1,578 long, 1,644
+short). Only **16** pass the complete initial prior (10 long, 6 short), spanning
+16 sessions and 11 symbols. Rejection reasons are non-exclusive: target room
+2,943, reward/risk 2,890, higher-timeframe trend 2,214, retest too early 1,611,
+no usable opposing target 1,463, zone too young 832, bleeding 821, retest stale
+309, and cooldown 1. The machine-readable report is
+`data/metadata/research_store/price_action/h056_structural_preflight.json`.
+
+This is not a failed alpha test; it is an outcome-free sample-shape result. It
+shows that the 60-session-per-anchor bootstrap was designed for H055's broad
+annotation question and is too small for H056's selective execution question.
+No threshold is relaxed from these counts. The next data spend is a wider old-
+NSE development manifest plus separately contracted foreign-market data,
+followed by label-free coverage and fold manifests. Outcomes remain sealed
+until there are enough independent eligible sessions to price an 80-bp useful
+effect and the full adaptive development batch is compiled.
+
+**Full NSE development manifest, later 2026-08-25.** Train and the former
+validation partition are now explicitly development; test and forward are
+excluded. The frozen `h056_nse_development_v1` manifest contains 543,697 PIT
+symbol-sessions across 1,712 mapped symbols, split into 53,303 cap-safe native
+five-minute requests with 41,054,625 expected maximum rows. Its hash is
+`fd9770999c903c05f470e715e5c5029b0ad97bb4d3a7b23fc3a2fd9d369f49f0`;
+the acquisition-code hash is
+`c06b9bccd88717a8fe9a9797bd5afab384d2803f63d54d59c4f32722177096f4`.
+Every partition/year clears 95% mapped symbol-session and 98% mapped traded-
+value coverage. The manifest was copied to `hp-ts` and its code hash matched
+the remote worker. A one-call authentication probe stopped before acquisition
+because the daily Breeze session key was expired. The resumable full pull is
+ready but not running; it requires the ordinary manual Breeze refresh and is
+not worked around with a different, survivorship-biased source.
+
+**Acquisition started, later 2026-08-25.** After the owner refreshed the daily
+token, the updated credential file was copied to the designated `hp-ts`
+collector with mode 0600. A bounded one-request probe authenticated and settled
+one complete 897-row response with no cap or schema failure. The full frozen
+manifest then started in detached `tmux` session `h056_nse_dev` under the
+resumable supervisor. The first running snapshot had 124 new attempts, 107
+complete, 7 declared partial, 1 empty, 9 unsettled errors, 89,834 rows, zero
+authentication failures and zero capped responses in 37.9 seconds. Errors are
+retained for supervisor retry; this is a progress snapshot, not an admitted
+dataset or coverage result.

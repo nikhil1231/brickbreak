@@ -27,6 +27,7 @@ class ZoneConfig:
     merge_atr: float = 0.50
     break_atr: float = 0.10
     max_age_bars: int = 240
+    higher_timeframe_minutes: int = 60
 
     def __post_init__(self) -> None:
         if self.pivot_left < 1 or self.pivot_right < 1:
@@ -35,18 +36,27 @@ class ZoneConfig:
             raise ValueError("invalid ATR window or zone age")
         if min(self.width_atr, self.minimum_width_bps, self.merge_atr) <= 0:
             raise ValueError("zone widths and merge distance must be positive")
+        if self.higher_timeframe_minutes < 15:
+            raise ValueError("higher timeframe must be at least 15 minutes")
 
 
 FEATURE_COLUMNS = (
     "atr_20", "rolling_hour_trend_pct", "tod_volume_median_20",
-    "lagged_time_of_day_volume_surprise", "support_zone_kind",
+    "lagged_time_of_day_volume_surprise", "htf_ema_20", "htf_ema_50",
+    "htf_ema_20_slope_pct", "support_zone_kind",
     "support_zone_lower", "support_zone_upper", "support_zone_center",
     "support_origin_at", "support_known_at", "support_broken_at",
-    "support_age_bars", "support_touch_count", "zone_distance_atr",
+    "support_age_bars", "support_break_age_bars", "support_touch_count",
+    "support_bleed_bars", "support_cumulative_bleed_atr", "zone_distance_atr",
     "zone_overlap_frac", "approach_speed_atr_per_bar", "close_location",
     "rejection_strength_atr", "support_touch", "bullish_rejection",
     "bullish_flip_retest", "resistance_zone_lower", "resistance_zone_upper",
-    "resistance_zone_center", "resistance_known_at",
+    "resistance_zone_center", "resistance_zone_kind", "resistance_origin_at",
+    "resistance_known_at",
+    "resistance_broken_at", "resistance_age_bars",
+    "resistance_break_age_bars", "resistance_touch_count",
+    "resistance_bleed_bars", "resistance_cumulative_bleed_atr",
+    "bearish_flip_retest",
 )
 
 
@@ -106,6 +116,93 @@ def _context(frame: pd.DataFrame, columns: dict[str, str], cfg: ZoneConfig) -> p
             lambda values: values.shift(1).rolling(20, min_periods=5).median())
     denominator = out["tod_volume_median_20"].replace(0, np.nan)
     out["lagged_time_of_day_volume_surprise"] = out[volume] / denominator
+    out = _higher_timeframe_ema(out, columns, cfg)
+    return out
+
+
+def _higher_timeframe_ema(
+    frame: pd.DataFrame,
+    columns: dict[str, str],
+    cfg: ZoneConfig,
+) -> pd.DataFrame:
+    """Attach EMAs from completed, session-aligned higher-timeframe bars.
+
+    A 60-minute bar covering 09:15--10:15 first becomes visible to the 10:15
+    five-minute row. Partial buckets at the end of a session are never treated
+    as completed hourly bars. This deliberately lags rather than letting a
+    still-forming higher-timeframe candle leak into a decision.
+    """
+    out = frame.copy()
+    symbol, timestamp, close = (
+        columns["symbol"], columns["time"], columns["close"])
+    session_open = out["_session"] + pd.Timedelta(hours=9, minutes=15)
+    elapsed = (out[timestamp] - session_open).dt.total_seconds().div(60)
+    # A bar ending exactly at 10:15 belongs to the completed 09:15--10:15
+    # bucket. ``ceil - 1`` expresses that boundary without floating-point
+    # dependence on a one-nanosecond subtraction.
+    bucket_number = np.ceil(elapsed / cfg.higher_timeframe_minutes) - 1
+    valid = bucket_number.ge(0)
+    out["_htf_bucket"] = pd.NaT
+    out.loc[valid, "_htf_bucket"] = (
+        session_open.loc[valid]
+        + pd.to_timedelta(
+            bucket_number.loc[valid] * cfg.higher_timeframe_minutes,
+            unit="m"))
+
+    source = out.loc[valid, [symbol, "_htf_bucket", timestamp, close]].copy()
+    source[close] = pd.to_numeric(source[close], errors="coerce")
+    higher = source.groupby([symbol, "_htf_bucket"], sort=False).agg(
+        htf_close=(close, "last"),
+        last_bar_end=(timestamp, "max"),
+    ).reset_index()
+    higher["htf_available_at"] = (
+        higher["_htf_bucket"]
+        + pd.to_timedelta(cfg.higher_timeframe_minutes, unit="m"))
+    higher = higher.loc[
+        higher["last_bar_end"].ge(higher["htf_available_at"])
+    ].sort_values([symbol, "htf_available_at"], kind="stable")
+
+    fast_name = "htf_ema_20"
+    slow_name = "htf_ema_50"
+    slope_name = "htf_ema_20_slope_pct"
+    if higher.empty:
+        out[fast_name] = np.nan
+        out[slow_name] = np.nan
+        out[slope_name] = np.nan
+        return out
+
+    higher[fast_name] = higher.groupby(symbol, sort=False)["htf_close"].transform(
+        lambda values: values.ewm(
+            span=20, adjust=False, min_periods=20).mean())
+    higher[slow_name] = higher.groupby(symbol, sort=False)["htf_close"].transform(
+        lambda values: values.ewm(
+            span=50, adjust=False, min_periods=50).mean())
+    previous_fast = higher.groupby(symbol, sort=False)[fast_name].shift(1)
+    higher[slope_name] = (higher[fast_name] / previous_fast - 1.0) * 100.0
+
+    out[fast_name] = np.nan
+    out[slow_name] = np.nan
+    out[slope_name] = np.nan
+    for name, rows in out.groupby(symbol, sort=False):
+        reference = higher.loc[higher[symbol].eq(name)]
+        if reference.empty:
+            continue
+        # Pandas may retain microseconds for provider timestamps while derived
+        # bucket boundaries are nanoseconds. Convert both explicitly before
+        # integer search; raw ``astype(int64)`` would compare different units.
+        available = pd.to_datetime(reference["htf_available_at"]).to_numpy(
+            dtype="datetime64[ns]").astype(np.int64)
+        decision = pd.to_datetime(rows[timestamp]).to_numpy(
+            dtype="datetime64[ns]").astype(np.int64)
+        positions = np.searchsorted(available, decision, side="right") - 1
+        usable = positions >= 0
+        if not usable.any():
+            continue
+        target_index = rows.index.to_numpy()[usable]
+        source_index = positions[usable]
+        for feature in (fast_name, slow_name, slope_name):
+            values = reference[feature].to_numpy()[source_index]
+            out.loc[target_index, feature] = values
     return out
 
 
@@ -160,7 +257,9 @@ def _new_zone(kind: str, center: float, width: float, origin_at: pd.Timestamp,
         "lower": float(center - width), "upper": float(center + width),
         "origin_at": origin_at, "known_at": known_at,
         "known_index": known_index, "broken_at": pd.NaT,
+        "broken_index": None, "break_age": np.nan,
         "touch_count": 0, "was_touching": False, "active": True,
+        "bleed_bars": 0, "cumulative_bleed_atr": 0.0,
         "seeds": 1, "retest_now": False, "age": 0,
     }
 
@@ -198,13 +297,18 @@ def _zone_snapshot(zone: dict[str, Any] | None, prefix: str) -> dict[str, Any]:
             f"{prefix}_zone_center": zone["center"],
             f"{prefix}_known_at": zone["known_at"],
         }
-    if prefix == "support":
-        values.update({
-            "support_origin_at": pd.NaT if zone is None else zone["origin_at"],
-            "support_broken_at": pd.NaT if zone is None else zone["broken_at"],
-            "support_age_bars": np.nan if zone is None else zone["age"],
-            "support_touch_count": 0 if zone is None else zone["touch_count"],
-        })
+    values.update({
+        f"{prefix}_origin_at": pd.NaT if zone is None else zone["origin_at"],
+        f"{prefix}_broken_at": pd.NaT if zone is None else zone["broken_at"],
+        f"{prefix}_age_bars": np.nan if zone is None else zone["age"],
+        f"{prefix}_break_age_bars": (
+            np.nan if zone is None or pd.isna(zone["broken_at"])
+            else zone["break_age"]),
+        f"{prefix}_touch_count": 0 if zone is None else zone["touch_count"],
+        f"{prefix}_bleed_bars": 0 if zone is None else zone["bleed_bars"],
+        f"{prefix}_cumulative_bleed_atr": (
+            0.0 if zone is None else zone["cumulative_bleed_atr"]),
+    })
     return values
 
 
@@ -239,6 +343,9 @@ def build_zone_state_machine(
                 if not zone["active"]:
                     continue
                 zone["age"] = i - int(zone["known_index"])
+                zone["break_age"] = (
+                    np.nan if pd.isna(zone["broken_at"])
+                    else i - int(zone["broken_index"]))
                 if action or zone["age"] > cfg.max_age_bars:
                     zone["active"] = False
                     continue
@@ -246,15 +353,38 @@ def build_zone_state_machine(
                 if zone["kind"] == "resistance" and close > zone["upper"] + buffer:
                     zone["kind"] = "flip_support"
                     zone["broken_at"] = current_time
+                    zone["broken_index"] = i
+                    zone["break_age"] = 0
                     zone["was_touching"] = False
-                elif zone["kind"] in ("support", "flip_support") \
+                elif zone["kind"] == "support" and close < zone["lower"] - buffer:
+                    zone["kind"] = "flip_resistance"
+                    zone["broken_at"] = current_time
+                    zone["broken_index"] = i
+                    zone["break_age"] = 0
+                    zone["was_touching"] = False
+                elif zone["kind"] == "flip_support" \
                         and close < zone["lower"] - buffer:
                     zone["active"] = False
                     continue
+                elif zone["kind"] == "flip_resistance" \
+                        and close > zone["upper"] + buffer:
+                    zone["active"] = False
+                    continue
                 touching = high >= zone["lower"] and low <= zone["upper"]
+                penetration = 0.0
+                after_break = (
+                    pd.notna(zone["broken_at"])
+                    and current_time > zone["broken_at"])
+                if after_break and zone["kind"] == "flip_support":
+                    penetration = max(0.0, zone["lower"] - low) / atr
+                elif after_break and zone["kind"] == "flip_resistance":
+                    penetration = max(0.0, high - zone["upper"]) / atr
+                if penetration > 0:
+                    zone["bleed_bars"] += 1
+                    zone["cumulative_bleed_atr"] += penetration
                 if touching and not zone["was_touching"] and i > zone["known_index"]:
                     zone["touch_count"] += 1
-                    if zone["kind"] == "flip_support" \
+                    if zone["kind"] in ("flip_support", "flip_resistance") \
                             and pd.notna(zone["broken_at"]) \
                             and current_time > zone["broken_at"]:
                         zone["retest_now"] = True
@@ -263,7 +393,7 @@ def build_zone_state_machine(
                 # genuine touch on the following completed bar.
                 zone["was_touching"] = bool(
                     touching and not (
-                        zone["kind"] == "flip_support"
+                        zone["kind"] in ("flip_support", "flip_resistance")
                         and current_time == zone["broken_at"]))
 
             seed_i = i - cfg.pivot_right
@@ -292,7 +422,7 @@ def build_zone_state_machine(
             ]
             resistances = [
                 zone for zone in zones if zone["active"]
-                and zone["kind"] == "resistance"
+                and zone["kind"] in ("resistance", "flip_resistance")
                 and zone["center"] >= close - (zone["center"] - zone["lower"])
             ]
             support = min(supports, key=lambda z: abs(close - z["center"]), default=None)
@@ -328,12 +458,24 @@ def build_zone_state_machine(
                     "bullish_rejection": bullish and support["kind"] == "support",
                     "bullish_flip_retest": bullish and bool(support["retest_now"]),
                 })
+            if resistance is None:
+                record["bearish_flip_retest"] = False
+            else:
+                resistance_overlap = _overlap_fraction(
+                    low, high, resistance["lower"], resistance["upper"])
+                bearish = bool(
+                    resistance_overlap > 0
+                    and record["close_location"] <= 0.35
+                    and close <= resistance["center"])
+                record["bearish_flip_retest"] = bool(
+                    bearish and resistance["retest_now"])
             features.append(record)
 
     feature_frame = pd.DataFrame(features).set_index("_input_index")
     context = work.set_index("_input_index")[[
         "atr_20", "rolling_hour_trend_pct", "tod_volume_median_20",
-        "lagged_time_of_day_volume_surprise",
+        "lagged_time_of_day_volume_surprise", "htf_ema_20", "htf_ema_50",
+        "htf_ema_20_slope_pct",
     ]]
     combined = context.join(feature_frame, how="left")
     result = bars.copy()

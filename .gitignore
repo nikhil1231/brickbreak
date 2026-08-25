@@ -28,6 +28,10 @@ data/metadata/*
 # vendor bytes and resumable machine-local checkpoints are not source control.
 data/intraday_acquisition/*/raw/
 data/intraday_acquisition/*/normalised/
+data/intraday_acquisition/*/attempts/
+data/intraday_acquisition/*/session_markers/
+data/intraday_acquisition/*/closing_markers/
+data/intraday_acquisition/*/pull_status.json
 data/intraday_acquisition/*/session_markers/
 data/intraday_acquisition/*/closing_markers/
 data/intraday_acquisition/*/attempts/
