@@ -147,3 +147,22 @@ def test_model_judgements_stay_hidden_until_human_pass_is_frozen(tmp_path, monke
     assert [row["annotator_kind"] for row in revealed["judgements"]] == [
         "human", "model"]
     assert revealed["judgements"][1]["values"]["notes"] == "model facts"
+
+
+def test_revealed_optional_number_accepts_an_empty_csv_cell(tmp_path, monkeypatch):
+    bundle = make_bundle(tmp_path, monkeypatch)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["review_schema"]["fields"].insert(1, {
+        "name": "optional_level", "label": "Optional level", "type": "number"})
+    manifest["annotation_columns"].append("optional_level")
+    manifest_path.write_text(json.dumps(manifest))
+    columns = COLUMNS + ["optional_level"]
+    pd.DataFrame(columns=columns).to_csv(bundle / "annotations.csv", index=False)
+    for case_id in ("CASE_0", "CASE_1"):
+        setup_review.save_draft("generic-review", {
+            "annotator": "nikhil", "case_id": case_id,
+            "values": {**values(), "optional_level": None}})
+    setup_review.finalize("generic-review", {"annotator": "nikhil"})
+    revealed = setup_review.case("generic-review", "CASE_0", "nikhil")
+    assert revealed["judgements"][0]["values"]["optional_level"] is None

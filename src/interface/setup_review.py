@@ -331,7 +331,8 @@ def case(review_id: str, case_id: str, annotator: str) -> dict[str, Any]:
 
 
 def _wire_value(value: Any) -> Any:
-    if value is None or (not isinstance(value, (list, dict)) and pd.isna(value)):
+    if value is None or (isinstance(value, str) and not value.strip()) or (
+            not isinstance(value, (list, dict)) and pd.isna(value)):
         return None
     return value.item() if hasattr(value, "item") else value
 
