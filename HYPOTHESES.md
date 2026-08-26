@@ -3191,3 +3191,24 @@ forward are excluded from the manifest and remain untouched.
 **Lineage.** `specialises` H056's representation question; `adjacent-to` H055.
 H055's PA7 representation failure stands. H056 remains outcome-untested and its
 manual retest priors are unchanged — H057 tests the layer beneath them.
+
+**Blind representation audit, registered 2026-08-26, PENDING.** A null result on
+a representation is worth what the representation is worth, so the objects H057
+scored are being audited against the reviewer's own eye before the rejection is
+treated as settled. `h057-level-audit` is a balanced 60-case deck — 30 real
+detector levels, 30 of the exact `permuted_geometry` controls — shown blind on
+anonymised, rebased, 140-bar hourly charts ending at the decision bar. The
+reviewer marks each line real or control, and separately whether they would
+trade it. Chance is exactly 50% by construction and ground truth is withheld
+until a complete pass is frozen.
+
+The audit's own bar, fixed before it is scored: a discrimination rate whose
+95% interval excludes 0.5 means the controls are matched on the wrong things or
+the detectors miss what a human uses, and **H057's rejection is then about the
+wrong object and is withdrawn pending a redesigned representation**. A rate whose
+interval covers 0.5 means the machine's levels and the reviewer's are the same
+object on exactly the scored cases, and the rejection stands as an answer to the
+intended question. The take rate is read alongside it: a reviewer who skips
+nearly every case is reporting that the candidate population is not the setup
+population, which is a separate defect. This spends no new sample — H057's path
+exposure is already logged and its cases are re-rendered from that read.

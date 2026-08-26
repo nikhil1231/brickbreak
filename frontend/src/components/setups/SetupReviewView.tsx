@@ -119,6 +119,12 @@ export const SetupReviewView: React.FC = () => {
 
   useEffect(() => {
     if (!reviewId || !caseId || !reviewer) return;
+    // Switching queues changes reviewId before the new queue resolves, so this
+    // effect would otherwise fire once with the previous queue's case id and
+    // surface a spurious "unknown case" error. Wait until the loaded queue is
+    // the one being asked about and actually contains the case.
+    if (!queue || queue.review_id !== reviewId) return;
+    if (!queue.cases.some((item) => item.case_id === caseId)) return;
     const controller = new AbortController();
     setCurrent(null);
     fetchSetupReviewCase(reviewId, caseId, reviewer, controller.signal)
@@ -128,7 +134,7 @@ export const SetupReviewView: React.FC = () => {
       })
       .catch((err) => setError(err.message));
     return () => controller.abort();
-  }, [reviewId, caseId, reviewer]);
+  }, [reviewId, caseId, reviewer, queue]);
 
   const currentIndex = queue?.cases.findIndex((item) => item.case_id === caseId) ?? -1;
   const scalarSidecar = useMemo(() => Object.entries(current?.sidecar || {})
@@ -254,13 +260,13 @@ export const SetupReviewView: React.FC = () => {
     );
     let control: React.ReactNode;
     if (field.type === 'boolean') {
-      control = <SegmentedControl fullWidth disabled={!enabled || queue?.finalized} value={typeof value === 'boolean' ? String(value) : ''}
+      control = <SegmentedControl fullWidth styles={{ root: { maxWidth: '100%' }, label: { whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.25, paddingTop: 6, paddingBottom: 6 } }} disabled={!enabled || queue?.finalized} value={typeof value === 'boolean' ? String(value) : ''}
         data={[{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }]}
         onChange={(next) => updateValue(field, next === 'true')} />;
     } else if (field.type === 'choice') {
       const data = options(field);
       control = data.length <= 4
-        ? <SegmentedControl fullWidth disabled={!enabled || queue?.finalized} value={typeof value === 'string' ? value : ''} data={data} onChange={(next) => updateValue(field, next)} />
+        ? <SegmentedControl fullWidth styles={{ root: { maxWidth: '100%' }, label: { whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.25, paddingTop: 6, paddingBottom: 6 } }} disabled={!enabled || queue?.finalized} value={typeof value === 'string' ? value : ''} data={data} onChange={(next) => updateValue(field, next)} />
         : <Select disabled={!enabled || queue?.finalized} value={typeof value === 'string' ? value : null} data={data} onChange={(next) => updateValue(field, next)} />;
     } else if (field.type === 'number') {
       control = <Stack gap={6}>
@@ -375,6 +381,14 @@ export const SetupReviewView: React.FC = () => {
                     </Box>
                   ) : <Alert color="yellow">Unsupported media type: {current.media.kind}</Alert>}
                 </Paper>
+
+                {current?.finalized && current.reveal && <Paper p="md" style={{ borderColor: 'rgba(255,209,102,.45)' }}>
+                  <Group gap="xs" mb="sm"><IconLock size={18} color="var(--mantine-color-yellow-5)" /><Text fw={700}>Ground truth</Text></Group>
+                  <Text size="sm" c="dimmed" mb="md">Revealed because your pass is frozen. It could not have reached this screen before you committed.</Text>
+                  <Grid gap="xs">
+                    {Object.entries(current.reveal).map(([key, value]) => <Grid.Col span={{ base: 6, sm: 3 }} key={key}><Box p="xs" bg="rgba(255,209,102,.07)" style={{ borderRadius: 6 }}><Text size="xs" c="dimmed">{key.replace(/_/g, ' ')}</Text><Text fw={700} ff="monospace">{displayValue(value)}</Text></Box></Grid.Col>)}
+                  </Grid>
+                </Paper>}
 
                 {current?.finalized && current.judgements && <Paper p="md" style={{ borderColor: 'rgba(63,185,80,.35)' }}>
                   <Group gap="xs" mb="sm"><IconCheck size={18} color="var(--mantine-color-green-5)" /><Text fw={700}>Blind judgements revealed</Text></Group>

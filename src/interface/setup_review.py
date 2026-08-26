@@ -306,6 +306,13 @@ def case(review_id: str, case_id: str, annotator: str) -> dict[str, Any]:
         "outcome_accessed": False,
     }
     if finalized:
+        # A bundle may carry ground truth for its own cases -- which line was
+        # real, what happened next. It is served only here, after the reviewer
+        # has frozen a complete pass, for the same reason model answers are:
+        # a reviewer who can see the answer is not producing data.
+        reveal = selected.get("reveal")
+        if isinstance(reveal, dict):
+            payload["reveal"] = reveal
         frame = _annotations(bundle)
         visible = frame[
             frame["case_id"].astype(str).eq(case_id)

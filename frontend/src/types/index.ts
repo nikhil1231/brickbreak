@@ -323,5 +323,8 @@ export interface SetupReviewCase {
   finalized: boolean;
   judgements_locked: boolean;
   judgements?: SetupReviewJudgement[];
+  // Ground truth for this case. Served only once the reviewer's pass is
+  // finalized, so it can never inform the judgement it is scoring.
+  reveal?: Record<string, unknown>;
   outcome_accessed: false;
 }
