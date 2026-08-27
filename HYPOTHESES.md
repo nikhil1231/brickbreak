@@ -3192,7 +3192,7 @@ forward are excluded from the manifest and remain untouched.
 H055's PA7 representation failure stands. H056 remains outcome-untested and its
 manual retest priors are unchanged — H057 tests the layer beneath them.
 
-**Blind representation audit, registered 2026-08-26, PENDING.** A null result on
+**Blind representation audit, registered 2026-08-26, COMPLETE — the rejection stands.** A null result on
 a representation is worth what the representation is worth, so the objects H057
 scored are being audited against the reviewer's own eye before the rejection is
 treated as settled. `h057-level-audit` is a balanced 60-case deck — 30 real
@@ -3212,3 +3212,27 @@ intended question. The take rate is read alongside it: a reviewer who skips
 nearly every case is reporting that the candidate population is not the setup
 population, which is a separate defect. This spends no new sample — H057's path
 exposure is already logged and its cases are re-rendered from that read.
+
+**Audit result, 2026-08-26.** The owner completed and froze all 60 cases.
+Discrimination is **0.533 (SE 0.064, z = 0.52)** — a 95% interval of
+[0.41, 0.66] that covers chance. Accuracy was 0.567 on real levels and 0.500 on
+controls, mean stated confidence 0.47 with a maximum of 0.80. **The controls are
+not distinguishable from the real levels, so H057's rejection stands as an
+answer to the intended question** at the unconditional level.
+
+The take rate is the sharper number: **10 of 60 taken (16.7%), split exactly
+5 real and 5 control**, giving an identical 16.7% take rate on each deck.
+Whatever made those ten charts tradable to the owner, it was not the drawn line.
+Free-text notes say the same thing directly — "line is just drawn through stuff,
+nothing to trade", "not clear enough levels". So the audit simultaneously
+upholds the null *and* confirms that H057's candidate population is not the
+owner's setup population: the study answered a question about charts he would
+never trade. H057's scope narrows accordingly and its limitation 4 — no
+selection — is now the live question rather than a caveat.
+
+One non-result worth recording so it is not rediscovered as a finding: on real
+cases only, recognition ran `anchor` 0.714 and `multi_touch` 0.714 against
+`fractal` 0.444 and `volume_profile` 0.429. That ordering is consistent with the
+owner's notion of a level being prior-session and multi-day structure rather
+than bar patterns or volume nodes, but each cell holds 7-9 cases (SE ≈ 0.17,
+z ≈ 1.25). It is a direction for a redesigned representation, not evidence.

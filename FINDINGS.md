@@ -2908,3 +2908,70 @@ and it does not say no conditional subset exists. It says that the unconditional
 claim — that arriving at a level makes reversal more likely than a matched
 non-level — is false on this universe, at this horizon, over six years, and that
 the most-watched levels invert it.
+
+---
+
+# H057 audit — the reviewer cannot separate real levels from controls, and would not trade either (2026-08-26)
+
+Registered with its bar before scoring. Balanced 60-case blind deck, 30 real
+detector levels against 30 `permuted_geometry` controls, anonymised rebased
+140-bar hourly charts ending at the decision bar. Chance is 0.5 by construction.
+Spends no new sample.
+
+## The registered bar
+
+| | value |
+| --- | ---: |
+| discrimination rate | **0.5333** |
+| standard error | 0.0644 |
+| z vs chance | **0.52** |
+| 95% interval | [0.41, 0.66] |
+| accuracy on real levels | 0.567 |
+| accuracy on controls | 0.500 |
+| mean stated confidence | 0.47 (max 0.80) |
+
+The interval covers 0.5. Under the registered rule this **upholds H057's
+rejection**: the machine's levels and the reviewer's are the same object on
+exactly the cases that were scored, so the null answers the intended question
+rather than a different one. The reviewer called "real" 32 times and "fake" 28,
+so there is no degenerate answer inflating the rate.
+
+## The take rate is the more informative half
+
+| | taken | rate |
+| --- | ---: | ---: |
+| real levels | 5 of 30 | 16.7% |
+| controls | 5 of 30 | 16.7% |
+| overall | 10 of 60 | 16.7% |
+
+Identical to the decimal. **Whatever made those ten charts tradable, it was not
+the drawn line** — the reviewer was reading bar structure and ignoring the level,
+on both decks equally. The notes say it without prompting: "line is just drawn
+through stuff, nothing to trade", "not clear enough levels", "not enough info to
+trade it".
+
+So the audit does two things at once. It confirms H057 measured the object the
+reviewer means, and it confirms the reviewer would not trade 83% of the
+population H057 measured. Both are true and they are not in tension: the study
+correctly answered a question about a candidate set nobody would trade.
+
+**Consequence.** H057's fourth stated limitation — that it averages over every
+approach and cannot see a selected subset — stops being a caveat and becomes the
+live question. The unconditional claim is settled. The conditional one has not
+been touched, and the honest way to touch it is to let the reviewer define the
+population rather than slice this one.
+
+## A non-result, recorded so it is not rediscovered
+
+On real cases only, recognition by detector: `anchor` 0.714, `multi_touch`
+0.714, `fractal` 0.444, `volume_profile` 0.429. The ordering is consistent with
+the reviewer's notion of a level being prior-session and multi-day structure
+rather than bar patterns or volume nodes — which would also explain PA7's
+kappa failure. But each cell holds 7-9 cases, SE is about 0.17, and 0.714
+against 0.5 is z ≈ 1.25. **This is a direction for a redesigned representation,
+not evidence.** High-confidence calls (>0.50, n=11) scored 0.636 against 0.571
+for the rest; n=11, also nothing.
+
+Mean confidence of 0.47 with no case above 0.80 is itself consistent with the
+null: the reviewer found the task genuinely hard throughout rather than easy on
+a recognisable subset.
