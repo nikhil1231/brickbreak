@@ -3240,7 +3240,16 @@ z ≈ 1.25). It is a direction for a redesigned representation, not evidence.
 
 ## H058 — The owner's own selection carries information the machine's does not
 
-Status: **Stage 2 FAILED AS AN EXPERIMENT, 2026-08-29 — not rejected, failed.**
+Status: **REJECTED on an exploratory sweep, 2026-08-29, after the registered
+study failed to execute.** The registered form never ran (see below). The spent
+partition was then re-read across eight entry windows from 3 to 30 sessions: the
+best cell is **+0.014R against a median permuted maximum of +0.052R**, p = 0.683
+against the scan's own null, three of eight cells positive, every take mean
+within ±0.024R of zero. A scan tilted every way toward finding something, and
+landing below its own noise floor, is a credible negative. It rules out a large
+edge on this selector; at 64 trades it cannot rule out a small one.
+
+The registered study's own failure stands separately: **not rejected, failed.**
 87.5% of the takes never traded: the registered 3-session entry window could not
 fill a style whose median entry sits 2.60 ATR from the last close, so the
 effective sample was sixteen trades. The futility STOP that fired on the

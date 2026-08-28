@@ -3186,3 +3186,51 @@ exceeds what `split_v1` was purged for. Sizing that counts *trades*, not takes,
 at an assumed fill rate near 50%. The seven PLAN.md 9 baselines. And a fresh
 partition: `forward`, which has accrued about 8 sessions, or a new grind on
 `validation`. There is no shortcut back to a clean read of `test`.
+
+### The window sweep, and why it settles the question anyway
+
+The entry-window defect above raised an obvious objection: the partition is
+already spent, so read it again with a window that can actually fill. That was
+done, exploratory and labelled as such, and it does not rescue the hypothesis.
+
+Only the entry window varies; the hold stays at the registered 15 sessions, so
+this is a one-dimensional scan of eight cells. The full surface, never the
+maximum alone:
+
+| entry window | fill rate | trades | take mean R | take − skip R |
+| --- | --- | --- | --- | --- |
+| 3 (registered) | 12.5% | 16 | +0.009 | −0.037 |
+| 5 | 19.5% | 25 | +0.024 | +0.014 |
+| 8 | 28.9% | 37 | −0.016 | −0.017 |
+| 10 | 30.5% | 39 | −0.010 | −0.012 |
+| 15 | 38.3% | 49 | +0.012 | +0.007 |
+| 20 | 43.8% | 56 | −0.000 | −0.045 |
+| 25 | 48.4% | 62 | +0.012 | −0.010 |
+| 30 | 50.0% | 64 | +0.020 | +0.005 |
+
+**The best cell is +0.014R. The median permuted maximum of the same scan is
++0.052R and its 95th percentile is +0.197R, so the best cell we found is *worse
+than the noise floor*; p = 0.683 against the scan's own permuted maximum.**
+Three of eight cells are positive. Every take mean sits within ±0.024R of zero.
+There is no window at which this works, and the fitted-in-his-favour maximum is
+worth 1.8% a year against the 38% the registered bar implies.
+
+This is the honest use of a spent partition. Contaminated analysis manufactures
+false positives, not false negatives, so a scan tilted every possible way toward
+finding something — eight tries, chosen after seeing an outcome — and still
+landing below its own null is a **credible negative**, in a way a positive from
+the same procedure would not have been.
+
+**What it does and does not rule out.** At the widest window the sample is 64
+trades, an SE near 0.175R, so a true +0.20R edge would be caught only about half
+the time. This rules out a **large** edge, which is the only kind worth trading a
+₹5-10 lakh book for. It does not rule out something small, and nothing here
+should be written up as proof of no skill.
+
+**Consequence, per the narrowed registration.** This retires *one selector*: one
+person marking anonymised, rebased 140-day daily charts with no identity, no
+market or sector context, no news, no intraday structure, no sizing and no
+portfolio constraint. On that object, at every entry window from 3 to 30
+sessions, selection carries nothing detectable and the takes make nothing. It
+does not retire the owner's live process, and the H058 execution defects mean
+the *registered* study still never ran.
