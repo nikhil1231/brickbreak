@@ -277,6 +277,15 @@ export interface SetupReviewSchema {
     glossary?: Array<{ term: string; definition: string }>;
   };
   fields: SetupReviewField[];
+  /** 'grind' swaps the deliberative form for the keyboard-driven layout. */
+  ui_mode?: 'form' | 'grind';
+  invariants?: Array<{
+    when?: Record<string, unknown>;
+    rule: string;
+    fields: string[];
+    either_direction?: boolean;
+    message?: string;
+  }>;
 }
 
 export interface SetupReviewJudgement {

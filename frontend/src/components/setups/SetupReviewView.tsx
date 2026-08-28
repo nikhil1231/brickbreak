@@ -47,6 +47,7 @@ import {
   SetupReviewQueue,
   SetupReviewSummary,
 } from '../../types';
+import { SetupGrindPane } from './SetupGrindPane';
 
 const REVIEWER_KEY = 'brickbreak.setupReviewer';
 
@@ -136,6 +137,7 @@ export const SetupReviewView: React.FC = () => {
     return () => controller.abort();
   }, [reviewId, caseId, reviewer, queue]);
 
+  const grind = queue?.schema.ui_mode === 'grind';
   const currentIndex = queue?.cases.findIndex((item) => item.case_id === caseId) ?? -1;
   const scalarSidecar = useMemo(() => Object.entries(current?.sidecar || {})
     .filter(([, value]) => !Array.isArray(value) && (typeof value !== 'object' || value === null)), [current]);
@@ -212,15 +214,24 @@ export const SetupReviewView: React.FC = () => {
     if (target) setCaseId(target.case_id);
   };
 
-  const save = async () => {
+  // `commit` takes its values explicitly rather than reading state. The grind
+  // keyboard handlers decide and save in one keystroke, and a handler that
+  // closed over `values` would persist the state from before the keystroke.
+  const commit = async (payload: Record<string, unknown>, advance: boolean, quiet = false) => {
     if (!queue || !current) return;
     setSaving(true);
     try {
-      const updated = await saveSetupReviewDraft(queue.review_id, reviewer, current.case_id, values);
+      const updated = await saveSetupReviewDraft(queue.review_id, reviewer, current.case_id, payload);
       setQueue(updated);
-      notifications.show({ color: 'green', icon: <IconCheck size={16} />, message: 'Review saved locally.' });
-      const next = updated.cases.find((item, index) => !item.reviewed && index > currentIndex)
-        || updated.cases.find((item) => !item.reviewed);
+      if (!quiet) notifications.show({ color: 'green', icon: <IconCheck size={16} />, message: 'Review saved locally.' });
+      if (!advance) return;
+      // In grind mode the deck is walked in its frozen order: jumping to the
+      // first unreviewed case anywhere would let a repeat land next to its
+      // original, which is the one thing the deck order exists to prevent.
+      const next = grind
+        ? updated.cases[currentIndex + 1]
+        : updated.cases.find((item, index) => !item.reviewed && index > currentIndex)
+          || updated.cases.find((item) => !item.reviewed);
       if (next) setCaseId(next.case_id);
     } catch (err) {
       notifications.show({ color: 'red', message: err instanceof Error ? err.message : String(err) });
@@ -228,6 +239,8 @@ export const SetupReviewView: React.FC = () => {
       setSaving(false);
     }
   };
+
+  const save = () => commit(values, true);
 
   const finalize = async () => {
     if (!queue || queue.progress.completed !== queue.progress.total) return;
@@ -322,7 +335,7 @@ export const SetupReviewView: React.FC = () => {
             <Text size="xs" c="dimmed" mt={5}>{queue.progress.completed} of {queue.progress.total} setups saved</Text>
           </Paper>
 
-          {queue.schema.guide && <Paper p="lg" mb="md" style={{ borderColor: 'rgba(88, 166, 255, .4)' }}>
+          {queue.schema.guide && (!grind || queue.progress.completed === 0) && <Paper p="lg" mb="md" style={{ borderColor: 'rgba(88, 166, 255, .4)' }}>
             <Group gap="sm" mb={5}><IconTarget size={21} color="var(--mantine-color-blue-4)" /><Text fw={750} size="lg">{queue.schema.guide.heading}</Text></Group>
             <Text c="dimmed" maw={1000}>{queue.schema.guide.summary}</Text>
             {queue.schema.guide.steps && <Grid gap="sm" mt="md">
@@ -339,6 +352,11 @@ export const SetupReviewView: React.FC = () => {
             </Group>}
           </Paper>}
 
+          {grind ? (
+            <SetupGrindPane queue={queue} current={current} currentIndex={currentIndex}
+                            values={values} setValues={setValues} commit={(payload, advance) => commit(payload, advance, true)}
+                            move={move} saving={saving} />
+          ) : (
           <Grid gap="md">
             <Grid.Col span={{ base: 12, md: 2 }}>
               <Paper p="xs" h={{ base: 180, md: 'calc(100vh - 260px)' }}>
@@ -427,7 +445,7 @@ export const SetupReviewView: React.FC = () => {
                 <Button fullWidth loading={saving} disabled={queue.finalized || !current} onClick={save}>Save & next unreviewed</Button>
               </Paper>
             </Grid.Col>
-          </Grid>
+          </Grid>)}
 
           <Paper p="md" mt="md">
             <Group justify="space-between">

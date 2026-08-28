@@ -3236,3 +3236,112 @@ cases only, recognition ran `anchor` 0.714 and `multi_touch` 0.714 against
 owner's notion of a level being prior-session and multi-day structure rather
 than bar patterns or volume nodes, but each cell holds 7-9 cases (SE ≈ 0.17,
 z ≈ 1.25). It is a direction for a redesigned representation, not evidence.
+
+
+## H058 — The owner's own selection carries information the machine's does not
+
+Status: **REGISTERED, Stage 0 open, no outcome touched.** The Stage 0
+acceptance bar and the Stage 2 execution rules below were both fixed before the
+reviewer saw a single chart; they are timestamped in git and frozen inside
+`data/metadata/research_store/price_action/h058_stage0/manifest.json`.
+
+**Where this came from.** H057's blind audit settled one thing and opened
+another. The reviewer could not separate real levels from matched controls
+(0.533, 95% interval [0.41, 0.66]), so H057's null answers the question it
+asked. But he would have traded 10 of 60 charts, split exactly 5 real and 5
+control — an identical 16.7% on each deck. The study therefore measured a
+population he would never touch, and H057's fourth limitation, that it averages
+over every approach and cannot see a selected subset, stopped being a caveat.
+This hypothesis lets the reviewer define the population instead of slicing it.
+
+**Question.** On charts he chose himself, from a deck he did not construct, does
+what he takes outperform what he passes over on the same sessions — and does it
+beat costs at the geometry he specified?
+
+**Two contrasts, one grind.** *Selection*: mean outcome on takes minus skips,
+paired inside the same sessions and the same universe. The skips are a perfectly
+matched control that costs nothing to collect, which is exactly what H057 had to
+synthesise. *Tradability*: mean R on takes against a 10 bps futures round trip.
+The first can pass while the second fails, and that difference is informative
+rather than awkward.
+
+**Why the deck is served and not scrolled.** Free chart-scrubbing cannot produce
+evidence here, for three reasons and any one is fatal. The right-hand side of
+the chart is read before the reviewer knows he has read it. There is no
+denominator, so the take rate and the skip control — the most informative number
+the audit produced — are unrecoverable. And nobody, including the reviewer next
+month, can rerun it.
+
+**Population.** Point-in-time NSE stock-futures membership on session D, daily
+bars, decision at D's close. 140 daily bars per chart, anonymised and rebased so
+the last close is 100. Stage 0 draws from `validation`; `test` is untouched and
+reserved for the single Stage 2 read.
+
+**Stage 2 execution rules, frozen now so they cannot be authored after the
+marks are in.** Entry is the clicked level, live for 3 sessions from D+1: above
+the last close it triggers on `high >= entry` (breakout), below it on
+`low <= entry` (pullback). No trigger in 3 sessions is a recorded no-fill, not a
+silent drop. Exit is the first of stop, target, or the close of the 15th session
+after fill; when one session touches both barriers the stop is taken. Outcome is
+the R multiple net of 10 bps, where 1R is entry minus stop. Total horizon is 18
+sessions, inside split_v1's `max_horizon` of 20 — a longer hold would cross a
+purge boundary the split was never purged for.
+
+**Direction is not asked.** The reviewer clicks entry, stop and target; a stop
+below the entry is a long and above it a short. That removes a field from every
+take and turns the pairing invariant into something checked rather than trusted,
+in both the browser and the server. This lab has met a stop on the wrong side of
+an entry before.
+
+### Stage 0 — the cheapest thing that can end the programme
+
+Two questions, no outcome, one evening. 170 charts: 120 distinct decisions, 50
+of them shown a second time at least 60 charts later and drawn at 128 bars
+rather than 140, so the second showing is the same decision on a differently
+framed image.
+
+1. **Does the reviewer agree with himself?** If test-retest agreement on
+   take/skip is near chance, no downstream contrast can carry information and no
+   deck size fixes it. PA7 recorded a composite kappa of 0.087 between his level
+   markup and the machine's, so this is a live risk and not a formality.
+2. **What does a data point cost?** The measured take rate and seconds per chart
+   replace the assumed ones in the Stage 2 sizing table.
+
+**Frozen bar.** Test-retest kappa **below 0.20 ends the programme**. **At or
+above 0.40, Stage 2 opens at the full five-hour, 0.20R size.** Between them,
+Stage 2 opens only at the two-hour, 0.30R size, because a noisy selector needs a
+larger effect before the grind is worth it. Independently, a take rate under
+0.05 makes the full grind unaffordable and one over 0.60 means the reviewer is
+labelling rather than selecting; either sends the deck back to be redrawn rather
+than opening outcomes.
+
+Simulated at the deck's own size, 50 pairs and a 17% take rate: a reviewer who
+is genuinely random is stopped 91% of the time and reads as full-proceed 1% of
+the time, while one at a true kappa of 0.60 proceeds 87% of the time and is
+wrongly stopped 1%. The gate separates "cannot reproduce at all" from
+"reproduces well"; it cannot resolve the middle, which is why the middle has its
+own verdict rather than a coin flip.
+
+**Not gates, reported anyway.** Seconds per chart, used only for sizing. Geometry
+agreement on charts taken twice — too few pairs to gate, but it is the sharper
+question and worth seeing.
+
+**What Stage 0 cannot tell us.** Whether the selection is any *good*. A perfectly
+reproducible reviewer with no edge scores kappa 1.0 here. Consistency is
+necessary and nowhere near sufficient, and passing Stage 0 is permission to
+spend the grind, not evidence of anything about the market.
+
+**Recall inflates the retest.** Different bar counts defeat pixel recognition,
+not memory of a distinctive chart. The reported agreement is an upper bound and
+is labelled as one everywhere it appears.
+
+**Exposure.** Stage 0 reads no outcome and spends no sample. It draws from
+`validation` so that `test` — 306 sessions across 2020Q2, 2022Q2, 2023Q4,
+2025Q3 and 2026Q1 — stays whole for Stage 2, and so that any Stage 2 deck
+enrichment is fitted on one partition and applied to another. Note that those
+five quarters are five blocks: session-clustered significance is well supported,
+"does it hold across regimes" is not.
+
+**Lineage.** `specialises` the selection limitation of H057; `adjacent-to` H055
+and H056. Neither H057's null nor H055's representation failure is disturbed by
+this — both stand, and this tests the layer above them.

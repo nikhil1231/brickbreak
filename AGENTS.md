@@ -376,6 +376,20 @@ is caught by the data module or the leakage gate rather than by vigilance.
   every feature at `t` to be unchanged. **Write that test before trusting a
   feature.**
 
+- **The as-of-open panel's four price columns are not one candle.**
+  `daily_panel.load()` serves the as-of panel, where `open` is date D's opening
+  print — knowable at 09:15 and deliberately unlagged — while `high`, `low` and
+  `close` carry date D-1's session (`pipelines.asof`). That is correct for a
+  morning screener and wrong for anything that draws a bar, computes a body, or
+  prices against a range: it mispaints the candle *and* hands you the next
+  session's opening print. `assert_no_forward_labels` does not catch it, because
+  it looks for `fwd_ret_`-prefixed columns and this arrives in a column called
+  `open`. Draw from `corporate_actions.load_adjusted()`, which is session
+  aligned. The cheapest tell is that an honest bar's open always sits inside its
+  own `[low, high]`; `setup_grind.assert_session_aligned` checks exactly that and
+  is worth reusing. Found while building H058's deck, after the first render
+  showed only 38% of bars closing at or above their open.
+
 Standing practice regardless: split every forward outcome at the entry-day close
 and quote the **day-D close → D+h** segment separately.
 

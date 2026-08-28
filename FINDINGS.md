@@ -2975,3 +2975,79 @@ for the rest; n=11, also nothing.
 Mean confidence of 0.47 with no case above 0.80 is itself consistent with the
 null: the reviewer found the task genuinely hard throughout rather than easy on
 a recognisable subset.
+
+
+## 2026-08-27 — H058 Stage 0 frozen: the reviewer defines the population
+
+Outcome-free. No forward bar was read, loaded or rendered, and the bundle
+cannot contain one. Registered at HYPOTHESES.md before the deck was built.
+
+**Why.** H057's audit upheld its own null and simultaneously showed that the
+null was about charts the owner would never trade — 16.7% taken, identical on
+the real and control decks. Argument cannot close that gap; the only way to
+learn whether his selection carries anything is to let him mark his own setups
+on a deck he did not construct, and compare what he takes against what he
+passes over on the same sessions.
+
+**The deck.** 170 daily charts over the point-in-time stock-futures universe on
+the `validation` partition: 120 distinct decisions plus 50 shown a second time,
+at least 60 charts later and drawn at 128 bars instead of 140 so the repeat is
+the same decision on a differently framed image. Drawn from 60,311 eligible
+symbol-sessions across 193 symbols and 352 sessions; 0 source failures. Charts
+are anonymised, rebased to a last close of 100, and end exactly at the decision
+bar. `test` is untouched.
+
+**Stage 0 measures two things and gates on one.** Test-retest agreement on
+take/skip, and the cost of a data point. The bar is registered: kappa below 0.20
+ends the programme, 0.40 or above opens Stage 2 at full size, between them Stage
+2 opens only at the reduced size. Simulated at this deck's size — 50 pairs, 17%
+take rate — a random reviewer is stopped 91% of the time and reads as
+full-proceed 1%; a reviewer at a true kappa of 0.60 proceeds 87% and is wrongly
+stopped 1%.
+
+**Sizing, which is the point.** At an assumed per-trade dispersion of 1.4R,
+detecting +0.20R takes 385 trades and +0.30R takes 171. At a 17% take rate those
+are roughly 2,264 and 1,006 charts, or about 4.8 and 2.1 hours. Stage 0 replaces
+the assumed take rate and pace with measured ones before that time is committed.
+
+**Two defects found while building, both worth recording.**
+
+*The screening panel's four price columns are not one candle.* `daily_panel`
+serves the as-of-open panel, where `open` is date D's opening print while
+`high`, `low` and `close` are date D-1's — correct and documented for a morning
+screener (`research_data.pipelines.asof`), and wrong for anything that draws a
+bar. The first deck was rendered from it, which both mispainted every candle
+(only 38% of bars closed at or above their open, and the open sat outside its
+own bar's range 23% of the time) and put the *next* session's opening print on a
+chart that is supposed to end at the decision bar. `assert_no_forward_labels`
+does not catch this: it looks for `fwd_ret_`-prefixed columns, and this leak
+arrives in a column called `open`. Charts are now drawn from
+`corporate_actions.load_adjusted()`, and `setup_grind.assert_session_aligned`
+refuses any frame whose open falls outside its own bar more than 0.1% of the
+time — the cheapest possible tell, checked rather than assumed. ATR is now
+computed from the bars on the chart, which removes the whole class of
+cross-panel alignment error rather than reasoning about it per use.
+
+*Thirty repeat pairs was too few.* At 30 pairs a genuinely consistent reviewer
+(true kappa 0.60) would have been wrongly stopped 6% of the time. Fifty pairs
+cuts that to 1% for about twenty extra charts, so the deck carries fifty. The
+take rate is counted over first showings only; counting a repeat twice would
+both narrow the interval dishonestly and drag the rate toward whatever the
+repeated cases happened to be.
+
+**Interface.** The deliberative review form is right for sixty cases that each
+deserve a paragraph and wrong for a hundred and seventy where how fast the
+skips go by is itself the measurement — a form that takes twenty seconds to fill
+turns a four-second judgement into a twenty-four-second one, and the take rate it
+produces is then a fact about the form. A `ui_mode: "grind"` layout is added
+beside it: F takes, J skips, three clicks place entry, stop and target, 1-3 sets
+conviction and the deck advances on its own. Pixel-to-price comes from an axis
+emitted by the renderer into the case sidecar rather than from constants
+duplicated in the browser. Verified in the running app that a click at a chosen
+ATR offset round-trips exactly, that a stop on the wrong side of the entry is
+refused in both the browser and the server, and that a saved case advances in
+frozen deck order — jumping to the first unreviewed case anywhere would let a
+repeat land beside its original.
+
+Nothing here is a result about the market. It is a deck, a bar, and a way to
+grind through it.

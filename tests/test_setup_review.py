@@ -166,3 +166,42 @@ def test_revealed_optional_number_accepts_an_empty_csv_cell(tmp_path, monkeypatc
     setup_review.finalize("generic-review", {"annotator": "nikhil"})
     revealed = setup_review.case("generic-review", "CASE_0", "nikhil")
     assert revealed["judgements"][0]["values"]["optional_level"] is None
+
+
+def test_declared_invariant_rejects_an_entry_outside_its_stop_and_target():
+    """A stop on the far side of the entry is a pairing bug, not a trade.
+
+    The browser checks this so the reviewer is fast; the server checks it so the
+    frozen table is trustworthy. `either_direction` is what lets one rule cover
+    a long and a short: the ordering may rise or fall, but the entry is always
+    the middle term.
+    """
+    manifest = {"review_schema": {
+        "fields": [
+            {"name": "action", "type": "choice", "required": True,
+             "options": [{"value": "take"}, {"value": "skip"}]},
+            {"name": "entry_atr", "type": "number",
+             "required_when": {"action": "take"}},
+            {"name": "stop_atr", "type": "number",
+             "required_when": {"action": "take"}},
+            {"name": "target_atr", "type": "number",
+             "required_when": {"action": "take"}},
+        ],
+        "invariants": [
+            {"when": {"action": "take"}, "rule": "strictly_ordered",
+             "fields": ["stop_atr", "entry_atr", "target_atr"],
+             "either_direction": True, "message": "Entry must sit between them."},
+        ],
+    }}
+
+    long_side = {"action": "take", "stop_atr": -1.0, "entry_atr": 0.0, "target_atr": 2.0}
+    short_side = {"action": "take", "stop_atr": 1.0, "entry_atr": 0.0, "target_atr": -2.0}
+    for values in (long_side, short_side):
+        assert setup_review._validate_values(manifest, values)["action"] == "take"
+
+    with pytest.raises(setup_review.SetupReviewError, match="between"):
+        setup_review._validate_values(manifest, {
+            "action": "take", "stop_atr": 3.0, "entry_atr": 0.0, "target_atr": 2.0})
+
+    # A skip carries no geometry, so the rule must not fire on it.
+    assert setup_review._validate_values(manifest, {"action": "skip"})["action"] == "skip"

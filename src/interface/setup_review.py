@@ -232,7 +232,37 @@ def _validate_values(manifest: dict[str, Any], values: Any) -> dict[str, Any]:
             clean[name] = text
         else:
             raise SetupReviewError(f"unsupported review field type: {field_type}", 500)
+    _check_invariants(manifest, clean)
     return clean
+
+
+def _check_invariants(manifest: dict[str, Any], values: dict[str, Any]) -> None:
+    """Enforce declared cross-field rules before a value is ever stored.
+
+    A schema can say that three prices must be strictly ordered but not which
+    way, which is how a long and a short are the same rule. H058 needs exactly
+    that: a stop below the entry means long and above it means short, so the
+    only illegal arrangement is an entry that is not between the other two.
+    Checking it in the browser is what makes the reviewer fast; checking it
+    here is what makes the frozen table trustworthy.
+    """
+    for invariant in manifest["review_schema"].get("invariants", []) or []:
+        when = invariant.get("when") or {}
+        if any(values.get(key) != value for key, value in when.items()):
+            continue
+        names = list(invariant.get("fields", []))
+        ordered = [values.get(name) for name in names]
+        if any(value is None for value in ordered):
+            continue  # required/required_when already decides what may be blank
+        rule = str(invariant.get("rule"))
+        if rule != "strictly_ordered":
+            raise SetupReviewError(f"unsupported review invariant: {rule}", 500)
+        rising = all(a < b for a, b in zip(ordered, ordered[1:]))
+        falling = all(a > b for a, b in zip(ordered, ordered[1:]))
+        if rising or (falling and invariant.get("either_direction")):
+            continue
+        raise SetupReviewError(str(invariant.get("message")
+                                   or f"{names} must be strictly ordered"))
 
 
 def list_queues() -> dict[str, Any]:
@@ -418,7 +448,11 @@ def finalize(review_id: str, payload: dict[str, Any]) -> dict[str, Any]:
                 "annotator_kind": "human",
                 "provider": "",
                 "model": "",
-                "prompt_hash": "",
+                # Stamp the prompt this pass actually answered. Test identity is
+                # (prompt hash, model, case-set hash), and a human pass left
+                # blank cannot be checked against the bundle it came from --
+                # editing the instructions and re-running would look identical.
+                "prompt_hash": str(manifest.get("annotation_prompt_hash", "")),
                 **values,
             }
             if set(row) != set(columns):
