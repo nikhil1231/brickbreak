@@ -3427,3 +3427,34 @@ action is retired as this lab's candidate for edge. The question will have been
 asked with the reviewer defining the population, on a partition never read
 before, against a control matched on everything except the choice itself. There
 is no cheaper or fairer version of it left to run.
+
+**Amendment, 2026-08-28, before any outcome was read.** At 406 of 1,685 charts
+the reworded conviction scale had returned **29 ones, 58 twos and zero threes**
+across 87 takes, so the registered cut of "3 against 1-2" would have been an
+empty cell. Split 7 is therefore taken at the **median of the Stage 2 takes**,
+the same rule already registered for the four continuous splits.
+
+This is admissible because it is decided on the distribution of a covariate the
+reviewer produces, with no outcome read and none readable — the resolver has not
+been run — and because it substitutes an already-registered rule rather than a
+new threshold, so there is still nothing to tune. Re-wording the scale mid-pass
+was rejected: it would change the prompt hash and split the pass into two
+different questions.
+
+What it costs is stated rather than buried: the split becomes "weaker than my
+median take" against "at or above it", a softer contrast than the intended
+top-rank cut and correspondingly less likely to isolate a reproducible core.
+The frozen manifest is **not** rewritten — the original registration stays
+provable and the delta is published beside it at
+`data/metadata/research_store/price_action/h058_stage2/amendments.json`.
+
+Two process observations recorded at the same checkpoint, neither of them
+outcomes. The take rate is holding at 21.4% against Stage 0's 23.3%, with no
+drift across blocks (21%, 24%, 19%) and repeat agreement 9 of 12 so far. And the
+owner's drawn geometry has moved: median stop **1.55 ATR against Stage 0's
+0.88**, reward:risk 2.15 against 2.45. That does not touch the primary, which
+applies the take's own geometry to both sides of its pair, but the mechanical
+comparator in the reported-not-gated execution secondary is pinned at Stage 0's
+0.88/2.45 and is therefore a tighter-stopped robot than he now is. It is left as
+registered. Shorts have risen to 31% of takes from 17%, which strengthens the
+direction split to roughly 112 shorts at full deck rather than 65.

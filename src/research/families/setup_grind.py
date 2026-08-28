@@ -175,7 +175,8 @@ ANALYSIS_PLAN: dict[str, Any] = {
         {"name": "stop_distance", "cut": "median split on the drawn stop in ATR",
          "why": ("Separates a wrong read from a right read stopped out too "
                  "tight -- scrapping the idea against widening the stop.")},
-        {"name": "conviction", "cut": "3 against 1-2, on the reworded scale",
+        {"name": "conviction", "cut": "median split, as for the continuous four",
+         "amended": "2026-08-28, before any outcome was read; see AMENDMENTS",
          "why": ("Stage 0's absolute scale failed 12/29/1. If the reworded "
                  "relative scale carries anything, the reproducible core is "
                  "where the edge concentrates and the dilution reverses.")},
@@ -205,6 +206,36 @@ ANALYSIS_PLAN: dict[str, Any] = {
         "before, against a control matched on everything but the choice "
         "itself. There is no cheaper or fairer version of it left to run."),
 }
+
+# Amendments are recorded here and written into the bundle as their own file.
+# The frozen manifest is never rewritten: the original registration has to stay
+# provable, so the delta is what gets published, not a quietly edited past.
+AMENDMENTS: list[dict[str, Any]] = [
+    {
+        "date": "2026-08-28",
+        "target": "splits.conviction",
+        "from": "3 against 1-2",
+        "to": "median split of the Stage 2 takes",
+        "outcome_read_before_this": False,
+        "evidence": ("At 406 of 1,685 charts the reworded scale had returned "
+                     "29 ones, 58 twos and zero threes across 87 takes. The "
+                     "registered cut would have been an empty cell."),
+        "why_this_is_admissible": (
+            "The change is decided on the distribution of a covariate the "
+            "reviewer produces, with no outcome read and none readable -- the "
+            "resolver has not been run. It substitutes the median rule already "
+            "registered for the four continuous splits rather than inventing a "
+            "new threshold, so there is still nothing to tune. Re-wording the "
+            "scale mid-pass was rejected instead: it would change the prompt "
+            "hash and split the pass into two different questions."),
+        "what_it_costs": (
+            "The split is now 'weaker than my median take' against 'at or "
+            "above it', which is a softer contrast than the intended top-rank "
+            "cut and correspondingly less likely to isolate a reproducible "
+            "core."),
+    },
+]
+
 
 REVIEW_SCHEMA: dict[str, Any] = {
     "review_id": "h058-setup-grind-stage0",
