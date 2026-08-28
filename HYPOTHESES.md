@@ -3458,3 +3458,34 @@ comparator in the reported-not-gated execution secondary is pinned at Stage 0's
 0.88/2.45 and is therefore a tighter-stopped robot than he now is. It is left as
 registered. Shorts have risen to 31% of takes from 17%, which strengthens the
 direction split to roughly 112 shorts at full deck rather than 65.
+
+**Amendment, 2026-08-28: one futility-only interim, registered before the
+resolver was run on any case.** At the reviewer's request, the study takes a
+single interim look with the rule fixed in advance: **stop if the mean paired
+difference over the takes resolved so far is at or below 0.00R; otherwise
+continue.** The interim returns the verdict word only — no estimate, no
+direction, no magnitude — to the reviewer and to the assistant.
+
+The threshold was chosen on its error rates, computed before it was registered
+and before it was run. At ~125 takes and an assumed 1.8R paired-difference
+dispersion the rule fires **3.1%** of the time under a true +0.30R edge,
+**10.7%** under +0.20R, and **50%** when there is no edge. It buys a coin-flip
+chance of saving two hours against a one-in-thirty chance of abandoning a real
+edge.
+
+A futility boundary costs power, not type I error — stopping early on a
+non-positive estimate cannot manufacture a false positive — so the final
+analysis stands unchanged if the study continues. It is **not** an efficacy look
+and cannot stop the study for success.
+
+What it costs is stated rather than buried. It spends `test`: the read is logged
+and the partition is no longer unread. It reduces power where a real effect
+starts weak. And "continue" is itself information, so the remaining charts are
+marked by a reviewer who knows the study was not hopeless a quarter of the way
+in. That contamination is small and it is real.
+
+**Also fixed here, before any resolution ran:** an entry that never triggers
+scores **0.00R**. The original registration said unfilled entries are recorded
+rather than dropped silently but did not say what they score. Zero is what a
+trade you never entered makes, and it keeps a pair intact rather than deleting
+one whenever a single leg fails to fill.
