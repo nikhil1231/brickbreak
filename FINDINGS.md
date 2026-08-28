@@ -3110,3 +3110,79 @@ answer is available to someone who doubts the whole enterprise.
 **What this does not say.** Nothing about edge. Stage 0 read no outcome, and a
 perfectly reproducible reviewer with no edge scores kappa 1.0. Consistency was
 a necessary condition and it has been met; that is the entire claim.
+
+
+## 2026-08-29 — H058 Stage 2 FAILED as an experiment. It is not a null.
+
+**87.5% of the takes never traded.** Of 128 resolved takes, 112 were `no_fill`:
+8 stops, 6 time exits, 2 targets. The effective sample was sixteen trades. The
+registered futility rule fired STOP on the selection contrast, and that verdict
+is **void**, because a statistic that is seven-eighths structural zeros is not
+measuring selection. It would have been voided for the same reason had it said
+CONTINUE, and that is the test of whether the voiding is principled.
+
+**Root cause, and it is a registration defect of mine.** `EXECUTION_RULES` gave
+the entry level a **3-session** window. That number was chosen to fit
+`split_v1`'s `max_horizon` of 20 (3 + 15 = 18), not to fit how the owner marks.
+He marks patient pullbacks: median entry **2.60 ATR from the last close**, 43.5%
+of them beyond 3 ATR, 88 of 131 longs waiting *below* the close and 36 of the
+shorts waiting *above* it. A 2.6 ATR move inside 3 sessions is roughly a 1.5
+sigma event. The window could not have filled his trades and the 12.3% fill rate
+is arithmetic, not evidence.
+
+Fill rate against entry window, computed on the already-spent partition as a
+structural diagnostic — **payoffs at the longer windows were deliberately not
+computed**, because that is a second rule-modified read of a spent partition:
+
+| entry window | would have filled |
+| --- | --- |
+| 3 sessions (registered) | 12.3% |
+| 5 | 19.2% |
+| 10 | 31.5% |
+| 15 | 39.2% |
+| 20 | 44.6% |
+| 30 | 51.5% |
+
+Median time to first touch, among entries that are ever touched, is **8
+sessions**. Even an unbounded window fills only about half: **half of his marked
+setups never trigger at all.** That is a second sizing defect on top of the
+first — 385 takes was never 385 trades, it was at best ~190, so the deck was
+undersized for its own bar before the window problem is counted.
+
+**What the numbers were, for the record, and they mean nothing.** Primary
+−0.007R (SE 0.046, t −0.15); tradability +0.009R (SE 0.053, t +0.17); matched
+skips −0.008R. Sixteen real trades cannot produce an estimate and these are
+reported only so that nobody later reconstructs them as suppressed. The
+Hansen-Hodrick implementation also returned effective blocks exceeding the
+observation count, which is not interpretable and needs fixing before any
+successor uses it.
+
+**The full list of what went wrong, in the order it happened.** The Stage 0 gate
+opened a 733-chart study at +0.30R and a 1,650-chart study was built instead,
+silently lowering the bar to +0.20R. The first resolver booked profitable
+stop-outs, exited gaps at the stop rather than the open, and counted fill-day
+lows that preceded the entry. The declared futures execution was resolved on
+cash bars, pricing shorts an NRI cannot place. The required serial-overlap
+correction was absent. Controls were one random skip rather than all of them.
+And the entry window was mismatched to the population it was measuring. Every
+one of these was found by review rather than by the tests written alongside the
+code.
+
+**What it cost.** `test` is spent — read three times, twice for voided interims
+and once here. It cannot be reused. Roughly 250 charts were marked under two
+CONTINUE verdicts that were themselves artifacts of the resolver bugs.
+
+**What survives, and it is not nothing.** The owner's 544 marks are outcome-free
+judgements and remain valid for any successor. The style characterisation is a
+real, reusable finding: patient pullback entries a median 2.6 ATR away, half of
+which never trigger, held against a 1.65 ATR stop at a 2.15 reward-to-risk. The
+resolver is now correct and pinned by adversarial tests that fail loudly on all
+three original defects. And the deck, renderer, grind interface and pairing
+machinery are sound.
+
+**What a successor requires.** A dataset version purged for roughly 35 sessions
+rather than 20, because a window matched to this style plus a 15-session hold
+exceeds what `split_v1` was purged for. Sizing that counts *trades*, not takes,
+at an assumed fill rate near 50%. The seven PLAN.md 9 baselines. And a fresh
+partition: `forward`, which has accrued about 8 sessions, or a new grind on
+`validation`. There is no shortcut back to a clean read of `test`.

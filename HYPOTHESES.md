@@ -3240,7 +3240,16 @@ z ≈ 1.25). It is a direction for a redesigned representation, not evidence.
 
 ## H058 — The owner's own selection carries information the machine's does not
 
-Status: **Stage 0 PASSED at the reduced size, 2026-08-28. Stage 2 registered,
+Status: **Stage 2 FAILED AS AN EXPERIMENT, 2026-08-29 — not rejected, failed.**
+87.5% of the takes never traded: the registered 3-session entry window could not
+fill a style whose median entry sits 2.60 ATR from the last close, so the
+effective sample was sixteen trades. The futility STOP that fired on the
+selection contrast is **void**, as are both 2026-08-28 interim verdicts, which
+were computed with a resolver that booked profitable stop-outs. The hypothesis
+is **untested**, not answered, and `test` is spent. Full account, the fill-rate
+table and the successor requirements are in FINDINGS.md.
+
+Status before that: **Stage 0 PASSED at the reduced size, 2026-08-28. Stage 2 registered,
 no outcome touched.** The Stage 0 acceptance bar and the Stage 2 execution rules
 below were both fixed before the reviewer saw a single chart; they are
 timestamped in git at `3b05083` and frozen inside
