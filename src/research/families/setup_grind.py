@@ -102,6 +102,109 @@ EXECUTION_RULES: dict[str, Any] = {
     "horizon_sessions": 18,
 }
 
+
+# ---------------------------------------------------------------------------
+# Stage 2. Everything below is registered before the deck exists and before any
+# outcome is read. It is here rather than in a notebook so that the statistic,
+# the control, the bar and the split list are one artefact with one git
+# timestamp, and so that a resolver written later cannot quietly disagree with
+# what was promised.
+# ---------------------------------------------------------------------------
+
+ANALYSIS_PLAN: dict[str, Any] = {
+    "primary": {
+        "name": "selection_value",
+        "statistic": (
+            "For each take, draw a control at random from the reviewer's own "
+            "skips in the same session and apply the take's exact entry, stop "
+            "and target offsets and its direction to that control. Resolve both "
+            "under EXECUTION_RULES. The statistic is the mean paired difference "
+            "in R, take minus matched skip."),
+        "why_this_control": (
+            "His skips are the only control that is matched on session, "
+            "universe, rendering, reviewer and moment of judgement, and it "
+            "costs nothing to collect. Applying the take's own geometry to the "
+            "control holds entry, stop, target and direction fixed, so the "
+            "difference is attributable to which chart he chose and to nothing "
+            "else. This is the same pairing logic H057 used, with his pick as "
+            "the real object and his own skip as the control."),
+        "independent_unit": "session, clustered",
+        "bar": {"min_paired_difference_r": 0.20, "min_clustered_t": 2.5},
+    },
+    "secondary_tradability": {
+        "name": "net_payoff",
+        "statistic": ("Mean R on takes under the reviewer's own geometry, net "
+                      "of a 10 bps futures round trip."),
+        "bar": {"min_mean_r": 0.20},
+        "note": ("Selection value and tradability can disagree. A positive "
+                 "primary with a negative secondary means his eye works and "
+                 "his exits do not, which is a different project, not this one "
+                 "passing."),
+    },
+    "secondary_execution": {
+        "name": "markup_value",
+        "statistic": (
+            "On takes only, mean R under his drawn geometry minus mean R under "
+            "a fixed mechanical geometry (entry at the decision close, stop at "
+            "the median Stage 0 distance of 0.88 ATR, target at 2.45R, same "
+            "direction). Answers whether drawing the trade adds anything over "
+            "picking the chart."),
+        "bar": None,
+        "note": "Reported, not gated. It cannot fail the hypothesis.",
+    },
+    # Declared now so that no cut point can be chosen after the answer is
+    # visible. Continuous variables split at the median OF THE STAGE 2 TAKES,
+    # which is a rule rather than a threshold and so has nothing to tune.
+    "splits": [
+        {"name": "direction", "cut": "long vs short",
+         "why": ("35:7 long in Stage 0. If the edge lives only in longs it may "
+                 "be market beta wearing a costume.")},
+        {"name": "trend_state", "cut": "close above vs below its 100-day SMA",
+         "why": ("Pullback-in-uptrend and bottom-fishing are different trades. "
+                 "This lab has twice found trend context flips a sign.")},
+        {"name": "volatility", "cut": "median split on ATR as a % of price",
+         "why": ("Stops are sized in ATR, so the same 1R is a much wider price "
+                 "move in a volatile name.")},
+        {"name": "dist_52w_high", "cut": "median split",
+         "why": ("Breakout against reversion, and the exact variable H024 "
+                 "reversed sign on.")},
+        {"name": "reward_risk", "cut": "median split on the drawn reward:risk",
+         "why": "Does he get paid more when he asks for more, or is a wide target a wish?",
+         },
+        {"name": "stop_distance", "cut": "median split on the drawn stop in ATR",
+         "why": ("Separates a wrong read from a right read stopped out too "
+                 "tight -- scrapping the idea against widening the stop.")},
+        {"name": "conviction", "cut": "3 against 1-2, on the reworded scale",
+         "why": ("Stage 0's absolute scale failed 12/29/1. If the reworded "
+                 "relative scale carries anything, the reproducible core is "
+                 "where the edge concentrates and the dilution reverses.")},
+    ],
+    "multiplicity": {
+        "rule": ("The primary is judged alone against its own bar. The seven "
+                 "splits are judged together under Benjamini-Hochberg at "
+                 "q = 0.10, and every split is reported with its estimate and "
+                 "interval whether or not it survives."),
+        "no_promotion_from_splits": (
+            "A split that survives BH is a direction for a successor "
+            "hypothesis, never a tradable claim on its own. The sample was "
+            "sized for the primary."),
+    },
+    "power_stated_in_advance": {
+        "note": ("At ~385 takes and an assumed 1.4R dispersion, a median split "
+                 "puts ~192 per cell and the difference between cells carries a "
+                 "standard error near 0.14R, so a gap under about 0.4R will "
+                 "read as inconclusive. The unbalanced splits -- direction and "
+                 "trend state -- are weaker still. Splits reading "
+                 "'inconclusive' is the expected outcome and is not a defect."),
+    },
+    "consequence_of_failure": (
+        "If the primary misses its bar, discretionary price action is retired "
+        "as this lab's candidate for edge. The question will have been asked "
+        "with the reviewer defining the population, on a partition never read "
+        "before, against a control matched on everything but the choice "
+        "itself. There is no cheaper or fairer version of it left to run."),
+}
+
 REVIEW_SCHEMA: dict[str, Any] = {
     "review_id": "h058-setup-grind-stage0",
     "title": "Mark your own setups",
@@ -185,8 +288,15 @@ REVIEW_SCHEMA: dict[str, Any] = {
          "type": "number", "min": -8, "max": 8, "step": 0.05,
          "ui_control": "chart_level_atr", "ui_order": 3,
          "required_when": {"action": "take"}},
-        {"name": "conviction", "label": "Conviction",
-         "description": "1 ordinary, 2 good, 3 the ones you wait for.",
+        {"name": "conviction", "label": "Compared with your other takes",
+         # Stage 0 used an absolute scale and got 12/29/1 back, because the
+         # owner read "3" as confidence in the strategy -- which he does not
+         # have -- rather than a ranking among his own picks. Asking only for a
+         # ranking against himself is answerable by someone who doubts the whole
+         # enterprise, which is the honest state to be in here.
+         "description": ("1 at the weaker end · 2 typical for you · 3 one of "
+                         "the better ones this session. Rank against your own "
+                         "takes, not against whether the strategy works."),
          "type": "scale", "min": 1, "max": 3, "step": 1,
          "required_when": {"action": "take"}},
         {"name": "notes", "label": "Note (optional)",
@@ -207,6 +317,66 @@ REVIEW_SCHEMA: dict[str, Any] = {
                      "trade.")},
     ],
 }
+
+
+def _stage2_schema() -> dict[str, Any]:
+    """Stage 2 asks the same question with the same keys and a different deck.
+
+    Derived from the Stage 0 schema rather than copied so that the fields, the
+    invariant and the grind layout cannot drift apart between the two passes --
+    a reviewer answering a differently worded form is answering a different
+    question, and the two passes would not be comparable.
+    """
+    schema = json.loads(json.dumps(REVIEW_SCHEMA))
+    schema.update({
+        "review_id": "h058-setup-grind-stage2",
+        "title": "Mark your own setups — the real run",
+        "description": (
+            "The same job as the practice deck, on charts that have never been "
+            "looked at. This is the one that gets scored."),
+        "instructions": (
+            "Same as before: J for no, F for yes, then click entry, stop and "
+            "target and press 1, 2 or 3.\n\n"
+            "Two things are different. These charts come from a partition "
+            "nothing in this project has ever read, and they are scored "
+            "against what actually happened afterwards, once, and never "
+            "again.\n\n"
+            "The conviction question has changed. It now asks only how a setup "
+            "ranks against your *own other takes* -- weaker end, typical, or "
+            "one of the better ones this session. It is not asking whether you "
+            "believe the strategy works. Answer it as a ranking and it will be "
+            "usable; answer it as confidence and it will be 12/29/1 again.\n\n"
+            "This is long. Stop when you get tired -- the deck is resumable and "
+            "a tired pass is worse than a short one. Do not go back and tidy "
+            "earlier answers."),
+        "guide": {
+            "heading": "What this run decides",
+            "summary": (
+                "Every take is paired with one of your own skips from the same "
+                "session, traded with the identical entry, stop, target and "
+                "direction. So the only thing separating the two is which chart "
+                "you picked. If your takes beat your matched skips by 0.20R "
+                "with a session-clustered t of 2.5, the eye is real. If they do "
+                "not, discretionary price action is retired and the question "
+                "has been asked fairly."),
+            "steps": [
+                {"title": "1. Fast on the no's",
+                 "body": "Three seconds was your Stage 0 pace and it was fine. "
+                         "The skips are not filler -- they are the control that "
+                         "the whole result rests on."},
+                {"title": "2. Rank against yourself",
+                 "body": "Conviction now means better or worse than your other "
+                         "takes. A 3 does not claim the strategy works."},
+                {"title": "3. Stop when tired",
+                 "body": "It is resumable and it is scored once. There is no "
+                         "prize for finishing in one sitting."},
+            ],
+        },
+    })
+    return schema
+
+
+STAGE2_REVIEW_SCHEMA: dict[str, Any] = _stage2_schema()
 
 ANNOTATION_COLUMNS = (
     "case_id", "annotator", "annotator_kind", "provider", "model",
@@ -285,8 +455,16 @@ def eligible_decisions(bars: pd.DataFrame, universe: pd.DataFrame,
     members["date"] = pd.to_datetime(members["date"])
     frame = frame.merge(members, on=["symbol", "date"], how="inner")
 
-    history = bars.groupby("symbol")["date"].count()
-    frame = frame.loc[frame["symbol"].map(history).ge(MIN_HISTORY_BARS + 40)]
+    # Require the history to sit *before this decision*, not merely somewhere
+    # in the frame. A symbol-session near the start of the archive has plenty
+    # of bars after it and none before, and selecting it only to reject it at
+    # render time silently shrinks the deck and skews it late.
+    ordered = bars[["symbol", "date"]].copy()
+    ordered["date"] = pd.to_datetime(ordered["date"])
+    ordered = ordered.sort_values(["symbol", "date"], kind="stable")
+    ordered["prior_bars"] = ordered.groupby("symbol").cumcount()
+    frame = frame.merge(ordered, on=["symbol", "date"], how="left")
+    frame = frame.loc[frame["prior_bars"].ge(MIN_HISTORY_BARS)]
 
     ok = (
         pd.to_numeric(frame["close"], errors="coerce").gt(0)
@@ -393,6 +571,7 @@ def _clean_window(window: pd.DataFrame) -> str | None:
 
 def build_deck(decisions: pd.DataFrame, *, n_unique: int = 120,
                n_repeats: int = 50, max_per_symbol: int = 2,
+               max_per_session: int | None = None,
                min_repeat_gap: int = MIN_REPEAT_GAP,
                seed: int = 20260827) -> pd.DataFrame:
     """Choose the decisions and lay out the order the reviewer meets them in.
@@ -419,6 +598,11 @@ def build_deck(decisions: pd.DataFrame, *, n_unique: int = 120,
     shuffled = decisions.sample(frac=1.0, random_state=int(
         rng.integers(1 << 31))).reset_index(drop=True)
     capped = shuffled.groupby("symbol", sort=False).head(max_per_symbol)
+    if max_per_session is not None:
+        # The independent unit is the session, and the paired contrast needs
+        # several decisions inside one. Capping keeps a handful of sessions from
+        # carrying the study while still leaving enough per session to pair in.
+        capped = capped.groupby("date", sort=False).head(max_per_session)
     if len(capped) < n_unique:
         raise SetupGrindError(
             f"the per-symbol cap of {max_per_symbol} leaves {len(capped)} "
@@ -467,7 +651,8 @@ def build_deck(decisions: pd.DataFrame, *, n_unique: int = 120,
 
 
 def freeze_stage0_bundle(deck: pd.DataFrame, bars: pd.DataFrame,
-                         output: Path) -> dict[str, Any]:
+                         output: Path, *, stage: str = "stage_0",
+                         partition: str = "validation") -> dict[str, Any]:
     """Write the frozen, outcome-free Stage 0 bundle.
 
     Every chart is rendered from bars at or before its own decision session.
@@ -558,21 +743,31 @@ def freeze_stage0_bundle(deck: pd.DataFrame, bars: pd.DataFrame,
         for record in records))
     pd.DataFrame(columns=list(ANNOTATION_COLUMNS)).to_csv(
         output / "annotations.csv", index=False)
-    prompt = REVIEW_SCHEMA["instructions"]
+    schema = STAGE2_REVIEW_SCHEMA if stage == "stage_2" else REVIEW_SCHEMA
+    prompt = schema["instructions"]
     (output / "annotation_prompt.txt").write_text(prompt)
 
     ready = [record for record in records if record["case_status"] == "ready"]
+    stage_2 = stage == "stage_2"
     manifest = {
-        "schema_version": "h058_setup_grind_stage0.v1",
+        "schema_version": f"h058_setup_grind_{stage}.v1",
         "outcome_accessed": False,
         "hypothesis": "H058",
-        "stage": "stage_0_consistency_and_cost",
+        "stage": ("stage_2_selection_value" if stage_2
+                  else "stage_0_consistency_and_cost"),
         "purpose": (
+            "Measure whether the reviewer's takes beat his own matched skips, "
+            "and where. The single scored read of the `test` partition."
+            if stage_2 else
             "Measure whether the reviewer's own take/skip judgement is "
             "reproducible on a repeated chart, and what a data point costs in "
             "minutes. Reads no outcome and spends no sample."),
-        "partition": "validation",
+        "partition": partition,
         "partition_note": (
+            "The one scored read of `test`. 306 sessions over five quarters, "
+            "never read by this programme; session-clustered inference is well "
+            "supported and regime robustness rests on five blocks."
+            if stage_2 else
             "Stage 0 deliberately avoids `test` so the 306 test sessions stay "
             "untouched for the single Stage 2 read, and so any Stage 2 deck "
             "enrichment is fitted on one partition and applied to another."),
@@ -585,13 +780,13 @@ def freeze_stage0_bundle(deck: pd.DataFrame, bars: pd.DataFrame,
         "min_repeat_gap": MIN_REPEAT_GAP,
         "decision_timeframe": "completed daily bars",
         "execution_rules_registered_for_stage_2": EXECUTION_RULES,
-        "acceptance_bar": STAGE0_BAR,
+        "acceptance_bar": (ANALYSIS_PLAN if stage_2 else STAGE0_BAR),
         "annotation_columns": list(ANNOTATION_COLUMNS),
         "annotation_prompt_hash": hashlib.sha256(prompt.encode()).hexdigest(),
         "case_set_hash": hashlib.sha256(
             "".join(record.get("case_hash", "FAILED") for record in records
                     ).encode()).hexdigest(),
-        "review_schema": REVIEW_SCHEMA,
+        "review_schema": (STAGE2_REVIEW_SCHEMA if stage_2 else REVIEW_SCHEMA),
     }
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest

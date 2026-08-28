@@ -56,6 +56,7 @@ interface Props {
 export const SetupGrindPane: React.FC<Props> = ({ queue, current, currentIndex, values, setValues, commit, move, saving }) => {
   const [shownAt, setShownAt] = useState<number | null>(null);
   const [flash, setFlash] = useState('');
+  const [discarding, setDiscarding] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const axis = axisOf(current);
   const atr = Number(current?.sidecar?.atr_rebased);
@@ -75,7 +76,7 @@ export const SetupGrindPane: React.FC<Props> = ({ queue, current, currentIndex, 
   // fire `onLoad` before this component hears about it, and a null clock would
   // silently drop the pace measurement -- the whole reason Stage 0 exists -- so
   // the arrival time is the floor rather than nothing.
-  useEffect(() => { setShownAt(Date.now()); }, [current?.case_id]);
+  useEffect(() => { setShownAt(Date.now()); setDiscarding(false); }, [current?.case_id]);
 
   // Whatever the reviewer last touched -- the queue picker, a button -- keeps
   // focus otherwise, and a focused input swallows the first F. Losing the very
@@ -99,11 +100,19 @@ export const SetupGrindPane: React.FC<Props> = ({ queue, current, currentIndex, 
   const setAction = useCallback((value: string) => {
     if (queue.finalized) return;
     if (value === 'skip') {
+      // D is one key from F, and a mis-hit while a trade is half drawn would
+      // commit a skip and advance, silently throwing the markup away. Ask once.
+      const drawn = LEVELS.some((name) => typeof values[name] === 'number');
+      if (drawn && !discarding) {
+        setDiscarding(true);
+        setFlash('Skip and discard this markup? Press again to confirm.');
+        return;
+      }
       void commitWith({ action: 'skip', entry_atr: null, stop_atr: null, target_atr: null, conviction: null, notes: values.notes ?? null });
       return;
     }
     setValues((previous) => ({ ...previous, action: 'take' }));
-  }, [queue.finalized, commitWith, setValues, values.notes]);
+  }, [queue.finalized, commitWith, setValues, values, discarding]);
 
   const setConviction = useCallback((level: number) => {
     if (queue.finalized || action !== 'take') return;
@@ -141,12 +150,17 @@ export const SetupGrindPane: React.FC<Props> = ({ queue, current, currentIndex, 
     const handler = (event: KeyboardEvent) => {
       const tag = (event.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || event.metaKey || event.ctrlKey || event.altKey) return;
+      // Everything sits under a left hand resting on ASDF, so the hand never
+      // leaves home position across a three-hour grind: F and D decide, ZXC
+      // rank, A steps back, G clears. The Stage 0 keys still work so the
+      // muscle memory from the practice deck is not punished.
       const key = event.key.toLowerCase();
+      const CONVICTION: Record<string, number> = { z: 1, x: 2, c: 3, '1': 1, '2': 2, '3': 3 };
       if (key === 'f') { event.preventDefault(); setAction('take'); }
-      else if (key === 'j') { event.preventDefault(); setAction('skip'); }
-      else if (key === '1' || key === '2' || key === '3') { event.preventDefault(); setConviction(Number(key)); }
-      else if (key === 'u') { event.preventDefault(); move(-1); }
-      else if (key === 'backspace') {
+      else if (key === 'd' || key === 'j') { event.preventDefault(); setAction('skip'); }
+      else if (key in CONVICTION) { event.preventDefault(); setConviction(CONVICTION[key]); }
+      else if (key === 'a' || key === 'u') { event.preventDefault(); move(-1); }
+      else if (key === 'g' || key === 'backspace') {
         event.preventDefault();
         setFlash('');
         setValues((previous) => ({ ...previous, entry_atr: null, stop_atr: null, target_atr: null, conviction: null }));
@@ -177,10 +191,10 @@ export const SetupGrindPane: React.FC<Props> = ({ queue, current, currentIndex, 
           </Group>
           <Group gap={6}>
             <Kbd>F</Kbd><Text size="xs" c="dimmed">take</Text>
-            <Kbd>J</Kbd><Text size="xs" c="dimmed">skip</Text>
-            <Kbd>1..3</Kbd><Text size="xs" c="dimmed">conviction</Text>
-            <Kbd>U</Kbd><Text size="xs" c="dimmed">back</Text>
-            <Kbd>⌫</Kbd><Text size="xs" c="dimmed">clear</Text>
+            <Kbd>D</Kbd><Text size="xs" c="dimmed">skip</Text>
+            <Kbd>Z X C</Kbd><Text size="xs" c="dimmed">rank</Text>
+            <Kbd>A</Kbd><Text size="xs" c="dimmed">back</Text>
+            <Kbd>G</Kbd><Text size="xs" c="dimmed">clear</Text>
           </Group>
         </Group>
         <Progress value={total ? done / total * 100 : 0} size="sm" />
@@ -223,7 +237,7 @@ export const SetupGrindPane: React.FC<Props> = ({ queue, current, currentIndex, 
         {action !== 'take' ? (
           <Group justify="space-between">
             <Text size="sm" c="dimmed">
-              Is this a setup you would trade? <Kbd>F</Kbd> yes · <Kbd>J</Kbd> no. Most are a no.
+              Is this a setup you would trade? <Kbd>F</Kbd> yes · <Kbd>D</Kbd> no. Most are a no.
             </Text>
             {queue.finalized && <Badge color="green">Pass frozen</Badge>}
           </Group>
@@ -245,7 +259,7 @@ export const SetupGrindPane: React.FC<Props> = ({ queue, current, currentIndex, 
               </Box>
             </Group>
             <Text size="sm" c={flash ? 'red.4' : 'blue.4'} fw={600} ta="right">
-              {flash || (nextLevel ? `Click the chart to place the ${LEVEL_LABEL[nextLevel].toLowerCase()}.` : 'Press 1, 2 or 3 for conviction.')}
+              {flash || (nextLevel ? `Click the chart to place the ${LEVEL_LABEL[nextLevel].toLowerCase()}.` : 'Rank it: Z weaker · X typical · C one of the better ones.')}
             </Text>
           </Group>
         )}

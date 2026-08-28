@@ -3356,3 +3356,74 @@ five quarters are five blocks: session-clustered significance is well supported,
 **Lineage.** `specialises` the selection limitation of H057; `adjacent-to` H055
 and H056. Neither H057's null nor H055's representation failure is disturbed by
 this — both stand, and this tests the layer above them.
+
+### Stage 2 — registered 2026-08-28, the one scored read of `test`
+
+Frozen in `setup_grind.ANALYSIS_PLAN` and copied into
+`data/metadata/research_store/price_action/h058_stage2/manifest.json` before the
+deck existed and before any outcome was read.
+
+**Deck.** 1,685 daily charts over the point-in-time stock-futures universe on
+`test`: 1,650 distinct decisions plus 40 repeats as a drift check across a
+multi-evening grind. 277 sessions, 265 symbols, a median of 6 decisions per
+session, capped at 8 originals per session and 12 per symbol so no handful of
+sessions carries the study. Repeats are excluded from the outcome analysis; only
+first showings are scored.
+
+**Primary statistic — selection value.** For each take, a control is drawn at
+random from the reviewer's *own skips in the same session* and the take's exact
+entry, stop, target and direction are applied to it. Both resolve under the
+frozen execution rules. The statistic is the mean paired difference in R.
+
+His skips are the only control matched on session, universe, rendering, reviewer
+and moment of judgement, and they cost nothing to collect. Applying the take's
+own geometry to the control holds entry, stop, target and direction fixed, so
+the difference is attributable to which chart he chose and to nothing else. It
+is the pairing logic of H057 with his pick as the real object and his own skip as
+the control.
+
+**Frozen bar.** The primary passes only at a mean paired difference of **at
+least +0.20R with a session-clustered t of at least 2.5**. Tradability is judged
+separately: mean R on takes under his own geometry, net of a 10 bps futures round
+trip, must be at least +0.20R. The two can disagree, and a positive primary with
+a negative secondary means the eye works and the exits do not — a different
+project, not this one passing.
+
+**Reported, not gated.** Markup value: on takes only, mean R under his drawn
+geometry minus mean R under a fixed mechanical geometry (entry at the decision
+close, stop at 0.88 ATR, target at 2.45R, same direction). It separates picking
+the chart from drawing the trade and cannot fail the hypothesis.
+
+**Seven splits, declared now.** direction (long vs short); trend state (close
+above or below its 100-day SMA); volatility; distance from the 52-week high;
+drawn reward:risk; drawn stop distance; and conviction (3 against 1-2). The
+continuous four split at the **median of the Stage 2 takes**, which is a rule
+rather than a threshold and so has nothing to tune. Judged together under
+Benjamini-Hochberg at q = 0.10, with every split reported with its estimate and
+interval whether or not it survives. A surviving split is a direction for a
+successor hypothesis, never a tradable claim: the sample was sized for the
+primary.
+
+**Power, stated in advance.** At ~385 takes and an assumed 1.4R dispersion a
+median split puts ~192 per cell, and the difference between cells carries a
+standard error near 0.14R, so a gap under roughly 0.4R will read as
+inconclusive. Direction and trend state are more unbalanced and weaker still.
+**Splits reading "inconclusive" is the expected outcome, not a defect.**
+
+**Conviction, reworded.** Stage 0's absolute scale returned 12/29/1 because the
+owner read "3" as confidence in the strategy, which he does not have. Stage 2
+asks only for a ranking against his own other takes, which someone who doubts
+the whole enterprise can still answer honestly.
+
+**Coverage limit.** The local adjusted archive begins 2020-01-01, so decisions
+before roughly mid-May 2020 cannot fill a 90-bar window and are excluded. `test`
+therefore contributes 277 of its 306 sessions and **2020Q2 is thinned at its
+start**. That quarter is the COVID crash, so the thinning is not regime-neutral
+and is declared rather than discovered later. Extending it would require
+adjusting the 1995-2019 legacy archive, which is not proportionate here.
+
+**Consequence of failure.** If the primary misses its bar, discretionary price
+action is retired as this lab's candidate for edge. The question will have been
+asked with the reviewer defining the population, on a partition never read
+before, against a control matched on everything except the choice itself. There
+is no cheaper or fairer version of it left to run.
