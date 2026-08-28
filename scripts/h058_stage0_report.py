@@ -66,7 +66,8 @@ def main() -> int:
     consistency = report["consistency"]
     pace = report["pace"]
     print(f"\n=== H058 STAGE 0 — {args.annotator} ===")
-    print(f"cases reviewed        {report['cases_reviewed']}")
+    print(f"charts reviewed       {report['cases_reviewed']} "
+          f"({report['first_showings']} distinct decisions + repeats)")
     print(f"take rate             {take['rate']:.1%} "
           f"({take['takes']}/{take['first_showings']} first showings, "
           f"95% {take['wilson_95'][0]:.1%}-{take['wilson_95'][1]:.1%})")

@@ -3051,3 +3051,62 @@ repeat land beside its original.
 
 Nothing here is a result about the market. It is a deck, a bar, and a way to
 grind through it.
+
+
+## 2026-08-28 — H058 Stage 0: consistent enough to proceed, at the reduced size
+
+Outcome-free. No forward bar was read. The verdict below comes from the bar
+frozen in the manifest at `3b05083`, before the owner saw a chart.
+
+**Result: PROCEED, REDUCED.** Test-retest kappa **+0.348** over 50 repeated
+charts (raw agreement 0.76), which falls between the registered stop of 0.20 and
+the registered full-size threshold of 0.40. Stage 2 therefore opens only at the
+0.30R size. 170 charts in 36.5 minutes.
+
+**Take rate 23.3%** (28 of 120 first showings, 95% Wilson 16.7-31.7%),
+comfortably inside the registered [5%, 60%] band. Pace was better than assumed:
+**3.0s per skip** against the 5s used in pre-study sizing, and 22.1s per take.
+Re-sized on the owner's own numbers, the 0.30R test costs 733 charts and about
+1.5 hours; the 0.20R test costs 1,650 charts and 3.4 hours.
+
+**The informative number is not kappa.** Of 10 charts taken on first showing, 6
+were taken again; skips reproduced at 80%. Take reproducibility of ~60% means
+the take population is a mixture of a reproducible core and a fringe that
+averages nothing, which dilutes any real effect toward zero: for the pooled
+result to read +0.30R, the core would have to carry roughly +0.50R. The Stage 2
+sizing table is correct for the tradability question — live, one trades what one
+marked — and optimistic for the question of whether the eye has edge.
+
+**What the geometry says, and it is the encouraging half.** On the 6 charts
+taken twice the owner drew materially the same trade: direction agreed 6 of 6,
+entry within 0.17 ATR, stop within 0.40 ATR, reward:risk 2.44 against 2.23.
+Across all 42 takes, median stop 0.88 ATR (~2.3% of price), median reward:risk
+2.45, 35 long against 7 short. At 10 bps a futures round trip costs 0.043R,
+which is noise — the universe correction at d421f6c is what bought that.
+
+**Two candidate artefacts checked and dismissed.** The deck drifted from 10
+takes on first showings to 14 on second showings, which would be a fatigue or
+order effect; McNemar on the 12 discordant pairs gives an exact two-sided
+**p = 0.39**, so it is noise and is not interpreted. Separately, the repeats are
+rendered at 128 bars rather than 140 to defeat pixel recall, which risks the
+reframing itself moving the take rate. In 35 of 50 pairs dropping the 12 oldest
+bars left the visible price range identical, and those pairs drifted the same way
+(17%→26%) as the genuinely reframed ones (27%→33%). The reframing is not
+carrying the result.
+
+Note that the recall caveat and the reframing caveat push in opposite
+directions — memory inflates agreement, a changed picture deflates it — and this
+design cannot separate them. A future Stage 0 wanting a clean number should
+carry three arms: identical repeat, reframed repeat, and fresh chart.
+
+**One instrument defect, and its cause.** The conviction scale was used
+12/29/1 across 42 takes — level 3 essentially never. Asked afterwards, the owner
+reports he read "conviction 3" as confidence in the strategy as a whole, which he
+does not yet have, rather than as a ranking among his own takes. The scale
+measured the wrong thing by construction. It is retained for Stage 2 but
+reworded to a relative comparison against his own other takes, where an honest
+answer is available to someone who doubts the whole enterprise.
+
+**What this does not say.** Nothing about edge. Stage 0 read no outcome, and a
+perfectly reproducible reviewer with no edge scores kappa 1.0. Consistency was
+a necessary condition and it has been met; that is the entire claim.

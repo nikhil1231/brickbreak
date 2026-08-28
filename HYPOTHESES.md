@@ -3240,10 +3240,21 @@ z ≈ 1.25). It is a direction for a redesigned representation, not evidence.
 
 ## H058 — The owner's own selection carries information the machine's does not
 
-Status: **REGISTERED, Stage 0 open, no outcome touched.** The Stage 0
-acceptance bar and the Stage 2 execution rules below were both fixed before the
-reviewer saw a single chart; they are timestamped in git and frozen inside
+Status: **Stage 0 PASSED at the reduced size, 2026-08-28. Stage 2 registered,
+no outcome touched.** The Stage 0 acceptance bar and the Stage 2 execution rules
+below were both fixed before the reviewer saw a single chart; they are
+timestamped in git at `3b05083` and frozen inside
 `data/metadata/research_store/price_action/h058_stage0/manifest.json`.
+
+**Stage 0 result.** Test-retest kappa **+0.348** over 50 repeated charts, between
+the registered stop of 0.20 and the full-size threshold of 0.40, so **Stage 2
+opens only at the 0.30R size** — 733 charts, about 1.5 hours at the measured
+pace. Take rate 23.3% (95% 16.7-31.7%), inside the registered band. Take
+reproducibility is 60% against 80% for skips, which dilutes any real effect: for
+a pooled +0.30R the reproducible core would need roughly +0.50R. Geometry on
+charts taken twice agreed closely (direction 6/6, entry within 0.17 ATR,
+reward:risk 2.44 vs 2.23). Full result and the two dismissed artefacts are in
+FINDINGS.md. Stage 0 read no outcome and says nothing about edge.
 
 **Where this came from.** H057's blind audit settled one thing and opened
 another. The reviewer could not separate real levels from matched controls
