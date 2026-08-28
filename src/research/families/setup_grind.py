@@ -305,19 +305,19 @@ REVIEW_SCHEMA: dict[str, Any] = {
          "description": ("Click the chart. Measured in ATR from the last "
                          "close; above it is a breakout entry, below it a "
                          "pullback entry."),
-         "type": "number", "min": -8, "max": 8, "step": 0.05,
+         "type": "number", "min": -50, "max": 50, "step": 0.05,
          "ui_control": "chart_level_atr", "ui_order": 1,
          "required_when": {"action": "take"}},
         {"name": "stop_atr", "label": "Stop",
          "description": ("Where the idea is wrong. Below the entry makes this "
                          "a long, above it a short -- direction is not asked "
                          "separately."),
-         "type": "number", "min": -8, "max": 8, "step": 0.05,
+         "type": "number", "min": -50, "max": 50, "step": 0.05,
          "ui_control": "chart_level_atr", "ui_order": 2,
          "required_when": {"action": "take"}},
         {"name": "target_atr", "label": "Target",
          "description": "Where you would take it off, if it goes your way.",
-         "type": "number", "min": -8, "max": 8, "step": 0.05,
+         "type": "number", "min": -50, "max": 50, "step": 0.05,
          "ui_control": "chart_level_atr", "ui_order": 3,
          "required_when": {"action": "take"}},
         {"name": "conviction", "label": "Compared with your other takes",
