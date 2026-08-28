@@ -3489,3 +3489,27 @@ scores **0.00R**. The original registration said unfilled entries are recorded
 rather than dropped silently but did not say what they score. Zero is what a
 trade you never entered makes, and it keeps a pair intact rather than deleting
 one whenever a single leg fails to fill.
+
+**Amendment, 2026-08-28: a second futility criterion, on tradability.** The
+first interim tested selection — takes against matched skips — which can be
+positive while the takes themselves lose money, if the skips lose more. The
+registered bar has always carried a second clause requiring mean R on takes of
+at least +0.20R, and the interim did not test it. It does now: **stop if the
+mean R on takes, net of the registered 10 bps round trip, is at or below
+0.00R.** Verdict word only, as before.
+
+Registered before it was applied, and chosen on its error rates: at 91 takes and
+an assumed 1.4R dispersion it fires 2.0% of the time under a true +0.20R payoff,
+24.8% under +0.10R, 50% at zero and 75.2% at −0.10R. It is deliberately lenient
+against the +0.20R bar — it stops only if the takes are actively losing, not
+merely if they fall short.
+
+This applies to the read already taken for the first criterion and requires **no
+new read of `test`**; the sealed interim file already holds the quantity. The
+cost is a second look compounding the optional-stopping burden, which for a
+futility boundary is paid in power rather than in type I error.
+
+**How a stop here must be read.** Takes losing money while still beating their
+matched skips would mean the chart selection carries information and the exits
+do not. That is a different and more fixable failure than an eye that does not
+work, and it may not be reported as the latter.
