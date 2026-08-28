@@ -56,6 +56,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -751,6 +752,10 @@ def freeze_stage0_bundle(deck: pd.DataFrame, bars: pd.DataFrame,
     stage_2 = stage == "stage_2"
     manifest = {
         "schema_version": f"h058_setup_grind_{stage}.v1",
+        # Stamped so the interface can order queues by recency instead of
+        # inferring it from the review id, which is only chronological by
+        # accident of the H0xx naming.
+        "created": datetime.now(timezone.utc).isoformat(),
         "outcome_accessed": False,
         "hypothesis": "H058",
         "stage": ("stage_2_selection_value" if stage_2

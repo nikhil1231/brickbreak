@@ -205,3 +205,37 @@ def test_declared_invariant_rejects_an_entry_outside_its_stop_and_target():
 
     # A skip carries no geometry, so the rule must not fire on it.
     assert setup_review._validate_values(manifest, {"action": "skip"})["action"] == "skip"
+
+
+def test_queues_are_listed_newest_first(tmp_path, monkeypatch):
+    """The default selection is the top of the list, so ordering is the feature.
+
+    `created` decides it. Bundles frozen before that field existed fall back to
+    the review id, which is chronological only by accident of the H0xx naming --
+    so a stamped bundle must outrank an unstamped one whatever the ids say.
+    """
+    monkeypatch.setattr(setup_review, "REVIEW_ROOT", tmp_path)
+    schema = {"title": "t", "fields": [{"name": "a", "type": "text"}]}
+    for name, review_id, created in (
+            ("old", "h001-first", None),
+            ("mid", "h099-unstamped-but-late-id", None),
+            ("new", "h002-stamped", "2026-08-28T10:00:00+00:00")):
+        bundle = tmp_path / name
+        bundle.mkdir()
+        manifest = {"case_set_hash": "h", "annotation_prompt_hash": "p",
+                    "outcome_accessed": False, "ready_cases": 1,
+                    "annotation_columns": ["case_id", "annotator",
+                                           "annotator_kind", "provider",
+                                           "model", "prompt_hash", "a"],
+                    "review_schema": {**schema, "review_id": review_id}}
+        if created:
+            manifest["created"] = created
+        (bundle / "manifest.json").write_text(json.dumps(manifest))
+        (bundle / "cases.jsonl").write_text(
+            json.dumps({"case_id": "C0", "case_status": "ready"}) + "\n")
+        pd.DataFrame(columns=manifest["annotation_columns"]).to_csv(
+            bundle / "annotations.csv", index=False)
+
+    order = [queue["review_id"] for queue in setup_review.list_queues()["queues"]]
+    assert order[0] == "h002-stamped"
+    assert order[1:] == ["h099-unstamped-but-late-id", "h001-first"]

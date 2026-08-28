@@ -265,9 +265,25 @@ def _check_invariants(manifest: dict[str, Any], values: dict[str, Any]) -> None:
                                    or f"{names} must be strictly ordered"))
 
 
+def _recency_key(manifest: dict[str, Any], review_id: str) -> tuple[str, str]:
+    """Sort key placing the newest queue first.
+
+    `created` is stamped at freeze time, but the bundles frozen before that
+    field existed do not carry one. Those fall back to the review id, which for
+    this project's H0xx naming happens to be chronological -- a coincidence, so
+    it is the fallback rather than the rule, and an empty `created` sorts below
+    any real one under the descending order used here.
+    """
+    return (str(manifest.get("created", "")), review_id)
+
+
 def list_queues() -> dict[str, Any]:
     queues = []
-    for review_id in sorted(_bundles()):
+    order = sorted(
+        _bundles(),
+        key=lambda rid: _recency_key(_load(rid)[1], rid),
+        reverse=True)
+    for review_id in order:
         _, manifest, cases = _load(review_id)
         schema = manifest["review_schema"]
         annotations = _annotations(_bundle(review_id))
