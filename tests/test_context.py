@@ -232,3 +232,32 @@ def test_investable_index_pays_a_cost_and_the_free_index_does_not():
     a = np.diff(np.log(free["mkt_index"].to_numpy()))
     b = np.diff(np.log(free["mkt_index_investable"].to_numpy()))
     assert np.allclose(a, b, atol=1e-12)
+
+
+# --------------------------------------------------------------------------
+# the snapshot-label check that H059 needed and did not have (2026-08-29)
+# --------------------------------------------------------------------------
+
+def test_snapshot_labels_are_rejected():
+    """A label constant per symbol across years is a snapshot, not a panel."""
+    from src.research_data.pipelines import sector as sector_mod
+    dates = pd.bdate_range("2020-01-01", periods=400)
+    frozen = pd.DataFrame({
+        "symbol": np.repeat(["AAA", "BBB", "CCC"], len(dates)),
+        "date": np.tile(dates, 3),
+        "sector": np.repeat(["Banks", "Pharma", "Banks"], len(dates)),
+    })
+    with pytest.raises(ValueError, match="present-day snapshot"):
+        sector_mod.assert_label_is_not_a_snapshot(frozen)
+
+
+def test_genuinely_reclassified_labels_pass():
+    from src.research_data.pipelines import sector as sector_mod
+    dates = pd.bdate_range("2020-01-01", periods=400)
+    lab = np.where(np.arange(len(dates)) < 200, "Banks", "Finance")
+    moving = pd.DataFrame({
+        "symbol": np.repeat(["AAA", "BBB"], len(dates)),
+        "date": np.tile(dates, 2),
+        "sector": np.concatenate([lab, np.full(len(dates), "Pharma")]),
+    })
+    sector_mod.assert_label_is_not_a_snapshot(moving)

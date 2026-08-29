@@ -3933,3 +3933,60 @@ demoted to a declared secondary that **cannot rescue a primary failure**.
 Momentum alone also wins CAGR in every cost cell, while the composite wins
 Sharpe — a split that would otherwise have invited exactly the post-hoc choice
 this ledger exists to prevent.
+
+
+## H059 — result: REJECTED at step 1 of its own successor plan (2026-08-29)
+
+Status: **REJECTED.** The surviving cell was `relative_strength_screen` /
+`sector_breadth` / `short_bottom` / k=1 / h=20 — short the candidate from the
+weakest-breadth sector inside the F&O contraction screen, futures open, 20
+sessions, no stop — at **+157.9 bps net 20-session excess** over 130 entry
+sessions, clearing the 918-configuration permuted maximum at p = 0.022.
+
+The registered successor plan put *rebuild historical sector breadth
+point-in-time* first, with the rule **"if either step kills it, retire the
+project without another search."** It killed it. Evidence in FINDINGS.md,
+"H059's surviving cell does not survive step 1".
+
+**The survivorship repair.** `meta.sector` is read from today's NSE index
+constituent lists, so both the breadth denominator and the shortable universe
+are conditioned on surviving to 2026 — 537 of 3,348 traded symbols carry a
+label. `announcements.industry` labels 1,042 including delisted names. Swapping
+the source, through the module's own code path so only labels move:
+
+| | net20 | HH t | halves | +yrs |
+| --- | ---: | ---: | ---: | ---: |
+| published | 157.9 | 5.38 | +146.9 / +168.9 | 6/7 |
+| membership repaired | **55.7** | **0.89** | +215.4 / **−101.5** | 4/7 |
+
+Against the tournament's own permuted null — median max 71.8, p95 138.2 — the
+repaired result sits **below the median of noise**, and the half-stability that
+was the headline evidence inverts.
+
+**The stronger objection needs no point-in-time data at all.** Holding the
+labels fixed and merely re-deriving breadth drops it to 92.5 bps. That is not a
+bug in the re-derivation: the two breadth series correlate **0.968** with a mean
+absolute difference of 4.93 breadth points. They agree on **which sector is
+weakest on only 61.3% of sessions.** A `k=1` rule shorts the `argmin`-breadth
+name, and an argmin over ~20 noisy sectors is not identified by data this
+precise — two faithful implementations take a different trade four sessions in
+ten.
+
+This also reverses the neighbourhood argument. Published, k=1 (157.9) led k=2
+(115.8) and k=3 (110.1); repaired, the order inverts — k=1 (55.7) is worst,
+k=3 (92.9) best. Averaging damps the argmin instability, so **k=1 topping its own
+ladder was the defect's signature, not evidence against it.**
+
+**Scope of the rejection.** This retires the cell, the mechanism story (an
+isolated holdout catching down with its sector) and the proposed twelve-to-
+eighteen-cycle forward track. It does **not** touch cross-sectional relative
+strength itself, which has now appeared in [[H026]], the [[H033]] holdout, this
+tournament and the 1995-2019 legacy scan, nor [[H060]], which shares no
+machinery with it.
+
+**Two rules earned here.** A `k=1` argmin over a noisy cross-sectional statistic
+is suspect *by construction* and must be tested against a re-derivation of its
+own input before any sample is committed — that check cost one afternoon against
+twelve to eighteen forward cycles. And a per-symbol label column whose value
+never changes over time is a snapshot wearing a panel's shape; `groupby(symbol)
+.nunique() > 1` belongs in the pipeline, not in a post-mortem.

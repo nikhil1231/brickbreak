@@ -3645,3 +3645,95 @@ this tournament, the honest answer is *sometimes, and not reliably.*
 net with `effective_n = 6`, a first half of 26.3 bps and a second half of 233.0.
 The module flags it itself as post-selection optimisation on the same sample.
 Six effective observations split 9:1 across halves is not a result.
+
+---
+
+# Addendum — H059's surviving cell does not survive step 1 (2026-08-29)
+
+The successor plan's own first step was *rebuild historical sector breadth
+point-in-time*, with the stopping rule *if either step kills it, retire the
+project without another search*. It fired. The deeper reason it fired is not the
+one the plan anticipated.
+
+## What was contaminated, and which half is repairable
+
+`meta.sector` comes from `nse_archive.build_symbol_metadata()`, which downloads
+**today's** NSE index constituent CSVs — the same today-snapshot source whose
+adjacent line, `rec["size_tier_rank"]`, produced the fourth lookahead in this
+project (H033). The module's author explicitly disabled the size-rank screen to
+avoid it and then inherited it through `sector`.
+
+Two distinct contaminations follow:
+
+- **Membership survivorship.** A name absent from today's lists gets no sector,
+  and `build_h026_candidates` drops it via `dropna(subset=["sector_breadth"])`.
+  Both the breadth denominator and the shortable universe are conditioned on
+  surviving to 2026. Of 3,348 symbols that traded 2020-2026, today's lists label
+  **537**; `announcements.industry` labels **1,042**, including delisted names —
+  **827 gained.**
+- **Classification drift**, which is *not* repairable here. `announcements.
+  industry` is also a per-symbol snapshot: **0 of 1,413 symbols ever change
+  label.** It fixes membership and nothing else. This is the weaker half — a
+  bank stays a bank, while index membership churns constantly — and it is left
+  standing rather than papered over.
+
+## The re-test, through the module's own code path
+
+`frame.load_daily_panel` was monkeypatched so only the label source moves; the
+returns, costs, excess convention and permutation machinery are the module's.
+
+| arm | n | net20 excess | HH t | halves | +yrs |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 published, module as-is | 130 | **157.9** | 5.38 | +146.9 / +168.9 | 6/7 |
+| 2 my breadth, **snapshot labels**, no extra shift | 127 | 92.5 | 2.01 | +68.1 / +116.5 | 5/7 |
+| 3 arm 2 + an as-of shift | 127 | 89.3 | 1.61 | +58.6 / +119.5 | 5/7 |
+| 4 announcement membership, no shift | 130 | 74.1 | 1.28 | +176.8 / **−28.5** | 3/7 |
+| 5 announcement membership + shift | 129 | **55.7** | 0.89 | +215.4 / **−101.5** | 4/7 |
+
+The tournament's own overall permuted null is **median max 71.8 bps, p95 138.2
+bps.** Only the published arm clears it. The membership-repaired arms sit at or
+below the *median* of noise, their HH t falls from 5.38 to 0.89, and the
+half-stability that was the headline evidence **inverts**: the second half goes
+from +168.9 to −101.5.
+
+## The real finding is in arm 2, and it is worse than the survivorship
+
+Arm 2 holds the labels fixed and only re-derives breadth — "share of sector
+members above their own 50-session EMA" — and the result still falls from 157.9
+to 92.5. That could have been a bug in the re-derivation. It is not:
+
+| my breadth vs the pipeline's, 30,362 overlapping sector-days | |
+| --- | ---: |
+| correlation | **0.968** |
+| mean absolute difference | 4.93 breadth points |
+| **sessions agreeing on which sector is weakest** | **61.3%** |
+
+**The rule is `k=1, short_bottom`: it shorts the single candidate from the
+`argmin`-breadth sector.** An argmin over ~20 noisy sectors is not stable even
+when the underlying statistic is 97% correlated — two faithful implementations
+pick a different sector, and therefore a different trade, **four sessions in
+ten**. The strategy as specified is not identified by the data. Nothing about
+point-in-time membership is needed to say that.
+
+It also explains the k-ladder, which had been read as reassuring. Published,
+k=1 (157.9) beats k=2 (115.8) and k=3 (110.1); repaired, the order reverses —
+k=1 (55.7) is *worst*, k=2 is 83.5, k=3 is 92.9. Averaging over more names damps
+the argmin instability. **k=1 leading its own neighbourhood was the signature of
+the defect, not evidence against it.**
+
+## Verdict
+
+H059's surviving cell is **REJECTED at step 1 of its own successor plan**, under
+that plan's stated stopping rule. What is retired is this cell, not the
+observation underneath it — cross-sectional relative strength has now shown up
+in four places (H026, the H033 holdout, this tournament, the legacy scan) and
+none of that is touched. What died is the specific claim that shorting the
+argmin-breadth name inside the F&O contraction screen carries +1.58% a trade.
+
+Two things worth keeping for whoever comes next. A `k=1` argmin rule over a
+noisy cross-sectional statistic should be treated as suspect **by construction**
+and tested against a re-derivation of its own input before anything else is
+spent on it — this cost one afternoon and would have cost twelve to eighteen
+forward cycles. And a per-symbol label column that never changes over time is a
+snapshot wearing a panel's shape; the one-line check (`groupby(symbol).nunique()
+> 1`) belongs in the pipeline, not in a post-mortem.
