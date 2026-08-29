@@ -58,6 +58,14 @@ def test_both_eras_normalise_to_one_schema():
     assert list(udiff.columns) == list(nse_derivatives.COLUMNS)
     assert set(legacy["instrument"]) == {"stock_future", "stock_option", "index_future"}
     assert set(udiff["instrument"]) == {"stock_future", "stock_option"}
+    legacy_option = legacy.loc[legacy["instrument"] == "stock_option"].iloc[0]
+    udiff_option = udiff.loc[udiff["instrument"] == "stock_option"].iloc[0]
+    assert legacy_option["strike"] == 2200.0
+    assert legacy_option["option_type"] == "CE"
+    assert udiff_option["strike"] == 1400.0
+    assert udiff_option["option_type"] == "CE"
+    assert legacy.loc[legacy["instrument"] == "stock_future",
+                      "option_type"].isna().all()
 
 
 def test_legacy_turnover_is_converted_from_lakh_to_rupees():

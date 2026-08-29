@@ -3737,3 +3737,91 @@ spent on it — this cost one afternoon and would have cost twelve to eighteen
 forward cycles. And a per-symbol label column that never changes over time is a
 snapshot wearing a panel's shape; the one-line check (`groupby(symbol).nunique()
 > 1`) belongs in the pipeline, not in a post-mortem.
+
+---
+
+# Addendum — H061–H063: the stock-option wheel has a payoff pattern, not a tradable edge (2026-08-30)
+
+The final open branch was a cash-secured, physically settled stock-option wheel.
+It required a fresh full-strike archive because the older futures files had
+dropped strike and option type: **20,627,843 banded option rows, 287 stock
+symbols, 2020-01 to 2026-08**, joined to raw cash closes and futures-derived lot
+sizes. Nifty is taken from NSE's daily all-index archive; its published dividend
+yield is accrued so the hurdle is total return rather than the easier price
+index.
+
+Two implementation defects were found before the corrected read. The stationary
+bootstrap never restarted a block, so every draw had the same mean and its
+interval collapsed to a point. And nominal expiries could collect premium and
+interest without settling: June 2023's holiday-shifted contract settled one day
+early, while the incomplete August 2026 contract had not settled at all. The
+calendar now uses the contract's last trading session, excludes the incomplete
+tail and fails closed on a missing cash settlement. HDFC's July-2023 contracts
+are the special case that proves why this must be symbol-specific: the merger
+force-expired every displayed July/August/September contract on 12 July.
+
+## H061: the ordinary ten-name wheel fails
+
+Base: ten equal slots, puts and calls nearest 5% OTM, 50-contract strike bar,
+hold to expiry, 5% premium haircut, dated STT, physical-delivery charges and
+0.25% broker settlement fee, collateral at repo.
+
+| series | CAGR | vol | Sharpe | monthly-close max DD |
+| --- | ---: | ---: | ---: | ---: |
+| wheel | **7.85%** | 17.00% | 0.226 | −31.48% |
+| Nifty 50 total return | 12.65% | 19.19% | 0.440 | −28.04% |
+| Nifty TR + cash, volatility matched | **12.04%** | 17.00% | **0.440** | −24.86% |
+
+The wheel's annualized mean gap to the matched hurdle is **−3.64pp**, stationary-
+block 95% interval **[−9.39pp, +1.49pp]**. Even a frictionless ceiling returns
+10.54%, below the passive hurdle. Removing the physical-settlement fee adds less
+than one point; removing the premium haircut adds 1.38 points; setting collateral
+yield to zero cuts CAGR to 4.01%. Costs hurt, but they are not why it loses. The
+payoff itself gives up too much equity upside for the premium retained.
+
+## H062: diversification and farther strikes reveal a coherent surface
+
+CAGR edge over the volatility-matched hurdle:
+
+| slots | 5% OTM | 10% OTM | 15% OTM |
+| ---: | ---: | ---: | ---: |
+| 20 | +0.07pp | **+2.24pp** | +1.64pp |
+| 30 | −0.72pp | **+1.58pp** | +0.72pp |
+| 40 | −0.02pp | **+0.87pp** | +0.37pp |
+
+The 10%-OTM column wins at all three breadths and decays smoothly as breadth
+rises. That is the only new pattern worth preserving: diversify single-name
+assignment losses and sell less frequently exercised protection. It is not a
+single optimized maximum. But the inherited 20-slot / 5%-OTM primary only ties,
+and whole-lot capital already weakens it.
+
+## H063: the promising 20-slot / 10%-OTM cell fails execution in combination
+
+The first attack removed an actual timing impossibility. H062 ranked names and
+strikes on the completed entry-day option tape, then assumed a fill on that same
+close. Ranking and strike choice were moved back one trading session; the exact
+strike then had to print on entry day. The result improved rather than vanished:
+**14.52% versus 11.88% matched CAGR, 0.635 versus 0.474 Sharpe**, annual return-
+gap interval **[−1.73pp, +6.58pp]**.
+
+| attack on lagged 20-slot / 10%-OTM | CAGR edge | Sharpe edge |
+| --- | ---: | ---: |
+| 10% premium haircut | +1.86pp | +0.116 |
+| 20% premium haircut | +0.33pp | +0.024 |
+| actual last-trade price | +2.34pp | +0.144 |
+| minimum 250 contracts at strike | +0.58pp | +0.037 |
+| **last trade + 250 contracts + 10% haircut** | **−0.23pp** | **−0.008** |
+| combined, whole lots at INR 2 crore | **−0.50pp** | **−0.034** |
+| combined, whole lots at INR 10 crore | **−0.42pp** | **−0.021** |
+
+At INR 50 lakh the combined book writes only **1.7 legs on average**, so its
+apparently high Sharpe is mostly repo with almost no wheel. At INR 2 crore and
+INR 10 crore it fills roughly twenty legs and loses to the matched passive book.
+
+**Verdict.** There is a believable gross payoff pattern and no demonstrated
+tradable edge. It survives any single charitable execution assumption and dies
+when reasonable assumptions are applied together; its confidence intervals
+include zero throughout. H061, H062's investable claim and H063 are retired.
+Do not optimize another strike/slot cell on this archive. The only live project
+claim remains H060 momentum on future data; the wheel adds no reason to keep an
+active research branch.

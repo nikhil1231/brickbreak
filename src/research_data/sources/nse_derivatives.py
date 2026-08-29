@@ -78,13 +78,38 @@ UDIFF_PREFERRED_FROM = date(2024, 6, 1)
 FO_DIR = config.RAW_DIR / "fo_bhavcopy"
 FUTURES_BARS = config.NORMALIZED_DIR / "fo_futures_daily.parquet"
 
+# The option chain lives in its own tree. `FO_DIR` was populated before the
+# parser carried strike and option type, so its option rows are unusable — every
+# strike of a symbol/expiry collapsed to an indistinguishable row. Rather than
+# rewrite 1,650 files that the futures universe already depends on, the option
+# legs are re-fetched into `FO_OPTIONS_DIR` with the full key. Futures stay
+# where they are; nothing reads the same contract from two places.
+FO_OPTIONS_DIR = config.RAW_DIR / "fo_options"
+OPTION_INSTRUMENTS = ("stock_option", "index_option")
+
 # One normalised schema across both eras.
 COLUMNS = (
-    "session", "symbol", "instrument", "expiry", "open", "high", "low",
+    "session", "symbol", "instrument", "expiry", "strike", "option_type",
+    "open", "high", "low",
     "close", "settle", "underlying_close", "contracts", "traded_value",
     "open_interest", "change_in_open_interest", "lot_size", "lot_size_source",
     "source_era",
 )
+
+# Futures rows carry no strike and no option type; both eras encode that as a
+# 0.0 strike and a "XX" / blank option type respectively. They are normalised to
+# missing so that `option_type.notna()` is exactly "this row is an option".
+_OPTION_TYPES = {"CE": "CE", "PE": "PE", "C": "CE", "P": "PE"}
+
+
+def _strike(raw: pd.Series | None) -> pd.Series:
+    value = pd.to_numeric(raw, errors="coerce")
+    return value.where(value > 0)
+
+
+def _option_type(raw: pd.Series | None) -> pd.Series:
+    text = raw.astype("string").str.strip().str.upper()
+    return text.map(_OPTION_TYPES).astype("string")
 
 # Legacy INSTRUMENT / UDiFF FinInstrmTp -> canonical instrument label.
 _INSTRUMENT_MAP = {
@@ -140,7 +165,8 @@ def _derive_lot_size(contracts: pd.Series, traded_value: pd.Series,
 def parse_legacy(content: bytes | pd.DataFrame) -> pd.DataFrame:
     frame = content if isinstance(content, pd.DataFrame) else _unzip(content)
     frame = frame.rename(columns=lambda name: str(name).strip())
-    required = {"INSTRUMENT", "SYMBOL", "EXPIRY_DT", "CLOSE", "TIMESTAMP"}
+    required = {"INSTRUMENT", "SYMBOL", "EXPIRY_DT", "STRIKE_PR",
+                "OPTION_TYP", "CLOSE", "TIMESTAMP"}
     if missing := required - set(frame.columns):
         raise DerivativesError(f"legacy derivatives file missing {sorted(missing)}")
     out = pd.DataFrame({
@@ -151,6 +177,8 @@ def parse_legacy(content: bytes | pd.DataFrame) -> pd.DataFrame:
             .map(_INSTRUMENT_MAP),
         "expiry": pd.to_datetime(frame["EXPIRY_DT"], format="%d-%b-%Y",
                                  errors="coerce"),
+        "strike": _strike(frame.get("STRIKE_PR")),
+        "option_type": _option_type(frame.get("OPTION_TYP")),
         "open": pd.to_numeric(frame.get("OPEN"), errors="coerce"),
         "high": pd.to_numeric(frame.get("HIGH"), errors="coerce"),
         "low": pd.to_numeric(frame.get("LOW"), errors="coerce"),
@@ -177,7 +205,8 @@ def parse_legacy(content: bytes | pd.DataFrame) -> pd.DataFrame:
 def parse_udiff(content: bytes | pd.DataFrame) -> pd.DataFrame:
     frame = content if isinstance(content, pd.DataFrame) else _unzip(content)
     frame = frame.rename(columns=lambda name: str(name).strip())
-    required = {"FinInstrmTp", "TckrSymb", "XpryDt", "ClsPric", "TradDt"}
+    required = {"FinInstrmTp", "TckrSymb", "XpryDt", "StrkPric", "OptnTp",
+                "ClsPric", "TradDt"}
     if missing := required - set(frame.columns):
         raise DerivativesError(f"UDiFF derivatives file missing {sorted(missing)}")
     out = pd.DataFrame({
@@ -186,6 +215,8 @@ def parse_udiff(content: bytes | pd.DataFrame) -> pd.DataFrame:
         "instrument": frame["FinInstrmTp"].astype(str).str.strip().str.upper()
             .map(_INSTRUMENT_MAP),
         "expiry": pd.to_datetime(frame["XpryDt"], errors="coerce"),
+        "strike": _strike(frame.get("StrkPric")),
+        "option_type": _option_type(frame.get("OptnTp")),
         "open": pd.to_numeric(frame.get("OpnPric"), errors="coerce"),
         "high": pd.to_numeric(frame.get("HghPric"), errors="coerce"),
         "low": pd.to_numeric(frame.get("LwPric"), errors="coerce"),
@@ -245,12 +276,18 @@ def fetch_day(day: date, session: requests.Session | None = None,
 
 
 def sync(start: date, end: date, throttle: float = 0.20, workers: int = 4,
-         root: Path | None = None, verbose: bool = True) -> dict:
+         root: Path | None = None, verbose: bool = True,
+         keep: tuple[str, ...] | None = None) -> dict:
     """Download every missing derivatives session in [start, end].
 
     Files are stored under the date *inside* the file. Weekends are requested
     too: NSE trades some Saturdays, and skipping them leaves a hole that later
     reads as a market-wide gap.
+
+    `keep` restricts what is written to disk to those canonical instrument
+    labels. A day whose file parses but holds none of them is still counted as
+    downloaded, and an empty frame is written, so that a re-run does not
+    re-request it.
     """
     base = root or FO_DIR
     base.mkdir(parents=True, exist_ok=True)
@@ -278,6 +315,8 @@ def sync(start: date, end: date, throttle: float = 0.20, workers: int = 4,
                 stats["absent"] += 1
             else:
                 session_date, frame = result
+                if keep is not None:
+                    frame = frame.loc[frame["instrument"].isin(keep)]
                 path = _day_path(session_date, base)
                 if not path.exists():
                     path.parent.mkdir(parents=True, exist_ok=True)
@@ -308,9 +347,13 @@ def load_range(start: date | None = None, end: date | None = None,
     if not frames:
         return pd.DataFrame(columns=list(COLUMNS))
     out = pd.concat(frames, ignore_index=True)
+    for column in ("strike", "option_type"):
+        if column not in out.columns:
+            out[column] = pd.NA
     if instruments:
         out = out.loc[out["instrument"].isin(instruments)]
-    return out.sort_values(["session", "symbol", "expiry"],
+    return out.sort_values(["session", "symbol", "expiry", "strike",
+                            "option_type"],
                            kind="stable").reset_index(drop=True)
 
 
@@ -324,7 +367,8 @@ def stored_sessions(root: Path | None = None) -> list[date]:
 
 
 __all__ = [
-    "COLUMNS", "DerivativesError", "FO_DIR", "FUTURES_BARS",
+    "COLUMNS", "DerivativesError", "FO_DIR", "FO_OPTIONS_DIR",
+    "OPTION_INSTRUMENTS", "FUTURES_BARS",
     "UDIFF_PREFERRED_FROM", "fetch_day", "legacy_url", "load_range",
     "parse_legacy", "parse_udiff", "stored_sessions", "sync", "udiff_url",
 ]

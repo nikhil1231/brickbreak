@@ -3990,3 +3990,131 @@ own input before any sample is committed — that check cost one afternoon again
 twelve to eighteen forward cycles. And a per-symbol label column whose value
 never changes over time is a snapshot wearing a panel's shape; `groupby(symbol)
 .nunique() > 1` belongs in the pipeline, not in a post-mortem.
+
+
+## H061 — A diversified cash-secured stock-option wheel beats passive Nifty at matched risk
+
+Status: **REJECTED — corrected base fails both clauses.** Registered 2026-08-29
+after the data acquisition and an invalid first
+simulation had already been run in the working tree. That run does not count:
+its block bootstrap never restarted a block, and two nominal expiries collected
+premium without settling the obligation. This entry freezes the corrected run.
+
+**Claim and primary rule.** Each stock-option expiry, hold ten equal-capital
+slots in the most liquid PIT F&O names; while in cash sell the nearest traded put
+about 5% OTM, and after assignment sell the nearest traded call about 5% OTM.
+Hold every option to physical settlement, keep puts fully cash-secured, accrue
+repo on cash collateral, and charge the dated option STT, delivery charges,
+Zerodha's 0.25% physical-settlement fee, plus a 5% haircut to quoted premium.
+No rolling and no mid-cycle option marks.
+
+**Frozen bar.** The base wheel must beat a volatility-matched blend of Nifty 50
+total return and cash on **both CAGR and excess-return Sharpe** over the identical
+expiry grid. Otherwise H061 fails. A frictionless ceiling and the declared grid
+(0-10% OTM, 5-20 slots, 0-20% premium haircut, last-trade fills, stricter
+liquidity, and whole lots at three book sizes) diagnose why; no winning grid cell
+can rescue a failed primary, because the archive has already selected it.
+
+**Why it may work.** The book repeatedly sells equity-option skew and liquidity
+insurance, spreads single-name crash risk across ten names, and earns the short
+rate on put collateral. **Why it may not.** The premium may merely compensate
+for capped upside and crash exposure; physical assignment charges fees on the
+full notional while revenue is earned on the much smaller premium; and choosing
+liquid option names can quietly concentrate the book in volatile stocks.
+
+**Data and mechanics.** The sample begins in 2020 so every stock option is
+European and physically settled. Entry prices come from the option bhavcopy;
+assignment comes only from the unadjusted cash close on the contract's actual
+last trading session. Nominal holiday expiries are mapped to that last session,
+an incomplete final contract is excluded, and any missing cash settlement fails
+closed. Nifty price and accrued total-return levels come from NSE's daily index
+archive. This is a portfolio-strategy test, not a new predictive signal.
+
+**Result, corrected 2026-08-30.** 20,627,843 option rows, 287 symbols and 80
+monthly settlement observations. The base wheel returned **7.85% CAGR at 17.00%
+volatility and 0.226 Sharpe**, against **12.04%, 17.00% and 0.440** for
+volatility-matched Nifty TR plus cash. Its mean return gap was −3.64pp annualized
+(stationary-block 95% interval −9.39pp to +1.49pp). Even the frictionless ceiling
+returned only 10.54%, so costs are not the primary failure. Zero collateral
+yield cut CAGR to 4.01%; a 20% premium haircut cut it to 3.78%. H061 fails both
+frozen clauses and is rejected. The declared grid generated [[H062]]; it does
+not rescue this verdict.
+
+
+## H062 — The wheel's only possible edge is diversification, not richer premium
+
+Status: **REJECTED AS AN EXECUTABLE STRATEGY; SUPPORTED AS A FRACTIONAL PAYOFF
+PATTERN.** Registered 2026-08-30
+after H061's declared one-factor grid exposed the lead: moving from ten to twenty
+slots raised CAGR from 7.85% to 11.37%, cut volatility from 17.00% to 14.60%, and
+raised Sharpe from 0.226 to 0.448. The 20-slot cell has been read; its matched
+benchmark and interactions have not.
+
+**Claim.** A broader cash-secured wheel can edge a volatility-matched Nifty
+total-return-plus-cash blend because single-name assignment losses diversify
+faster than premium income dilutes. If that story is real, it should form a
+neighborhood across 20/30/40 slots and 5/10/15% OTM strikes, not peak at one
+cell. The primary inherited cell is 20 slots and 5% OTM; the grid describes the
+surface and cannot replace it after the fact.
+
+**Bar and practical check.** The primary must exceed the matched blend on CAGR
+and excess-return Sharpe. The return-gap block-bootstrap interval, annualized
+gap, drawdown and assignment rates are reported beside it. Whole-lot versions at
+INR 50 lakh, 2 crore and 10 crore determine whether any statistical edge exists
+at an account size that can actually hold twenty stock-option lots. A fractional
+book is a payoff diagnostic, not an executable strategy.
+
+**Result.** The interaction is real on fractional capital. CAGR edge versus the
+matched passive blend by slots × OTM distance:
+
+| slots | 5% | 10% | 15% |
+| ---: | ---: | ---: | ---: |
+| 20 | +0.07pp | **+2.24pp** | +1.64pp |
+| 30 | −0.72pp | **+1.58pp** | +0.72pp |
+| 40 | −0.02pp | **+0.87pp** | +0.37pp |
+
+Ten percent OTM leads at every breadth and its edge decays smoothly as the book
+broadens. That is a neighborhood, not a lone maximum, and it generated [[H063]].
+But 20 slots at 5% OTM — the inherited primary — beats by only 0.07pp CAGR and
+0.008 Sharpe. With whole lots it loses by 0.33pp at INR 2 crore and ties by
+0.04pp at INR 10 crore; INR 50 lakh fills only about three legs. The payoff
+shape is supported, the investable claim is not.
+
+
+## H063 — Twenty diversified 10%-OTM wheels retain a small matched-risk edge after execution repair
+
+Status: **REJECTED — execution and lot quantisation erase the edge.** Registered
+2026-08-30 after the H062 surface selected 20 slots / 10% OTM: 13.30% CAGR versus
+11.06% for volatility-matched Nifty TR plus cash, Sharpe 0.586 versus 0.440. The
+same direction remained positive at 30 and 40 slots and at 15% OTM, so this is a
+neighborhood lead rather than an isolated maximum. All of 2020-2026 is already
+exposed; nothing here is confirmatory.
+
+**The execution objection.** H062 ranks names and strikes using the completed
+entry-day option tape and then books a fill at that day's close/settlement mark.
+Those two facts are not simultaneously tradable. The corrected primary ranks
+chain liquidity and chooses the target strike from the previous session, then
+requires that exact strike to trade on entry day before using its entry-day
+price. It must also remain ahead with a 10% premium haircut, a 250-contract
+liquidity bar, last-trade rather than settlement marks, and whole-lot books at
+INR 2 crore and 10 crore. INR 50 lakh is reported as a capacity failure if it
+cannot populate the slots.
+
+**Stopping rule.** If the one-session selection lag reverses the CAGR or Sharpe
+edge, reject H063. If lagged fractional survives but whole lots do not, record a
+payoff pattern with no practical strategy at the tested capital rather than
+optimizing another cell.
+
+**Result.** Lagging selection did not kill the fractional lead: it improved to
+**14.52% versus 11.88% matched CAGR** and **0.635 versus 0.474 Sharpe**. It also
+survived each execution attack in isolation: +1.86pp CAGR with a 10% premium
+haircut, +2.34pp using last trades, and +0.58pp at a 250-contract strike bar.
+The uncertainty remained large — the lagged annual return-gap interval was
+**−1.73pp to +6.58pp**.
+
+The frozen conjunction fired. Prior-session selection + last-trade fills + 250
+contracts + a 10% haircut produced **12.07% versus 12.30%**, Sharpe **0.465
+versus 0.474**. Whole-lot versions lost by **0.50pp at INR 2 crore** and
+**0.42pp at INR 10 crore**. INR 50 lakh averaged 1.7 legs, so its high Sharpe is
+a mostly-cash capacity failure, not a 20-name wheel. Under the stopping rule,
+H063 is rejected without another parameter search.
