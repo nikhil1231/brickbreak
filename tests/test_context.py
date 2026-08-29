@@ -185,3 +185,50 @@ def test_relative_strength_differences_are_aligned_in_time():
     assert ok.sum() > 50
     assert np.allclose(joined.loc[ok, "rs_20d_vs_mkt"],
                        5.0 - joined.loc[ok, "mkt_ret_20d"])
+
+
+# --------------------------------------------------------------------------
+# the investable benchmark (2026-08-29)
+# --------------------------------------------------------------------------
+
+def test_investable_index_ignores_everything_after_the_date():
+    """Same rule as every other column: appending sessions cannot move history.
+
+    `_investable_index` carries state across sessions in a Python loop, which is
+    exactly the shape that leaks a future value if the loop is ever restructured.
+    """
+    bars = _bars(n=200, symbols=("AAA", "BBB", "CCC"))
+    cut = bars["date"].unique()[150]
+    full = context.market_regime(bars, context.ContextConfig(mkt_min_symbols=2))
+    early = context.market_regime(bars[bars["date"] <= cut],
+                                  context.ContextConfig(mkt_min_symbols=2))
+    m = early.merge(full, on="date", suffixes=("_e", "_f"))
+    d = (m["mkt_index_investable_e"] - m["mkt_index_investable_f"]).abs()
+    assert d.max() < 1e-12, f"investable index moved by {d.max()}"
+
+
+def test_investable_index_pays_a_cost_and_the_free_index_does_not():
+    """The whole reason the column exists: it is charged and `mkt_index` is not.
+
+    With the rebalance clock set to every session, the two indices differ by
+    nothing but the cost, so the investable one must sit strictly below.
+    """
+    bars = _bars(n=120, symbols=("AAA", "BBB", "CCC"))
+    cfg = context.ContextConfig(mkt_min_symbols=2, bench_rebal_sessions=1,
+                                bench_cost_pct_round_trip=0.40)
+    out = context.market_regime(bars, cfg).dropna(
+        subset=["mkt_index", "mkt_index_investable"])
+    assert (out["mkt_index_investable"] <= out["mkt_index"] + 1e-12).all()
+    assert out["mkt_index_investable"].iloc[-1] < out["mkt_index"].iloc[-1]
+
+    free = context.market_regime(
+        bars, context.ContextConfig(mkt_min_symbols=2, bench_rebal_sessions=1,
+                                    bench_cost_pct_round_trip=0.0)
+    ).dropna(subset=["mkt_index", "mkt_index_investable"])
+    # At zero cost and a nightly clock the two constructions earn the same
+    # thing. Their *levels* differ by one session: `mkt_index` books the first
+    # session's return, while the investable one buys at that session's close.
+    # So the comparison is on returns, not levels.
+    a = np.diff(np.log(free["mkt_index"].to_numpy()))
+    b = np.diff(np.log(free["mkt_index_investable"].to_numpy()))
+    assert np.allclose(a, b, atol=1e-12)

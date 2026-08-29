@@ -3745,12 +3745,19 @@ of this run had already tabulated the −86.6 bps / t = −6.8 figure as a findi
 
 ## H060 — Twelve-month momentum is the one cross-sectional effect that survives on NSE at a cost-survivable horizon
 
-> **ID note.** This was first written as H059. An untracked module,
-> `src/research/families/final_tournament.py`, was created earlier the same
-> day and claims H059 for an executable F&O tournament; it has no recorded
-> result. Rather than collide, this entry took the next free number. If the
-> tournament module is abandoned, H059 is free again — but per the ledger's
-> own rule nothing is renumbered after it has been read against data.
+> **ID note.** This was first written as H059. `final_tournament.py`, created
+> earlier the same day, claims H059 for an executable F&O tournament, ran at
+> 13:47 and was committed in `588677b`. H059 is therefore taken by a hypothesis
+> that has been read against data, and this entry keeps H060 permanently — per
+> the ledger's own rule nothing is renumbered after a read. (An earlier note
+> here said the tournament had no recorded result; it did, in
+> `data/metadata/research_store/h059/`.)
+>
+> **Provenance warning on `588677b`.** That commit is titled "run final F&O edge
+> tournament" and also carries 606 lines of unrelated work — this ledger's
+> H045/H049/H051-H054 closures and FINDINGS' legacy-panel addendum, written in a
+> different session. The message describes a fraction of the contents. Anyone
+> bisecting or auditing by commit message will be misled.
 
 Status: **PROPOSED — awaiting confirmatory read on `forward`.** Registered
 2026-08-29 after an exploratory read of the 1995-2019 legacy panel. Lineage:
@@ -3842,3 +3849,87 @@ and cash-flow stress"; it is not. The carry itself is not there.
 No early-exit or leverage variant is worth building on top of a base rate this
 far under water, per the probe's own stated condition that the simple net
 hold-to-expiry baseline must clear first. It does not.
+
+
+### H060 stress package — run before any confirmatory read (2026-08-29)
+
+Every falsifier named in the registration was fired at the claim on the same
+exploratory data, before `forward` is touched. Two cleared it, one weakened it,
+and one correction is owed to the record.
+
+**1. Cost. The bar at 100 bps holds, and my stated cost of it was wrong.**
+
+| round trip | legacy book | legacy bench | modern book | modern bench |
+| ---: | ---: | ---: | ---: | ---: |
+| 40 bps | 21.88% / 0.83 | 10.20% / 0.51 | 37.03% / 1.34 | 21.75% / 1.16 |
+| 100 bps | 18.55% / 0.74 | 9.07% / 0.47 | 33.03% / 1.23 | 20.46% / 1.10 |
+| 150 bps | 15.84% / 0.66 | 8.14% / 0.44 | 29.77% / 1.13 | 19.39% / 1.05 |
+
+Going from 40 to 100 bps costs **3.3pp (legacy) and 4.0pp (modern)**, not the
+"roughly 6pp" asserted when the bar was written. The rule turns over about 36%
+of the book per rebalance, 12.5 times a year, which is ~4.6 round trips
+annually — the drag is arithmetic and it is affordable at this horizon.
+
+At 150 bps the *composite* falls below the benchmark on CAGR in the modern panel
+(18.43% against 19.39%) while still leading on Sharpe. Momentum alone does not.
+
+**2. Corporate actions: the falsifier did not fire.** This was the registration's
+stated live data risk — that the legacy panel's fat left tail, guarded only by a
+blunt |daily return| > 50% drop, was producing the spread rather than the
+ranking.
+
+| legacy, momentum n=40, 100 bps | book | bench | edge |
+| --- | ---: | ---: | ---: |
+| as registered (|ret| < 50%) | 18.55% | 9.07% | +9.48pp |
+| tight guard (|ret| < 25%) | 19.24% | 8.59% | **+10.65pp** |
+| diagnostic: adjustment windows dropped | 18.11% | 8.98% | +9.13pp |
+
+Tightening the guard *increases* the edge and quarantining every window in which
+an adjustment factor moves barely moves it. Residual corporate actions are not
+the source. (The quarantine is forward-looking by construction and is a
+data-quality diagnostic, not a tradable variant — the same status as H058's
+fill-rate table.)
+
+**3. Five-year blocks: this is the finding that weakens the claim, and it is the
+one that matters most.**
+
+| block | book | bench | edge |
+| --- | ---: | ---: | ---: |
+| 1995-1999 | 56.3% | 9.2% | **+47.2pp** |
+| 2000-2004 | 11.3% | 14.0% | **−2.7pp** |
+| 2005-2009 | 15.0% | 16.4% | **−1.4pp** |
+| 2010-2014 | 14.5% | 4.2% | +10.3pp |
+| 2015-2019 | 8.1% | 2.2% | +5.9pp |
+| 2020-2024 | 44.8% | 28.2% | +16.6pp |
+| 2025-2029 (partial) | 8.0% | 3.3% | +4.7pp |
+
+**Three of five legacy blocks beat the benchmark, and the aggregate is carried
+by one.** 1995-1999 contributes a +47.2pp edge against a next-best of +10.3pp;
+it is also the thinnest, least liquid, worst-documented stretch of the archive,
+and a 56.3% annualised book return there deserves suspicion rather than credit.
+Drop it and the remaining four legacy blocks average roughly +3.0pp with two
+negative.
+
+The era table quoted in FINDINGS — positive at t ≳ 2 in all four eras — is about
+the *cross-sectional decile spread*, which is a different and more robust object
+than the concentrated 40-name book. Both are true; only the first should be
+described as era-stable. **The honest claim is that the spread is persistent and
+the tradable book is regime-dependent, with a real chance of losing to
+buy-and-hold for five years at a stretch.** Anyone sizing this should expect
+that, not be surprised by it.
+
+**4. Operability.** 12.5 rebalances a year, ~14 new positions each, 40 held at
+once, 1,419 distinct names touched over 24 years. At INR 10 lakh that is ~INR
+25,000 a name inside a top-500 universe, where capacity is not a constraint. It
+is roughly 170 order-pairs a year placed by hand.
+
+**Consequence for the registration: the primary is now singular.** The original
+text named momentum *and* a composite without saying which decides the verdict,
+which is a two-shot test wearing one bar. The primary is hereby fixed as
+**momentum 12-1, top-500 PIT universe, n=40, 20-session rebalance, 100 bps**.
+It is the bare literature prior and carries no compositing choices; the
+composite adds three free ones (which features, how many, equal weights) and is
+demoted to a declared secondary that **cannot rescue a primary failure**.
+Momentum alone also wins CAGR in every cost cell, while the composite wins
+Sharpe — a split that would otherwise have invited exactly the post-hoc choice
+this ledger exists to prevent.

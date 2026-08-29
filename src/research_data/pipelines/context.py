@@ -81,6 +81,10 @@ class ContextConfig:
     mkt_trend_window: int = 20
     mkt_slow_window: int = 60
     ret_guard: float = 0.6          # daily returns beyond this are bad prints
+    # The investable benchmark's rebalance clock and round-trip cost. See
+    # `market_regime`'s note on the rebalancing premium.
+    bench_rebal_sessions: int = 20
+    bench_cost_pct_round_trip: float = 0.40
 
 
 # --------------------------------------------------------------------------
@@ -103,6 +107,46 @@ def _daily_returns(bars: pd.DataFrame, cfg: ContextConfig) -> pd.DataFrame:
         "ret": r.where(r.abs() < cfg.ret_guard).to_numpy(),
         "close": b["close"].to_numpy(),
     })
+
+
+def _investable_index(r: pd.DataFrame, sessions: pd.Index,
+                      cfg: ContextConfig) -> np.ndarray:
+    """Equal-weighted, but actually holdable: weights are set on a fixed clock
+    and then **left alone** to drift with returns until the next rebalance, with
+    one round trip charged at each rebalance at the rate a book under test pays.
+
+    This exists so a portfolio claim can quote a hurdle nobody can object to,
+    not because `mkt_index` was found wanting. It was not: see `market_regime`,
+    where the two are decomposed and differ by 0.14-0.16pp of CAGR and 0.00
+    Sharpe. Do not describe the difference as a rebalancing premium — measured,
+    the rebalancing term runs the other way.
+    """
+    wide = (r.pivot_table(index="date", columns="symbol", values="ret",
+                          aggfunc="last")
+             .reindex(sessions)
+             .to_numpy(dtype="float64"))
+    n_d, n_s = wide.shape
+    reb = max(1, cfg.bench_rebal_sessions)
+    cost = cfg.bench_cost_pct_round_trip / 100.0
+    w = np.zeros(n_s)
+    out = np.empty(n_d)
+    level = 1.0
+    for i in range(n_d):
+        ret = np.nan_to_num(wide[i])
+        level *= 1.0 + float(np.dot(w, ret))
+        if i % reb == 0:
+            live = np.isfinite(wide[i])
+            if live.sum() >= cfg.mkt_min_symbols:
+                neww = np.where(live, 1.0 / live.sum(), 0.0)
+                level *= 1.0 - np.abs(neww - w).sum() * cost / 2.0
+                w = neww
+        else:
+            w = w * (1.0 + ret)
+            s = w.sum()
+            if s > 0:
+                w = w / s
+        out[i] = level
+    return out
 
 
 def market_regime(bars: pd.DataFrame, cfg: ContextConfig | None = None
@@ -132,6 +176,52 @@ def market_regime(bars: pd.DataFrame, cfg: ContextConfig | None = None
 
     lr = np.log1p(mkt["mkt_ret"])
     mkt["mkt_index"] = np.exp(lr.cumsum())
+
+    # IS `mkt_index` AN UNFAIR HURDLE? MEASURED: NO. (2026-08-29)
+    #
+    # `mkt_index` compounds the cross-sectional MEAN daily return, which is an
+    # equal-weighted portfolio rebalanced every session at zero cost. Nobody can
+    # hold that, so the suspicion is natural: it should harvest a rebalancing
+    # premium and quietly overstate the hurdle every rule in the ledger had to
+    # clear. The suspicion was checked and it is wrong. Decomposed on both
+    # panels, changing one thing at a time, CAGR:
+    #
+    #                                          legacy 95-19   modern 20-26
+    #   A  nightly universe, nightly EW reset       7.77%         21.55%
+    #   B  20d universe, nightly EW reset           7.82%         22.03%   universe    -0.05 / -0.48
+    #   C  20d universe, weights drift              8.40%         22.29%   rebalancing -0.58 / -0.26
+    #   D  C + 40bps round trip  (investable)       7.63%         21.39%   cost        +0.77 / +0.89
+    #
+    #   free minus investable: +0.14pp / +0.16pp CAGR, and +0.00 Sharpe both.
+    #
+    # The rebalancing term has the WRONG SIGN for the story -- letting weights
+    # drift earns MORE than resetting nightly, so daily rebalancing costs this
+    # cross-section money rather than manufacturing it -- and the cost term
+    # cancels it. `mkt_index` is a fair hurdle to within 16 bps a year.
+    #
+    # Two traps found while establishing that, both worth more than the result:
+    #
+    #   * A liquidity screen built from session D's turnover and then used to
+    #     average session D's returns is a SELECTION LOOKAHEAD: turnover is only
+    #     known at the close. It inflated a scratch benchmark from 21.6% to
+    #     25.9% CAGR and nearly produced a reported "benchmark defect" that does
+    #     not exist. `_investable_index` and every mask here use prior-session
+    #     liquidity for exactly this reason.
+    #   * Comparing "rebalance nightly" against "rebalance nightly" is not a
+    #     measurement. The first attempt varied a universe-refresh parameter
+    #     that made the drift branch unreachable and read a clean +0.00pp.
+    #
+    # `mkt_index_investable` is kept as the hurdle a portfolio claim should
+    # quote -- it is holdable and it pays what a book pays -- but it is now a
+    # documented near-equivalent, not a correction. `mkt_index` stays exactly as
+    # it was, so the recorded ledger remains reproducible.
+    #
+    # Separately and still true: a PER-TRADE excess must use the cohort's
+    # buy-and-hold mean over the identical window. `labelling._benchmark`
+    # already does; `shotgun.attach_excess` compounds `mkt_index` instead, which
+    # is the same object measured above and therefore also near-fair.
+    mkt["mkt_index_investable"] = _investable_index(r, mkt.index, cfg)
+
     w, sw = cfg.mkt_trend_window, cfg.mkt_slow_window
 
     mkt["mkt_ret_5d"] = (np.exp(lr.rolling(5).sum()) - 1) * 100

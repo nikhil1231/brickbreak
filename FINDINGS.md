@@ -3410,8 +3410,10 @@ Adding the 52-week-high and low-volatility legs roughly doubles legacy Sharpe
 (0.83 → 1.32) and halves the drawdown, at the cost of return in the 2020–2026
 melt-up — the same regime dependence H033 ran into.
 
-**Limits.** 40 bps is optimistic for Indian delivery equity, where STT alone is
-20 bps a side; the book still clears at 100 bps but loses roughly 6pp of CAGR.
+**Limits, corrected after the stress package below.** 40 bps is optimistic for
+Indian delivery equity, where STT alone is 20 bps a side. The book still clears
+at 100 bps and the cost of getting there is **3.3pp (legacy) and 4.0pp (modern)**,
+not the "roughly 6pp" first written here.
 Entry assumes the closing auction. Momentum's −78% drawdown in 2008 is real and
 is the known momentum-crash failure mode; a 200-day market-trend filter was
 tested and helps at top-500 while *hurting* at top-200, so it is not a clean fix
@@ -3529,3 +3531,117 @@ be labelled that way in any successor. `test` remains spent (three reads),
 2020–2023 remains spent (two reads). The only confirmatory sample this project
 has is `forward` — sessions after 2026-08-18 — which is the correct place for
 the momentum claim registered as [[H060]] to be settled.
+
+
+## Correction to the section above — the book is not era-stable, the spread is
+
+Run after the tables above, on the same data, before anything was taken to
+`forward`. Full detail in HYPOTHESES.md, "H060 stress package".
+
+Two named falsifiers cleared. The cost bar at 100 bps holds with room. And
+corporate actions — the stated live data risk — are **not** the source of the
+legacy spread: tightening the return guard from 50% to 25% *raises* the edge
+from +9.48pp to +10.65pp, and a forward-looking diagnostic that quarantines
+every adjustment-factor window leaves it at +9.13pp.
+
+The third falsifier landed. Five-year blocks, momentum n=40 at 100 bps against
+the benchmark charged the same:
+
+| block | edge |
+| --- | ---: |
+| 1995-1999 | **+47.2pp** |
+| 2000-2004 | −2.7pp |
+| 2005-2009 | −1.4pp |
+| 2010-2014 | +10.3pp |
+| 2015-2019 | +5.9pp |
+| 2020-2024 | +16.6pp |
+
+**Three of five legacy blocks beat the benchmark and the aggregate is carried by
+one of them** — 1995-1999, which is also the thinnest and worst-documented
+stretch of the archive. Excluding it, the remaining four average about +3.0pp
+with two negative.
+
+This does not contradict the era table, and the distinction is the point. The
+era table measures the **cross-sectional decile spread**, which is positive at
+t ≳ 2 in all four eras and is the robust object. The book is a concentrated
+40-name portfolio built on top of that spread, and it is **regime-dependent**:
+it can lose to buy-and-hold for five years at a stretch. Only the first should
+ever be described as era-stable, and the section above should be read with that
+correction attached.
+
+The registration was also tightened as a consequence: it named momentum *and* a
+composite without saying which decided the verdict, which is a two-shot test
+wearing one bar. The primary is now singular — momentum 12-1, n=40 — and the
+composite cannot rescue a primary failure.
+
+---
+
+# Addendum — four directions, one signal (2026-08-29)
+
+`src/research/families/final_tournament.py` is **not mine.** It appeared in the
+working tree at 13:40 today, claims the ID H059 for an executable F&O
+tournament, and was run by its author at 13:47; its results were committed in
+`588677b` alongside this file's previous addendum. It is coherent, self-labelled
+`exploratory_all_partitions`, and builds a permuted-maximum null over its whole
+grid — which is the right shape.
+
+It was **re-run here independently** at the same 500 permutations and seed, into
+a scratch directory rather than over the author's output. The two runs are
+**bit-identical** on every family and on the overall statistic, which makes this
+a clean reproduction rather than a second opinion. (An earlier note in this
+session said the module had never been run. That was wrong — the output sits in
+`data/metadata/research_store/h059/` and the check that missed it looked one
+directory too high.)
+
+918 configurations over five families, 2020-01 to 2026-08, 303,401 futures rows
+across 1,650 sessions. Net 20-session excess in basis points, against each
+family's own permuted maximum:
+
+| family | configs | best | null median | null p95 | p | promotable |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| **relative_strength_screen** | 162 | **157.9** | 65.4 | 138.2 | **0.022** | 20 |
+| bulk_premium | 108 | 99.3 | 40.5 | 77.7 | 0.018 | 2 |
+| drawdown_reversal | 216 | 86.7 | 27.0 | 65.1 | 0.008 | 7 |
+| futures_native | 378 | 10.3 | −7.2 | −1.6 | 0.002 | 1 |
+| low_delivery_selloff | 54 | −19.3 | −13.6 | −6.9 | 0.996 | 0 |
+
+Against the **overall** null across all 918 configurations — the statistic that
+actually prices the search — the best result is 157.9 bps against a p95 of
+138.2, **p = 0.022**.
+
+**Read the margin before the p-value.** The best real configuration sits 14%
+above the 95th percentile of its own noise. That is clearing the bar by a
+fingernail, on a single regime, on partitions this project has already spent.
+`futures_native` is the cautionary row in the same table: p = 0.002 on an effect
+of **10.3 bps**, which is under a futures round trip — significance without
+money, for the sixth time in this ledger.
+
+**But the identity of the winner is the finding.** `relative_strength_screen` is
+[[H026]]. That family has now been found four separate times, by four designs
+that share almost no machinery:
+
+| where | what it said |
+| --- | --- |
+| H026 exploration | +1.230% vs market, t=4.76 |
+| **H033 holdout (2020-2023)** | **+1.366%, t=3.31 — passed clause 1 of its frozen bar**; +1.73% vs the same-day pool at t=4.98 |
+| this tournament | best of 918 configs, 157.9 bps net at 20 sessions, p=0.022, 20 of 162 configs promotable |
+| the 1995-2019 legacy scan | `mom_12_1`, `dist_52w_hi`, `range_pos_52w` all positive in all four eras |
+
+Cross-sectional relative strength is the one thing this project keeps
+rediscovering, and H033's split verdict said exactly this two months ago:
+*selection inside the screen carries out-of-sample information; turning it into a
+portfolio that beats buy-and-hold did not work.* Nothing since has contradicted
+either half. **What has repeatedly failed is the portfolio, cost and regime
+layer — not the signal.** The H060 block table is the same story again: a
+persistent cross-sectional spread sitting under a book that can lose to
+buy-and-hold for five years.
+
+That reframes what is left to do. The open question was never "is there a
+signal". It is whether a signal of this size can be wrapped in a book that
+survives costs and a bad regime — and on the evidence of H033, H060's blocks and
+this tournament, the honest answer is *sometimes, and not reliably.*
+
+**One row not to build on.** The module's focused stop sweep reports 129.6 bps
+net with `effective_n = 6`, a first half of 26.3 bps and a second half of 233.0.
+The module flags it itself as post-selection optimisation on the same sample.
+Six effective observations split 9:1 across halves is not a result.
