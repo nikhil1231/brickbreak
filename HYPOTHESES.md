@@ -3531,3 +3531,314 @@ futility boundary is paid in power rather than in type I error.
 matched skips would mean the chart selection carries information and the exits
 do not. That is a different and more fixable failure than an eye that does not
 work, and it may not be reported as the latter.
+
+
+## H059 — Final unrestricted F&O edge tournament
+
+Status: **SUPPORTED AS AN EXPLORATORY LEAD, 2026-08-29; not validated.** This is
+the last broad search before the project is retired. At the owner's instruction it may read every
+partition, including already-spent `test`; no result from it is confirmatory.
+The purpose is narrower and more practical: determine whether *any* sizeable,
+executable relationship in the data is worth a fresh project.
+
+The tournament contains four pre-named families rather than an unlimited
+indicator factory:
+
+1. H046's bulk-print premium, entered in the actual stock future on the first
+   tradable session;
+2. H037's raw recent-drawdown reversal during broad-market declines;
+3. H026's relative-strength ranking inside the original contraction screen;
+4. derivatives-native state known before entry: basis, lagged price change,
+   change in open interest, volume/OI, price-by-OI quadrants, and time to expiry.
+
+H039-style low-delivery selloffs may enter as a declared interaction feature,
+not as an uncounted fifth programme. Every trade uses the point-in-time F&O
+membership and actual futures OHLC. Multi-session trades are admitted only
+when the same contract exists from entry through exit; no synthetic near-month
+price jump is treated as P&L. The grid may vary side, rank cut or top-k,
+lookback, decline threshold, hold from 1 to 20 sessions where applicable, and
+lagged liquidity. Stops are excluded from the first pass because daily bars do
+not identify the order of an intraday stop and target and because a stop grid
+would multiply the search before an entry signal has survived.
+
+Results are reported gross and after 10 and 20 bps per round trip. The unit of
+inference is the equal-weight session portfolio, with a rectangular
+Hansen-Hodrick correction for overlapping holds. The full surface is retained. The
+headline maximum is compared with maxima from outcomes shuffled within entry
+session, so a search is required to beat the luckiest configuration produced
+by the same search under no cross-sectional relationship. Neighbouring
+parameters and calendar subperiods are reported; a one-cell spike is not a
+candidate even if it wins the raw table.
+
+**Promotion rule for this intentionally loose final pass.** Worth pursuing
+means positive after 20 bps, at least 10 bps per leg after costs, at least 100
+entry sessions (50 for sparse bulk events), same sign in a majority of yearly
+or half-sample slices, a neighbourhood that is not isolated, and a real maximum
+above the 95th percentile shuffled maximum. Anything less is an interesting
+historical fit, not a reason to keep the project alive.
+
+**Lineage.** Reopens only the executable variants of H026, H037, H039 and H046;
+adjacent to the newly available point-in-time derivatives archive. It does not
+reopen H055-H058 or make another claim about discretionary chart selection.
+
+**Result.** The search evaluated 918 configurations against 500 complete
+within-session outcome shuffles. One family cleared the registered loose
+promotion rule and the overall shuffled maximum: inside the F&O-adapted
+contraction screen, short the name with the weakest sector breadth and hold the
+same futures contract for 20 sessions. Over 130 entry sessions it returned
+**+149.6 bps raw and +177.9 bps F&O-universe excess gross; +129.6 bps raw and
++157.9 bps excess after 20 bps**, with the latter above the shuffled 95th-
+percentile maximum of +138.2 bps (max-stat p = 0.022). Excess return was positive
+in both halves and six of seven calendar years. K=2 and K=3 retained +115.8 and
++110.1 bps excess after cost, so this is not a single-name knife edge.
+
+The inference is weaker than the t-statistic looks. Rectangular Hansen-Hodrick
+reads 5.38, but 130 overlapping 20-session entries contain only about **six
+non-overlapping blocks**. The 20-session cell is much larger than 10-15 sessions,
+and same-contract execution restricts it to the first few sessions of each
+monthly contract cycle. The present-day sector classification used to construct
+historical breadth is also not point-in-time. This is a lead, not a deployable
+strategy.
+
+Stress tests preserve the selection relationship: taking every name tied in the
+weakest-breadth sector gives +139.9 bps excess after cost; a 20-session same-name
+cooldown gives +143.8 bps; and capping each trade at +/-500 bps gives +95.0 bps.
+Removing the contraction screen destroys most of it (+19.7 bps, with a negative
+second half), so the measured object is specifically an individually firm,
+contracted stock that is an isolated holdout inside a weak sector. A post-hoc
+calendar split shows the effect concentrated in entries after calendar day 20;
+that is a mechanism clue about the futures cycle, not a new admissible rule.
+
+Stops did not improve it. On the unchanged 130-entry population, no stop earned
++129.6 bps raw after cost; 15%, 10%, 5% and 3% stops fell to +115.1, +76.7,
++40.1 and +11.9 bps. The rule needs the full path and is not a tight-stop setup.
+
+The other families do not justify a project. Bulk premium produced an isolated
+five-session maximum (+99.3 bps excess after cost, max p = 0.018) with HH t 0.96,
+only 4/7 positive years and no positive neighbour. Drawdown reversal produced a
+large fitted maximum (+86.7 bps, p = 0.008) but changed from -68.5 bps in the
+first half to +241.9 in the second; broader cells were positive but weak.
+Bottom-three basis earned only +10.3 bps excess after 20 bps (HH t 0.86), and
+low-delivery selloffs lost 19.3 bps after cost. These are retired here.
+
+**Why parameter optimisation still did not solve selection.** An expanding
+walk-forward that chose the single best H026-family configuration on prior
+years selected 20-session long-strength rules through 2024, then lost 438.9 bps
+in 2025. Across five next-year cells the selected maxima averaged only +11.3 bps
+after cost and were positive three times. The eventual weak-breadth short was a
+stable neighbourhood, but it was not the early sample's maximum. Optimising is
+legitimate; treating the optimiser's winner as the edge is the error.
+
+
+## H049 — result: REJECTED (2026-08-29)
+
+Status: **REJECTED at train-equivalent, on 31 years.** Run exploratorily on both
+panels under the instruction to spend sample freely. Evidence in FINDINGS.md,
+"the 25 years nobody opened".
+
+The daily-only form of the claim was tested — a 2-5 session delivered selloff
+(delivery unavailable pre-2020, so the legacy arm uses the price selloff alone),
+a gap-down open, and a close above the open on above-median turnover — against
+the registered control of a gap-down *without* the intraday rejection, paired
+within session.
+
+| panel | h | n | event bps | control bps | contrast | t | 10-cell permuted floor |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| legacy | 5 | 33,424 | +8.8 | −47.5 | +56.3 | 2.3 | 2.8 |
+| legacy | 10 | 33,294 | +34.6 | −180.4 | +214.9 | **4.8** | 2.8 |
+| modern | 5 | 5,369 | −3.1 | −39.2 | +36.2 | 0.5 | 2.5 |
+| modern | 10 | 5,355 | −37.8 | −34.4 | −3.4 | −0.0 | 2.5 |
+
+The legacy h=10 cell is the only one in the twenty-cell screen to clear its
+permuted floor, and it fails the economic bar anyway. **The contrast is carried
+entirely by the control arm.** The tradable side earns +34.6 bps gross against
+the registered 80-bps bar and a 40-bps round trip; what the statistic actually
+identifies is a gap-down that keeps falling, which is an avoidance rule for a
+population nobody was going to buy. It is also absent in 2020-2026.
+
+The mechanism as written — a terminal urgency seller whose supply is being
+absorbed — predicts a positive event arm, not a negative control arm. That is
+not what the data shows.
+
+
+## H051 — result: REJECTED (2026-08-29)
+
+Status: **REJECTED, underpowered by construction.** Same run as H049.
+
+Market-wide closures of at least four calendar days (a plain weekend is three,
+and is the natural control rather than an event) yield 138 event sessions in the
+legacy panel and 37 in the modern one. Against the pre-weekend control, on the
+identical decline-plus-strong-close rule:
+
+| panel | h | n | event bps | control bps | contrast | t |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| legacy | 5 | 1,624 | +46.1 | +49.7 | −3.6 | −0.0 |
+| legacy | 10 | 1,619 | +185.3 | +11.6 | +173.7 | 0.7 |
+| modern | 5 | 442 | +34.7 | −27.2 | +62.0 | 0.9 |
+
+The h=10 legacy point estimate is large and its t is 0.7 on 14 non-overlapping
+blocks. Fourteen blocks cannot settle anything; the honest statement is that the
+design does not have the events, not that the effect is zero.
+
+
+## H052 — result: NOT TESTABLE (2026-08-29)
+
+Status: **REJECTED — no admissible test exists on this data.** Same run.
+
+The population requires a market-wide closure of at least four calendar days
+*and* a broad reopening gain of at least 1.5%. Over 31 years that is **33 event
+sessions in the legacy panel and 5 in the modern one.** At h=10 the modern arm
+yields a single non-overlapping block.
+
+This is a power result and belongs in the ledger as one: no estimator recovers
+an 80-bps effect from five sessions, the point estimates that do compute are
+negative (−54.5 bps contrast at legacy h=5, t = −1.0), and no further attempt
+should be made on Indian equities. A market with more frequent scheduled
+closures would be a different question.
+
+
+## H053 — result: REJECTED (2026-08-29)
+
+Status: **REJECTED.** Same run. Control is the identical loser-weakness rule on
+the last three sessions of every **non-quarter-end month**, which is the
+registered "matched non-quarter-end" comparison in its cheapest honest form.
+
+| panel | h | n | event bps | control bps | contrast | t |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| legacy | 5 | 2,995 | −18.6 | +15.6 | −34.2 | −0.7 |
+| legacy | 10 | 2,992 | −81.0 | +83.6 | −164.6 | −2.0 |
+| modern | 5 | 866 | +100.8 | −14.0 | +114.8 | 1.1 |
+| modern | 10 | 866 | +494.0 | +16.0 | +478.0 | 1.0 |
+
+The two panels disagree in sign and neither reaches its permuted floor (2.8 /
+2.5). The modern h=10 cell is the largest point estimate in the whole screen and
+rests on eight non-overlapping blocks — precisely the shape this lab has learned
+to distrust. Window dressing is not visible here.
+
+
+## H054 — result: REJECTED, and it is the instructive one (2026-08-29)
+
+Status: **REJECTED.** Same run.
+
+| panel | h | n | Friday bps | Mon-Thu control bps | contrast | t |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| legacy | 3 | 18,817 | **−76.5** | **−76.0** | −0.5 | −0.0 |
+| legacy | 5 | 18,824 | −68.0 | −73.3 | +5.3 | 0.3 |
+| modern | 3 | 5,174 | −10.0 | −11.2 | +1.1 | 0.1 |
+| modern | 5 | 5,169 | −3.9 | −8.5 | +4.6 | 0.2 |
+
+Read the Friday column alone and this is a large, well-powered, six-sigma
+finding: a stock closing in the bottom fifth of its Friday range on elevated
+turnover, whose Monday does not gap further down, loses 76 bps over the next
+three sessions on 18,817 events across 1,207 sessions at t = −6.8. It is also in
+the *opposite* direction to the registered hypothesis, which predicted reversal.
+
+The control column is the entire result. The same rule on Monday through
+Thursday loses **76.0 bps**. There is no weekend in this at all — it is ordinary
+short-horizon markdown continuation, and Friday is not special.
+
+Recorded at length because the failure mode is the one this ledger exists to
+prevent. The registered "strongest simple baseline" clause specified exactly
+this comparison before the data was touched; without it, an intermediate version
+of this run had already tabulated the −86.6 bps / t = −6.8 figure as a finding.
+
+
+## H060 — Twelve-month momentum is the one cross-sectional effect that survives on NSE at a cost-survivable horizon
+
+> **ID note.** This was first written as H059. An untracked module,
+> `src/research/families/final_tournament.py`, was created earlier the same
+> day and claims H059 for an executable F&O tournament; it has no recorded
+> result. Rather than collide, this entry took the next free number. If the
+> tournament module is abandoned, H059 is free again — but per the ledger's
+> own rule nothing is renumbered after it has been read against data.
+
+Status: **PROPOSED — awaiting confirmatory read on `forward`.** Registered
+2026-08-29 after an exploratory read of the 1995-2019 legacy panel. Lineage:
+[[H024]] (rejected), [[H026]], [[H030]], [[H033]].
+
+**The claim.** Among NSE EQ-series equities inside a point-in-time top-500-by-
+trailing-turnover universe, ranking on the twelve-month-minus-one-month price
+return produces positive market-excess returns over a twenty-session holding
+period, at a magnitude that survives a 40-bps round trip, in every market regime
+tested. The composite adding proximity to the 52-week high and inverse trailing
+volatility raises risk-adjusted return and reduces drawdown at the cost of return
+in strong small-cap regimes.
+
+**Why this is registered despite not being novel.** It is the most-published
+anomaly in finance and this project did not discover it. Three things make it
+worth a slot in this ledger anyway. It was **not selected by a search** — it is a
+literature prior taken to the data, which is the one circumstance in which the
+multiplicity argument that killed [[H024]] does not apply. It is **stable across
+four independent eras** including 25 years no hypothesis here had read. And it
+is the only effect this project has measured that is **large relative to its own
+transaction costs**, because it is the only one held for twenty sessions rather
+than one to ten.
+
+**Frozen economic bar for the confirmatory read.** Positive market-excess at
+session-clustered t >= 2.0 against the investable equal-weighted benchmark
+(`context.mkt_index_investable`, 20-session clock, 40 bps), and a portfolio
+Sharpe above that benchmark's over the identical span at 100 bps round trip —
+the pessimistic Indian delivery-cost figure, not the 40 bps used in exploration.
+Both clauses, or it fails. The bar is written before the window is opened and
+will not be reopened if it is missed.
+
+**Where it must be settled.** `forward` only — sessions after 2026-08-18. Every
+other partition in this project is spent, and the legacy panel became spent the
+moment this was read off it. At roughly 12 rebalances a year the confirmatory
+read is slow by construction; that is a property of a twenty-session rule and
+not a reason to test it somewhere cheaper.
+
+**What would falsify it.** A negative or flat market-excess on `forward`; a
+Sharpe below the investable benchmark at 100 bps; or a demonstration that the
+legacy panel's residual corporate-action tail rather than the ranking is
+producing the spread. The last is the live data risk: the legacy left tail runs
+2-3x the modern rate and the current guard is a blunt |daily return| > 50% drop.
+
+**What it is not.** Not a discovery, not an edge over other quantitative
+participants, and not capacity-constrained at INR 5-10 lakh in top-500 names —
+which cuts both ways, since a relationship that is neither novel nor capacity-
+limited is unlikely to be one institutional capital has left on the table. The
+honest expected value is a modest, well-understood risk premium, not alpha.
+
+
+## H045 — result: REJECTED on the full panel (2026-08-29)
+
+Status: **REJECTED.** The 2026-08-23 source probe read 50 rows — ten January-2024
+sessions across five large caps — and reported a median gross implied carry of
+**9.40%** against a 6.94% T-bill, a "roughly 2.5 percentage-point gross cushion".
+Run on the whole panel that cushion does not exist.
+
+**240,285 symbol-sessions, 287 symbols, 1,360 sessions, 2020-01 to 2026-08**,
+days-to-expiry between 5 and 45. Both legs in raw price space — futures prices
+are unadjusted, and joining a back-adjusted cash close would have returned the
+adjustment factor, which is exactly how `deal_vs_close_pct` failed in H043.
+
+Gross annualised carry: p10 **−4.53%**, median **5.97%**, p75 9.32%, p90 12.53%.
+
+**The median opportunity is already below a 6.5% risk-free rate before a single
+basis point of cost.** The probe's 9.40% was one window and five of the largest
+names in the market.
+
+Net of an all-in round trip, hold-to-expiry (futures converge to cash, so the
+gross return on deployed capital *is* the basis):
+
+| all-in cost | median net annualised | p90 | share beating 6.5% | share positive |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.40% | −3.14% | +2.92% | 1.34% | 29.5% |
+| 0.60% | −7.83% | −0.43% | **0.21%** | 8.2% |
+| 1.00% | −16.85% | −6.51% | 0.04% | 0.2% |
+
+At a realistic 0.60% — cash purchase, futures sale, and physical delivery at
+expiry, all of which carry STT in India — **512 of 240,274 opportunities beat the
+risk-free rate.** The cost annualises worse the shorter the hold: median net is
+−21.95% in the 5-10 day bucket against −1.34% at 30-45 days.
+
+**Capacity was never the binding constraint, contrary to the probe's read.** One
+lot's cash leg fits inside INR 10 lakh for 195 of 211 names (median lot INR
+662,100), and 90.6% of the few opportunities that do clear the bar are
+affordable. The probe concluded "the practical question is capital efficiency
+and cash-flow stress"; it is not. The carry itself is not there.
+
+No early-exit or leverage variant is worth building on top of a base rate this
+far under water, per the probe's own stated condition that the simple net
+hold-to-expiry baseline must clear first. It does not.

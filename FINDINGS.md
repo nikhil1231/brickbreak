@@ -3234,3 +3234,298 @@ portfolio constraint. On that object, at every entry window from 3 to 30
 sessions, selection carries nothing detectable and the takes make nothing. It
 does not retire the owner's live process, and the H058 execution defects mean
 the *registered* study still never ran.
+
+
+## 2026-08-29 — H059: the last F&O tournament found one real lead, not a strategy
+
+The final pass searched **918 configurations** across the four executable
+families left standing: H046 bulk-print premium, H037 raw-drawdown reversal,
+H026 relative strength inside the contraction screen, and futures-native
+basis/OI/price features. H039 low-delivery selloffs entered as a declared
+interaction. All 303,401 historical F&O symbol-sessions were used, every entry
+was priced at the actual futures open, and multi-session outcomes were admitted
+only when the same contract remained live through the exit. Known corporate-
+action spans and returns beyond the 60% bad-print guard were removed.
+
+The comparison was deliberately hostile to optimisation: 500 repetitions
+shuffled outcomes across symbols inside every entry session and retained the
+**best of all 918 cells** each time. The median null maximum was +71.8 bps after
+20 bps and its 95th percentile was +138.2 bps. The real maximum was +157.9 bps,
+for max-stat p = 0.022.
+
+### The survivor: an isolated strong stock inside a weak sector
+
+The winning rule is not H026's old long-only rule. On an F&O-adapted version of
+the original contraction screen, rank candidates by lagged sector breadth,
+**short the bottom name**, enter at the futures open and exit the same contract
+20 sessions later. It produced:
+
+| quantity | result |
+| --- | ---: |
+| entry sessions | 130 |
+| distinct symbols | 64 |
+| raw futures return, gross | +149.6 bps |
+| raw return after 20 bps | **+129.6 bps** |
+| F&O-universe excess, gross | +177.9 bps |
+| excess after 20 bps | **+157.9 bps** |
+| shuffled median / 95th-percentile maximum | +71.8 / +138.2 bps |
+| maximum-statistic p | **0.022** |
+| positive years | 6 of 7 |
+| first / second half excess after cost | +146.9 / +168.9 bps |
+
+The neighbouring portfolio sizes survive: bottom two and bottom three return
++115.8 and +110.1 bps excess after cost. Taking *all* candidates tied at the
+weakest breadth gives +139.9 bps; banning another entry in a symbol until its
+20-session trade exits gives +143.8 bps; and capping every outcome at +/-500 bps
+still gives +95.0 bps. Arbitrary tie-breaking and a few giant moves therefore
+do not explain the relationship.
+
+The screen is essential. Shorting the weakest-breadth names across the whole
+F&O universe earns only +19.7 bps after cost and turns negative in the second
+half. The object appears to be a stock whose own tape is still firm and
+contracted while participation across its sector has already weakened—an
+isolated holdout that catches down over the next month.
+
+### Why this is not ready to trade
+
+The headline Hansen-Hodrick t is 5.38, but that is the wrong number to become
+excited about: 130 overlapping 20-session entries contain only about **six
+non-overlapping blocks**. The effect climbs from roughly break-even at five
+sessions to +39-45 bps at 15 and +110-158 bps at 20, so the large value depends
+on the full futures cycle. Same-contract availability puts entries immediately
+after the prior expiry; a post-hoc split finds +256.6 bps after cost for calendar
+dates above 20 and only +5.1 bps on dates 1-5. That may be month-end/expiry
+mechanism or another fit and must not silently become a fifth parameter.
+
+The historical sector labels are a 2026 snapshot. A sector label is less
+return-sensitive than current index rank, which was removed from this screen,
+but historical membership and the breadth derived from it are still not truly
+point-in-time. And 2026 is the one negative year (-54.9 bps, only eight entries).
+
+The raw-money split is less pretty than the excess split: after 20 bps it is
++26.3 bps in the first half and +233.0 in the second. A stop grid does not fix
+that. No stop is best at +129.6 bps raw; 15%, 10%, 5% and 3% stops yield +115.1,
++76.7, +40.1 and +11.9 bps. This is a patient relative-weakness hold, not a
+tight-risk chart setup.
+
+### The other families
+
+| family | fitted best after 20 bps | why it is not promoted |
+| --- | ---: | --- |
+| bulk premium | +99.3 bps excess | five-session long-high-premium cell, but HH t 0.96, 4/7 years, no positive neighbour; opposite the immediate H046 continuation and isolated |
+| raw drawdown reversal | +86.7 bps excess | HH t 0.96; -68.5 first half, +241.9 second; broader bottom-three cells are positive but weaker |
+| futures basis | +10.3 bps excess | bottom-three, five sessions; HH t 0.86 and only +18.1 bps raw after cost—too small for its noise |
+| low-delivery selloff | -19.3 bps excess | clean rejection after 20 bps |
+
+### The concrete answer to “why not just optimise?”
+
+We did. An expanding walk-forward chose the best H026-family parameters using
+only prior years and traded the chosen cell in the next year. It kept choosing
+20-session **long-strength** configurations because those were the early
+sample's maxima. They worked in 2022-24, then the selected rule lost **438.9
+bps after cost in 2025**. Across five next-year cells, the optimiser averaged
+only +11.3 bps and was positive three times.
+
+ELI5: an optimiser is a talent-show judge watching 918 coin-flippers. It can
+always name a winner. The useful question is whether it has found a talented
+coin or merely the luckiest flip sequence. Here the later weak-breadth short is
+interesting because three neighbouring portfolio sizes, both halves, six years,
+outlier caps, cooldown and the full maximum-shuffle all point the same way. It
+still needs a new episode and correct historical sector membership before the
+word *edge* is earned.
+
+**Decision.** Retire the discretionary-price-action programme and the four
+failed H059 families. Do **not** archive the entire laboratory yet. Preserve one
+small successor: rebuild sector breadth point-in-time, express this as one
+entry per futures cycle with whole-lot capital constraints, and paper/forward
+track it. If that correction or the next 12-18 monthly cycles removes the
+relationship, retire the project without another search.
+
+---
+
+# Addendum — the 25 years nobody opened, and one thing that works (2026-08-29)
+
+**EXPLORATORY, and deliberately so.** Run on explicit instruction to stop
+protecting sample and find out whether anything at all is there. No partition
+discipline was applied and none is claimed. What makes the central result worth
+more than that label suggests is that its primary object — 1995–2019 — has never
+been read by any hypothesis in this project, and that the thing found in it was
+not chosen by a search.
+
+## The premise that was wrong: this project is not out of data
+
+Every data-state note since 2026-08-20 says the same thing — *the only untainted
+data this project has is the future*. That is true of the 2020–2026 panel and
+false of the disk. `data/normalized/legacy_bars_adj.parquet` holds **7,316,207
+bars, 1995–2019, 6,218 sessions, 3,278 symbols**, corporate-action reconciled
+against NSE's own feed back to 2003, bhavcopy-sourced and therefore free of
+survivorship bias.
+
+It has been used once, for the H043 dispersion check, which failed on event
+density and concluded the panel could not serve *that design*. It has never been
+used to test a directional hypothesis. It is roughly **five times** the modern
+panel's session count.
+
+## The screen: sixteen features, four eras, one survivor
+
+Top-500-by-trailing-turnover PIT universe, signal fixed at the close of D, entry
+at D+1's open, exit at the close of D+h, market-excess against the same-session
+eligible cohort, t computed over non-overlapping session blocks.
+
+Decile long-short in basis points, t in parentheses:
+
+| feature | 1995-2004 | 2005-2011 | 2012-2019 | 2020-2026 |
+| --- | ---: | ---: | ---: | ---: |
+| **mom_12_1** (h=5) | 107 (4.4) | 46 (2.3) | 49 (3.1) | 43 (3.1) |
+| **mom_12_1** (h=20) | 337 (3.3) | 98 (0.9) | 212 (3.0) | 192 (3.4) |
+| range_pos_52w (h=5) | 78 (3.9) | 41 (2.0) | 56 (3.9) | 16 (1.1) |
+| gap reversal (h=5) | −72 (−5.6) | −66 (−6.2) | −31 (−3.5) | −10 (−1.0) |
+| vol_20 (h=5) | −104 (−4.3) | −76 (−3.5) | −49 (−2.7) | −20 (−1.3) |
+| turn_surp (h=5) | −13 (−1.0) | −52 (−4.7) | −44 (−5.3) | −15 (−1.7) |
+
+**Twelve-month-minus-one-month momentum is the only feature positive at t ≳ 2 in
+all four eras.** The overnight-gap reversal and the low-volatility effect were
+strong before 2012 and have decayed to nothing — textbook alpha decay, visible
+here because the panel is long enough to see it.
+
+This is not a discovery. Momentum is the most-published anomaly in finance. It
+is reported because it is *present*, *stable*, and — unlike everything else this
+project has found — **at a horizon where the round trip is a quarter of the
+signal instead of three times it.** That is the whole difference.
+
+## The book, long-only, costed on both legs
+
+Top-500 PIT universe, 20-session rebalance, 40 bps round trip charged to the
+book **and to the benchmark**, every mask and score strictly prior-session:
+
+| panel | rule | CAGR | Sharpe | maxDD | benchmark |
+| --- | --- | ---: | ---: | ---: | --- |
+| legacy | momentum 12-1, n=40 | 21.88% | 0.83 | −78.3% | 10.20% / 0.51 / −75.6% |
+| legacy | mom+52wk+lowvol, n=20 | **23.91%** | **1.32** | −53.9% | ” |
+| modern | momentum 12-1, n=40 | **37.03%** | 1.34 | −32.8% | 21.75% / 1.16 / −24.7% |
+| modern | mom+52wk+lowvol, n=40 | 25.73% | **1.63** | −17.3% | ” |
+
+Eight of eight cells beat the investable equal-weighted benchmark on Sharpe.
+Adding the 52-week-high and low-volatility legs roughly doubles legacy Sharpe
+(0.83 → 1.32) and halves the drawdown, at the cost of return in the 2020–2026
+melt-up — the same regime dependence H033 ran into.
+
+**Limits.** 40 bps is optimistic for Indian delivery equity, where STT alone is
+20 bps a side; the book still clears at 100 bps but loses roughly 6pp of CAGR.
+Entry assumes the closing auction. Momentum's −78% drawdown in 2008 is real and
+is the known momentum-crash failure mode; a 200-day market-trend filter was
+tested and helps at top-500 while *hurting* at top-200, so it is not a clean fix
+and is not recommended. The legacy panel's left tail still runs 2–3× the modern
+rate from residual corporate actions, blunted here by discarding |daily return|
+> 50%.
+
+## Three of my own errors, recorded because they are the instructive part
+
+**A selection lookahead in a benchmark, which nearly produced a false defect.**
+The first pass built the comparison index by averaging session D's returns over
+a universe selected on session D's *turnover*. Turnover is known at the close;
+the return is not. That inflated the benchmark from 21.55% to 25.9% CAGR and
+generated an apparent 2–4pp "benchmark defect" in `context.mkt_index` that was
+reported before it was checked. It does not exist. This is the fifth lookahead
+in this project found somewhere other than the numerator, and the first found in
+a *benchmark* — the object nobody audits because it is not the thing being
+tested.
+
+**A decomposition that varied nothing.** The attempt to size that supposed
+defect compared "rebalance nightly" against "rebalance nightly": the harness's
+universe-refresh parameter made the drift branch unreachable, and it read a
+clean, confident **+0.00pp**. A null produced by a branch that never executes
+looks exactly like a null produced by nature.
+
+**A mean and a t computed on different samples.** The first event-study report
+averaged every event session and took its t over every h-th one, which let
+H053 print +51 bps with t = −0.5. Fixed to compute both on the same
+non-overlapping blocks.
+
+## `context.mkt_index` is a fair hurdle, measured
+
+Since the suspicion was raised it was settled properly. Changing one thing at a
+time, CAGR:
+
+| | legacy | modern | effect |
+| --- | ---: | ---: | --- |
+| A nightly universe, nightly EW reset (`mkt_index`) | 7.77% | 21.55% | |
+| B 20d universe, nightly EW reset | 7.82% | 22.03% | universe −0.05 / −0.48 |
+| C 20d universe, weights drift | 8.40% | 22.29% | rebalancing −0.58 / −0.26 |
+| D C + 40 bps round trip (investable) | 7.63% | 21.39% | cost +0.77 / +0.89 |
+
+Free minus investable: **+0.14pp / +0.16pp CAGR and +0.00 Sharpe.** The
+rebalancing term has the *wrong sign* for the story — letting weights drift
+earns more than resetting nightly, so daily rebalancing costs this cross-section
+money rather than manufacturing it — and the cost term cancels it.
+
+**H033 is untouched.** Nothing here revises the family verdict, and the earlier
+suggestion in this session that it might have been a benchmark artifact was
+wrong. `mkt_index_investable` is added to `market_regime` as the hurdle a
+portfolio claim should quote, with tests, as a documented near-equivalent rather
+than a correction.
+
+## H049 and H051–H054: all five rejected, on 31 years
+
+Five hypotheses were registered on 2026-08-24 and never run. The blocker was
+event density on the modern panel; the legacy panel removes it. Controls are the
+registered baselines — the ordinary weekend against the long closure, month-end
+against quarter-end, Monday–Thursday against Friday, and a gap-down without the
+intraday rejection. Ten cells per panel, against a permuted max-|t| floor built
+by shuffling each event mask within session:
+
+| test | panel | n | ev bps | ctrl bps | contrast | t | floor |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| H051 pre-closure decline, h=10 | legacy | 1,619 | +185.3 | +11.6 | +173.7 | 0.7 | 2.8 |
+| H052 post-closure laggard, h=5 | legacy | 2,890 | −27.9 | +26.6 | −54.5 | −1.0 | 2.8 |
+| H053 quarter-end loser, h=10 | legacy | 2,992 | −81.0 | +83.6 | −164.6 | −2.0 | 2.8 |
+| H054 Friday markdown, h=3 | legacy | 18,817 | −76.5 | −76.0 | **−0.5** | −0.0 | 2.8 |
+| H049 selloff + gap rejection, h=10 | legacy | 33,294 | +34.6 | −180.4 | +214.9 | **4.8** | 2.8 |
+| H049 selloff + gap rejection, h=10 | modern | 5,355 | −37.8 | −34.4 | −3.4 | −0.0 | 2.5 |
+
+**H054 is the cleanest kill in the set and the one worth reading twice.** The
+Friday arm loses 76.5 bps over three sessions on 18,817 events at t = −6.8
+against a zero baseline — a large, well-powered, highly significant effect in
+the *opposite* direction to the hypothesis, which is exactly the sort of number
+that gets written up. Its Monday-to-Thursday control loses **76.0 bps**. The
+entire effect is ordinary markdown continuation that has nothing to do with the
+weekend. The registered baseline was designed to catch precisely this and it
+caught it; without it this addendum would have claimed a discovery.
+
+**H049 is the only cell clearing its floor, and it is not money.** The contrast
+is real at t = 4.8, but it decomposes as +34.6 bps for the event arm against
+−180.4 for the control. The signal is *"do not buy the gap-down that keeps
+falling"*, not *"buy the one that rejects"* — the tradable arm earns 35 bps
+gross against an 80 bps bar and a 40 bps cost. And it is absent in 2020–2026
+(−3.4 bps, t = −0.0). This is the same shape as H030, H034, H046 and H057: a
+real gradient that is not a trade.
+
+**H052 cannot be tested at all**, which is a power result rather than a null.
+Market-wide closures of four or more calendar days produce **33 event sessions
+in 25 years and 5 in the modern panel**. No estimator recovers an 80 bps effect
+from that, and none should be attempted.
+
+## What this changes
+
+The lab's machinery is sound. Pointed at 25 years it had never seen, it
+reproduced every documented anomaly in the right direction and the right
+magnitude, watched two of them decay on schedule, and rejected five registered
+hypotheses with their own registered baselines. **The four programmes' null
+results were real nulls, not measurement failure.** That is worth as much as the
+positive finding.
+
+The recurring failure mode is now precisely nameable, and it is not overfitting.
+Across H030, H034, H044/H046, H049 and H057 the effect was real and smaller than
+the cost of collecting it — H057's *registered bar* was itself below a futures
+round trip. Every programme hunted at one-to-ten-session horizons where 40 bps
+is a third to three times the whole signal. The one thing that survives is the
+one thing held for twenty sessions.
+
+## Data state — updated 2026-08-29
+
+The 1995–2019 legacy panel has now been read for direction, exploratorily and
+without partition discipline. It is **spent for confirmatory purposes** and must
+be labelled that way in any successor. `test` remains spent (three reads),
+2020–2023 remains spent (two reads). The only confirmatory sample this project
+has is `forward` — sessions after 2026-08-18 — which is the correct place for
+the momentum claim registered as [[H060]] to be settled.
