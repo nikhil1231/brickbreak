@@ -143,15 +143,22 @@ def cluster_stats(y: pd.Series, dates: pd.Series, lags: int = 0) -> dict:
             a += 2.0 * weights(l) * float(s[l:] @ s[:-l])
         return a
 
-    acc = _acc(lambda l: 1.0)              # rectangular; see _hac_var_of_mean
-    if acc <= 0:
-        wide = min(2 * int(lags), g - 1)
-        acc = _acc(lambda l: max(0.0, 1.0 - l / (wide + 1.0)))
-    var = max(acc, 0.0) / (n ** 2)
-    if g > 1:
-        var *= g / (g - 1)
-
-    se = float(np.sqrt(var)) if var > 0 else np.nan
+    # A 20-session correction on 17 dated observations has less than one
+    # non-overlapping block. The rectangular covariance sum can cancel to
+    # machine epsilon and manufacture an eight-digit t-statistic. No estimator
+    # rescues that sample; report the naive diagnostic and leave corrected t
+    # unknown until there are more dates than lags.
+    if int(lags) >= g and int(lags) > 0:
+        se = np.nan
+    else:
+        acc = _acc(lambda l: 1.0)          # rectangular; see _hac_var_of_mean
+        if acc <= 0:
+            wide = min(2 * int(lags), g - 1)
+            acc = _acc(lambda l: max(0.0, 1.0 - l / (wide + 1.0)))
+        var = max(acc, 0.0) / (n ** 2)
+        if g > 1:
+            var *= g / (g - 1)
+        se = float(np.sqrt(var)) if var > 0 else np.nan
     naive_se = float(y.std() / np.sqrt(n)) if n > 1 else np.nan
 
     return {

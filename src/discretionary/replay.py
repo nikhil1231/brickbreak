@@ -51,7 +51,7 @@ from ..runner import burden as burden_mod
 from ..runner import gate
 from . import baselines, case as case_mod, decider as decider_mod
 from . import evaluate as evaluate_mod
-from . import generators, outcomes as outcomes_mod, prompt as prompt_mod
+from . import generators, outcomes as outcomes_mod
 from .decision import Decision, commit_hash, from_jsonl as decisions_from_jsonl
 from .decision import to_jsonl as decisions_to_jsonl
 from .opportunity import OpportunityDef, validate
@@ -264,11 +264,15 @@ def decide(replay_id: str, progress: Callable[[int, int], None] | None = None,
     everything = ai + arms
     r.decisions_path.write_text(decisions_to_jsonl(everything))
 
+    ai_prompt_hashes = sorted({x.prompt_hash for x in ai})
+    ai_prompt_versions = sorted({x.prompt_version for x in ai})
     seal = {
         "commit_hash": commit_hash(everything),
         "case_set_hash": case_mod.case_set_hash(cases),
-        "prompt_hash": prompt_mod.PROMPT_HASH,
-        "prompt_version": prompt_mod.PROMPT_VERSION,
+        "prompt_hash": (ai_prompt_hashes[0] if len(ai_prompt_hashes) == 1
+                        else ai_prompt_hashes),
+        "prompt_version": (ai_prompt_versions[0] if len(ai_prompt_versions) == 1
+                           else ai_prompt_versions),
         "model": d.model or "<provider-default>",
         "identity_hash": d.identity_hash(case_mod.case_set_hash(cases)),
         "n_decisions": len(everything),

@@ -49,8 +49,10 @@ TAKE_ALL = "take_all"
 RANDOM_MATCHED = "random_matched"
 TOP_N_BY_SCORE = "top_n_by_score"
 RANK_MODEL = "rank_model"
+ANNOUNCEMENT_HEURISTIC = "announcement_heuristic"
 
-BASELINES = (TAKE_ALL, RANDOM_MATCHED, TOP_N_BY_SCORE, RANK_MODEL)
+BASELINES = (TAKE_ALL, RANDOM_MATCHED, TOP_N_BY_SCORE, RANK_MODEL,
+             ANNOUNCEMENT_HEURISTIC)
 
 # Features the rank model is allowed. Few, point-in-time, and fixed: a baseline
 # whose feature set is tuned against the outcome stops being a baseline.
@@ -89,6 +91,35 @@ def _take_top(values: np.ndarray, n_take: int) -> np.ndarray:
     return mask
 
 
+def _matched_within_session(cases: list[Case], values: np.ndarray,
+                            n_take: int,
+                            take_by_session: dict[str, int] | None = None
+                            ) -> np.ndarray:
+    """Allocate a matched take count across sessions, then rank within each."""
+    df = pd.DataFrame({
+        "i": np.arange(len(cases)),
+        "date": [c.date for c in cases],
+        "score": values,
+    })
+    take = np.zeros(len(cases), dtype=bool)
+    groups = list(df.groupby("date", sort=True))
+    if take_by_session is not None:
+        for date, g in groups:
+            k = min(int(take_by_session.get(str(date), 0)), len(g))
+            idx = g["i"].to_numpy()
+            take[idx[_take_top(g["score"].to_numpy(), k)]] = True
+        return take
+    shares = np.array([len(g) for _, g in groups], dtype=float)
+    exact = shares / max(shares.sum(), 1) * n_take
+    alloc = np.floor(exact).astype(int)
+    for j in np.argsort(-(exact - alloc), kind="stable")[:n_take - alloc.sum()]:
+        alloc[j] += 1
+    for (_, g), k in zip(groups, alloc):
+        idx = g["i"].to_numpy()
+        take[idx[_take_top(g["score"].to_numpy(), int(k))]] = True
+    return take
+
+
 # ---------------------------------------------------------------------------
 # the arms
 # ---------------------------------------------------------------------------
@@ -101,20 +132,24 @@ def take_all(cases: list[Case], replay_id: str, **_: Any) -> list[Decision]:
 
 
 def random_matched(cases: list[Case], replay_id: str, n_take: int = 0,
-                   seed: int = 0, **_: Any) -> list[Decision]:
+                   seed: int = 0,
+                   take_by_session: dict[str, int] | None = None,
+                   **_: Any) -> list[Decision]:
     """A seeded coin at the AI's take rate — the null hypothesis of selection.
 
     The arm that says what "picking 61 of 500" is worth when the picking
     carries no information. An AI that cannot beat this has not selected.
     """
     rng = np.random.default_rng(seed)
-    mask = _take_top(rng.random(len(cases)), n_take)
+    mask = _matched_within_session(
+        cases, rng.random(len(cases)), n_take, take_by_session)
     return [_decide(c, replay_id, RANDOM_MATCHED, bool(m), 0.5,
                     f"seeded random selection at a matched {n_take}/{len(cases)} rate")
             for c, m in zip(cases, mask)]
 
 
 def top_n_by_score(cases: list[Case], replay_id: str, n_take: int = 0,
+                   take_by_session: dict[str, int] | None = None,
                    **_: Any) -> list[Decision]:
     """The generator's own ordering, at the AI's take rate.
 
@@ -135,23 +170,7 @@ def top_n_by_score(cases: list[Case], replay_id: str, n_take: int = 0,
             "top_n_by_score: the generator's score is constant, so this arm is "
             "an arbitrary pick, not a ranking. Read it as a second random arm.")
 
-    df = pd.DataFrame({
-        "i": np.arange(len(cases)),
-        "date": [c.date for c in cases],
-        "score": scores,
-    })
-    # Spread the budget across sessions in proportion to their share of cases,
-    # then top up the largest remainders so the total matches exactly.
-    take = np.zeros(len(cases), dtype=bool)
-    groups = list(df.groupby("date", sort=True))
-    shares = np.array([len(g) for _, g in groups], dtype=float)
-    exact = shares / max(shares.sum(), 1) * n_take
-    alloc = np.floor(exact).astype(int)
-    for j in np.argsort(-(exact - alloc), kind="stable")[:n_take - alloc.sum()]:
-        alloc[j] += 1
-    for (_, g), k in zip(groups, alloc):
-        idx = g["i"].to_numpy()
-        take[idx[_take_top(g["score"].to_numpy(), int(k))]] = True
+    take = _matched_within_session(cases, scores, n_take, take_by_session)
 
     note = ("the generator's score has no variation, so this is an arbitrary "
             "pick at a matched rate" if degenerate
@@ -160,8 +179,51 @@ def top_n_by_score(cases: list[Case], replay_id: str, n_take: int = 0,
             for c, m in zip(cases, take)]
 
 
+def announcement_heuristic(cases: list[Case], replay_id: str, n_take: int = 0,
+                           take_by_session: dict[str, int] | None = None,
+                           **_: Any) -> list[Decision]:
+    """Frozen subject/keyword read: the semantic straw-man H064 must beat."""
+    subject_score = {
+        "Bagging/Receiving of orders/contracts": 3.0,
+        "Monthly Business Updates": 1.5,
+        "Acquisition": 0.75,
+        "Agreements": 0.75,
+        "Memorandum of Understanding/Agreements": 0.25,
+        "Credit Rating": 0.0,
+        "Credit Rating- Revision": 0.0,
+        "Disclosure of other UPSI/material event": 0.0,
+        "Disclosure of material issue": -0.5,
+        "Change in Management": -0.75,
+        "Resignation": -1.0,
+        "Pendency of Litigation(s)/dispute(s) or the outcome impacting the Company": -1.5,
+        "Action(s) initiated or orders passed": -1.5,
+        "Action(s) taken or orders passed": -1.5,
+        "Defaults on Payment of Interest/Principal": -3.0,
+    }
+    positive = ("upgrade", "order", "contract", "award", "growth", "increase")
+    negative = ("downgrade", "default", "fraud", "penalty", "terminate",
+                "resign", "adverse")
+    scores = []
+    for case in cases:
+        block = case.blocks.get("announcement", {})
+        score = 0.0
+        for item in block.get("disclosures", []):
+            score += subject_score.get(str(item.get("subject", "")), 0.0)
+            text = str(item.get("details", "")).lower()
+            score += 0.4 * sum(word in text for word in positive)
+            score -= 0.7 * sum(word in text for word in negative)
+        scores.append(score)
+    mask = _matched_within_session(
+        cases, np.asarray(scores, dtype=float), n_take, take_by_session)
+    return [_decide(c, replay_id, ANNOUNCEMENT_HEURISTIC, bool(m), 0.5,
+                    "fixed disclosure-subject and keyword score")
+            for c, m in zip(cases, mask)]
+
+
 def rank_model(cases: list[Case], replay_id: str, n_take: int = 0,
-               fit_frame: pd.DataFrame | None = None, **_: Any) -> list[Decision]:
+               fit_frame: pd.DataFrame | None = None,
+               take_by_session: dict[str, int] | None = None,
+               **_: Any) -> list[Decision]:
     """A least-squares rank model, refit walk-forward and never in sample.
 
     The strongest of the simple alternatives, and the one whose construction is
@@ -222,7 +284,7 @@ def rank_model(cases: list[Case], replay_id: str, n_take: int = 0,
         pred[g["i"].to_numpy()] = np.column_stack([np.ones(len(Z)), Z]) @ beta
 
     scored = np.where(np.isfinite(pred), pred, -np.inf)
-    mask = _take_top(scored, n_take)
+    mask = _matched_within_session(cases, scored, n_take, take_by_session)
     return [_decide(c, replay_id, RANK_MODEL, bool(m), 0.5,
                     "walk-forward least-squares rank model on fixed features")
             for c, m in zip(cases, mask)]
@@ -233,6 +295,7 @@ _REGISTRY: dict[str, Callable[..., list[Decision]]] = {
     RANDOM_MATCHED: random_matched,
     TOP_N_BY_SCORE: top_n_by_score,
     RANK_MODEL: rank_model,
+    ANNOUNCEMENT_HEURISTIC: announcement_heuristic,
 }
 
 
@@ -246,6 +309,13 @@ def run(names: tuple[str, ...], cases: list[Case], ai_decisions: list[Decision],
     """Every requested arm, matched to the AI's realised take rate."""
     rate = take_rate(ai_decisions)
     n_take = int(round(rate * len(cases)))
+    case_dates = {c.case_id: c.date for c in cases}
+    take_by_session: dict[str, int] = {}
+    for decision in ai_decisions:
+        if not decision.took or decision.case_id not in case_dates:
+            continue
+        date = str(case_dates[decision.case_id])
+        take_by_session[date] = take_by_session.get(date, 0) + 1
     logger.info("baselines matched to a take rate of %.1f%% (%d of %d)",
                 rate * 100, n_take, len(cases))
 
@@ -255,5 +325,6 @@ def run(names: tuple[str, ...], cases: list[Case], ai_decisions: list[Decision],
             raise BaselineError(
                 f"unknown baseline {name!r}; registered: {available()}")
         out.extend(_REGISTRY[name](cases, replay_id, n_take=n_take, seed=seed,
-                                   fit_frame=fit_frame))
+                                   fit_frame=fit_frame,
+                                   take_by_session=take_by_session))
     return out

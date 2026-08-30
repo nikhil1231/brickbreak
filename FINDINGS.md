@@ -1,4 +1,88 @@
-# FINDINGS — Breeze historical data feasibility (Phase 0)
+# FINDINGS
+
+## H064-H065 — Low-capacity announcement AI does not produce edge (2026-08-30)
+
+**Answer: retire this programme.** We tested the strongest version the current
+point-in-time data can support: long-only NSE EQ names with trailing 20-session
+median traded value of INR 0.5–25 crore, after material corporate disclosures.
+This is a **low-capacity** universe, not a historical small-cap universe;
+point-in-time market capitalisation is not available.
+
+### The data and seal
+
+The feed's one-line summary was inadequate (415/699 sampled disclosure records
+had fewer than 100 characters), so linked NSE attachments were archived through
+the data module before judging. Of 696 unique attachments, 695 downloaded and
+689 yielded text; the final 640-case set carried text for 692/699 disclosure
+rows. Issuer names, symbols, CIN/DIN, scrip codes, email/web fields, obvious
+letterheads, signatures and calendar dates were scrubbed. The remaining
+historical-memory risk cannot be proved away, so the replay is exploratory.
+
+`RPL_H064_ANNOUNCEMENT_AI_V1` used 640 cases, four per each of 160 seeded train
+sessions, case hash `6bca49067378a63b`, prompt
+`announcement_batch_v1`, Codex `gpt-5.6-terra`, zero failed calls. Decisions
+were sealed before outcomes. V1's evidence record is void because two
+diagnostics were wrong at the realised 2.66% take rate: baselines were matched
+to total count rather than the same take sessions, and the HH estimator was
+asked for 19 lags from only 17 dated observations, manufacturing enormous t
+statistics through near-zero variance. V2 (`...V2_BASELINE_REPAIR`) retains the
+identical cases and AI decisions, matches every baseline inside the same
+sessions and returns corrected t as unknown when dates do not exceed lags.
+
+### H064: the AI did not select or rank
+
+The judge returned 17 TAKE, 119 WATCH and 504 SKIP decisions.
+
+| 20-session excess | mean gross | after 40 bps | vs AI |
+| --- | ---: | ---: | ---: |
+| AI TAKE | **−113.1 bps** | **−153.1 bps** | — |
+| all material disclosures | +13.5 | −26.5 | AI lift **−230.3** (session paired) |
+| top 60d RS, same 17 sessions | +226.9 | +186.9 | AI minus baseline **−340.1** |
+| frozen subject/keyword heuristic, same sessions | +154.6 | +114.6 | AI minus baseline −267.8 |
+| walk-forward fixed-price model, same sessions | +108.7 | +68.7 | AI minus baseline −221.8 |
+
+Seventeen take sessions provide zero complete non-overlapping 20-session
+blocks, so no corrected t exists. That makes the exact effect imprecise, but it
+does not leave a promising lead: the mean is negative, loss magnitude exceeds
+win magnitude, and every non-random baseline is positive on the identical
+dates. Nor did the action threshold hide a useful score. Across all 620 cases
+with outcomes, AI confidence rank IC was **0.005 (HH t 0.14)**; choosing the
+highest-confidence name each session produced −26.0 bps gross and −39.5 bps
+lift. AI action followed by confidence was worse (−61.3 bps gross, −74.8 lift).
+
+### H065: the only mechanical lead did not replicate
+
+The frozen announcement heuristic's train diagnostic—one pick per session—was
++131.6 bps gross excess (+91.6 after cost), +118.1 bps lift, HH t 1.21. The
+coarse pattern was plausible: acquisitions/orders positive, resignations
+negative. H065 therefore froze the four constructive exact subjects before
+opening validation or test: acquisitions, agreements, orders/contracts and
+monthly business updates.
+
+| partition | all material | selected | selected gross | net | lift | HH t |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| validation | 3,408 | 731 | +13.8 bps | **−26.2** | −0.6 | −0.01 |
+| test | 4,030 | 979 | **−96.4 bps** | **−136.4** | +11.1 | 0.27 |
+| pooled | — | — | — | — | **+4.6** | **0.12** |
+
+Every frozen clause failed. Category stability failed too: acquisitions were
++48.3 bps in validation and −133.0 in test; orders/contracts +121.0 and −42.9.
+The train lead was sample noise/regime concentration, not disclosure drift.
+
+### Consequence
+
+There is no evidence here that an AI reading public disclosures in lower-
+capacity names adds alpha, and no evidence for the simpler constructive-subject
+strategy. The broad pool itself returned +13.5 bps gross in train and the
+selected rules were below costs out of sample. Do not rescue this by forcing a
+higher AI take rate, adding subject/keyword combinations, changing the turnover
+band or scanning horizons: those are new searches on outcomes already read.
+The only live investable research result remains H060's long-history momentum
+rule and its forward registration; this programme adds no new edge.
+
+---
+
+## Breeze historical data feasibility (Phase 0)
 
 **Status: COMPLETE.** Run date 2026-08-18/19. `breeze_connect==1.0.69`, Python 3.11.8.
 Evidence: ~200 live API calls, all logged in `data/metadata/api_calls.jsonl`,

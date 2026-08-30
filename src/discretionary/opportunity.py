@@ -90,7 +90,8 @@ from ..research_data import splits
 
 VALID_PARTITIONS = ("train", "validation", "test", "forward")
 VALID_ROLES = ("generation", "exploratory", "confirmatory")
-VALID_SAMPLE_STRATEGIES = ("stratified_by_session", "random", "all")
+VALID_SAMPLE_STRATEGIES = (
+    "stratified_by_session", "clustered_by_session", "random", "all")
 
 
 class OpportunityValidationError(RuntimeError):
@@ -222,6 +223,7 @@ MIN_INDEPENDENT_BLOCKS = 8
 # The context blocks a case may carry. Named here rather than in `case` so that
 # a definition can be validated without building anything.
 CONTEXT_BLOCKS = (
+    "announcement",
     "price_history",
     "location",
     "market",

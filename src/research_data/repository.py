@@ -146,8 +146,17 @@ def xbrl_manifest() -> pd.DataFrame:
     return pd.read_parquet(XBRL_MANIFEST)
 
 
+def announcement_attachment_texts(
+    urls: Iterable[str], *, max_chars: int = 6000
+) -> dict[str, str]:
+    """Cached text of NSE announcement attachments; never fetches the network."""
+    from .sources import announcement_attachments
+    return announcement_attachments.text_for_urls(urls, max_chars=max_chars)
+
+
 __all__ = [
     "announcements",
+    "announcement_attachment_texts",
     "behaviour_panel",
     "bulk_1515_bars",
     "bulk_1515_manifest",

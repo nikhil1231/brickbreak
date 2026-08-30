@@ -21,11 +21,12 @@ from typing import Any, Callable
 from .case import Case
 from .decision import Decision
 from .providers import api as api_provider
+from .providers import batch_cli as batch_cli_provider
 from .providers import cli as cli_provider
 
 logger = logging.getLogger(__name__)
 
-PROVIDERS = ("api", "cli")
+PROVIDERS = ("api", "cli", "batch_cli")
 
 
 class DeciderError(RuntimeError):
@@ -63,8 +64,12 @@ def decide(cases: list[Case], provider: str = "auto", model: str = "",
         out = api_provider.decide(
             cases, model=model or api_provider.DEFAULT_MODEL, horizon=horizon,
             replay_id=replay_id, progress=progress, **kwargs)
-    else:
+    elif provider == "cli":
         out = cli_provider.decide(
+            cases, model=model or None, horizon=horizon, replay_id=replay_id,
+            progress=progress, **kwargs)
+    else:
+        out = batch_cli_provider.decide(
             cases, model=model or None, horizon=horizon, replay_id=replay_id,
             progress=progress, **kwargs)
 

@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 
 from ..alpha_eval.guards import assert_no_forward_labels
-from ..research_data import frame
+from ..research_data import frame, repository
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,26 @@ DEFAULT_MIN_TV_CR = 1.0
 # Also universe construction: it is a statement about what can be assessed, not
 # about what is attractive.
 DEFAULT_MIN_HISTORY_SESSIONS = 60
+
+# Fixed before H064 saw outcomes. Exact subjects avoid turning generic
+# "Updates" and routine compliance notices into a semantic fishing net.
+MATERIAL_ANNOUNCEMENT_SUBJECTS = frozenset({
+    "Acquisition",
+    "Action(s) initiated or orders passed",
+    "Action(s) taken or orders passed",
+    "Agreements",
+    "Bagging/Receiving of orders/contracts",
+    "Change in Management",
+    "Credit Rating",
+    "Credit Rating- Revision",
+    "Defaults on Payment of Interest/Principal",
+    "Disclosure of material issue",
+    "Disclosure of other UPSI/material event",
+    "Memorandum of Understanding/Agreements",
+    "Monthly Business Updates",
+    "Pendency of Litigation(s)/dispute(s) or the outcome impacting the Company",
+    "Resignation",
+})
 
 
 class GeneratorError(RuntimeError):
@@ -249,6 +269,75 @@ def contraction_breakout(panel: pd.DataFrame, **overrides: Any) -> pd.DataFrame:
     })
 
 
+@register("low_capacity_announcement")
+def low_capacity_announcement(
+    panel: pd.DataFrame,
+    min_tv_cr: float = 0.5,
+    max_tv_cr: float = 25.0,
+    min_price: float = 20.0,
+    min_history: int = DEFAULT_MIN_HISTORY_SESSIONS,
+    dataset_version: str = "v1",
+) -> pd.DataFrame:
+    """Material disclosures in a point-in-time low-*capacity* universe.
+
+    This intentionally does not say small-cap. Historical market capitalisation
+    is not in the data module; trailing traded value is, and is the executable
+    constraint the INR 5-10 lakh mission actually needs. Multiple disclosures
+    by one company before the same open become one case so that a prolific
+    filer cannot receive several positions on the same information set.
+    """
+    d = _liquid(panel, min_tv_cr, min_history).copy()
+    needed = {"symbol", "date", "median_tv_20_cr", "close"}
+    missing = sorted(needed - set(d.columns))
+    if missing:
+        raise GeneratorError(
+            f"low_capacity_announcement needs panel columns {missing}")
+    d = d[(d["median_tv_20_cr"] <= max_tv_cr) & (d["close"] >= min_price)]
+
+    events = frame.load_events("announcements", version=dataset_version,
+                               partition=None)
+    events = events.copy()
+    events["subject"] = events["subject"].fillna("").str.strip()
+    events = events[events["subject"].isin(MATERIAL_ANNOUNCEMENT_SUBJECTS)]
+    events = events.rename(columns={"first_tradable_session": "date"})
+    events["date"] = pd.to_datetime(events["date"])
+    urls = (events["attachment_url"].dropna().astype(str)
+            if "attachment_url" in events.columns else pd.Series(dtype=str))
+    attachment_text = repository.announcement_attachment_texts(
+        urls, max_chars=6000)
+
+    joined = events.merge(
+        d[["symbol", "date", "median_tv_20_cr", "rs_60d_vs_mkt", "ret_60d"]],
+        on=["symbol", "date"], how="inner")
+    if joined.empty:
+        return pd.DataFrame(columns=REQUIRED_COLUMNS)
+
+    rows: list[dict[str, Any]] = []
+    for (symbol, date), g in joined.groupby(["symbol", "date"], sort=True):
+        disclosures = []
+        for r in g.sort_values("available_at").itertuples(index=False):
+            disclosures.append({
+                "subject": str(r.subject),
+                "details": str(r.details or "")[:2400],
+                "company": str(r.company or ""),
+                "attachment_text": attachment_text.get(
+                    str(getattr(r, "attachment_url", "")), ""),
+            })
+        first = g.iloc[0]
+        score = first.get("rs_60d_vs_mkt")
+        if not np.isfinite(float(score)):
+            score = first.get("ret_60d", 0.0)
+        rows.append({
+            "symbol": str(symbol),
+            "date": pd.Timestamp(date),
+            "generator_score": float(score) if np.isfinite(float(score)) else 0.0,
+            "generator_reason": (
+                "material disclosure inside the frozen low-capacity band"),
+            "announcements": disclosures,
+        })
+    return pd.DataFrame(rows)
+
+
 # ---------------------------------------------------------------------------
 # sampling — part of the frozen definition, never an afterthought
 # ---------------------------------------------------------------------------
@@ -283,6 +372,33 @@ def sample(candidates: pd.DataFrame, n: int, strategy: str = "stratified_by_sess
     if strategy == "random":
         idx = rng.choice(len(candidates), size=n, replace=False)
         out = candidates.iloc[np.sort(idx)].reset_index(drop=True)
+        _refuse_degenerate_shape(out, min_per_session)
+        return out
+    if strategy == "clustered_by_session":
+        # Four names per session gives the paired contrast room to distinguish
+        # selection while spreading 640 H064 cases across 160 sessions (eight
+        # approximately independent 20-session blocks). The shape is fixed,
+        # not chosen after inspecting outcomes.
+        per_session = 4
+        groups = [(date, g) for date, g in candidates.groupby("date", sort=True)
+                  if len(g) >= per_session]
+        need_sessions = int(np.ceil(n / per_session))
+        if len(groups) < need_sessions:
+            raise GeneratorError(
+                f"clustered_by_session needs {need_sessions} sessions with at "
+                f"least {per_session} cases; found {len(groups)}")
+        chosen = rng.choice(len(groups), size=need_sessions, replace=False)
+        picked = []
+        remaining = n
+        for j in sorted(chosen):
+            idx = groups[j][1].index.to_numpy(copy=True)
+            rng.shuffle(idx)
+            take = min(per_session, remaining)
+            picked.extend(idx[:take])
+            remaining -= take
+            if remaining == 0:
+                break
+        out = candidates.loc[sorted(picked)].reset_index(drop=True)
         _refuse_degenerate_shape(out, min_per_session)
         return out
     if strategy != "stratified_by_session":

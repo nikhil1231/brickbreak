@@ -239,8 +239,8 @@ def test_watch_does_not_count_as_a_position():
     assert B.take_rate(ai) == 0.0
 
 
-def test_top_n_by_score_spreads_across_sessions():
-    """A global cut on a regime-drifting score picks sessions, not names."""
+def test_top_n_by_score_matches_the_ai_take_sessions():
+    """The comparison is cross-sectional, so both arms use the same dates."""
     cases = []
     for s, day in enumerate(("2022-01-03", "2022-06-01")):
         for i in range(10):
@@ -255,8 +255,8 @@ def test_top_n_by_score_spreads_across_sessions():
     by_day: dict[str, int] = {}
     for c, d in zip(cases, arms):
         by_day[c.date] = by_day.get(c.date, 0) + int(d.took)
-    assert by_day == {"2022-01-03": 3, "2022-06-01": 3}, (
-        f"a global cut would have taken all six from one session: {by_day}")
+    assert by_day == {"2022-01-03": 6, "2022-06-01": 0}, (
+        f"the baseline must match the AI's per-session take counts: {by_day}")
 
 
 def test_a_degenerate_generator_score_is_reported_not_hidden(caplog):

@@ -4118,3 +4118,112 @@ versus 0.474**. Whole-lot versions lost by **0.50pp at INR 2 crore** and
 **0.42pp at INR 10 crore**. INR 50 lakh averaged 1.7 legs, so its high Sharpe is
 a mostly-cash capacity failure, not a 20-name wheel. Under the stopping rule,
 H063 is rejected without another parameter search.
+
+
+## H064 — AI can distinguish investable corporate disclosures in low-capacity NSE equities
+
+Status: **REJECTED AS AN AI SELECTOR (2026-08-30).** Frozen before outcome
+access. This is the
+first direct return to MISSION's operational question after the price-action
+and wheel programmes: use an INR 5–10 lakh book where limited capacity may be
+an advantage. It is not described as a small-cap test because the archive does
+not contain point-in-time historical market capitalisation. The honest
+observable is **capacity**: trailing traded value known before the decision.
+
+**Claim.** Among non-ETF NSE EQ names with a point-in-time 20-session median
+traded value of INR 0.5–25 crore and a price of at least INR 20, on mornings
+after a material corporate disclosure, an anonymised AI reading the disclosure
+and the price/market context can select a long-only subset whose 20-session
+excess return is better than both the full candidate pool and strong simple
+selection rules. Material disclosures are frozen to: orders/contracts,
+acquisitions, credit ratings, defaults, management changes/resignations,
+litigation/regulatory action, material issues, agreements/MOUs, monthly
+business updates and other material/UPSI disclosures. Routine compliance,
+meeting notices, generic updates and result notices are excluded.
+
+**Why it might work.** In this capacity band the disclosure is often too small
+or operationally awkward for large funds, while the difficult part is semantic:
+whether an order is binding rather than promotional, a rating change is real
+balance-sheet information, an acquisition is accretive or empire-building, or
+a management event damages credibility. A language model may retain useful
+context that a fixed keyword or price score discards.
+
+**Why it might fail.** Announcement prose may contain almost no incremental
+information; the market may incorporate it at the opening auction; AI may
+merely rediscover whether the subject sounds positive; distinctive text can
+leak company identity through model memory even after names and dates are
+removed; and low traded value may proxy for worse execution rather than more
+alpha.
+
+**Frozen experiment.** Use dataset v1 `train`, exploratory, with entry at the
+first tradable session's open and horizons 5/10/20 sessions, primary 20. Draw
+640 cases as four disclosures from each of 160 seeded sessions so the
+session-paired contrast is identified. The judge sees identity-scrubbed current
+disclosures, compact prior price/volume/market context and no outcomes. Match
+the realised TAKE rate with seeded random selection, 60-day relative-strength
+ranking, a walk-forward fixed-feature price model and a frozen announcement
+subject/keyword heuristic. The AI must clear **all** of: at least **100 bps**
+TAKE-versus-pool excess lift, at least **50 bps** over the best matched-rate
+baseline, and `|HH t| >= 2.0`. Report gross and the standard 40-bps round-trip
+cost. Any result is hypothesis-generating historical evidence; only a frozen
+forward replay can support an AI-memory-free claim.
+
+**Stopping rule.** If AI does not beat the best simple baseline, do not tune
+the liquidity band, disclosure list, prompt, take rate or horizon on these
+outcomes. A content-specific pattern may be registered separately only if it
+is visible as a broad, economically coherent subgroup rather than a winning
+cell in a scan.
+
+**Result.** The sealed replay judged 640 attachment-enriched cases over 160
+sessions with zero failed model calls. It took only 17 (2.66%), so the replay
+has fewer than one independent 20-session block and cannot support a precise
+effect estimate. The direction is nevertheless hostile, not tantalising: AI
+TAKES averaged **−113.1 bps gross excess** and **−153.1 bps after costs**,
+against +13.5 bps gross for the full candidate pool. TAKE-versus-pool lift was
+**−230.3 bps**, and the same-session 60-day relative-strength baseline beat AI
+by **340.1 bps**. Ranking all four cases in every session by AI confidence also
+failed (mean rank IC **0.005**, HH t **0.14**; top-confidence lift −39.5 bps).
+The model neither found a tradeable subset nor supplied a useful continuous
+ranking. The first report's baseline comparisons and huge t-statistics were
+voided: baselines had been matched on total count rather than inside the AI's
+take sessions, and 19 HH lags on 17 dates could cancel variance to machine
+epsilon. `RPL_H064_ANNOUNCEMENT_AI_V2_BASELINE_REPAIR` preserves the identical
+AI decisions and case hash while repairing both diagnostics.
+
+
+## H065 — Constructive material disclosures drift in low-capacity equities
+
+Status: **REJECTED (2026-08-30).** Generated by H064 train and frozen before
+validation/test outcomes. H064's AI selector failed, but its announcement
+heuristic was written before outcomes and its coarse category pattern was
+economically coherent: acquisitions and orders were positive, resignations
+negative. This successor tests that content polarity directly; it is not a
+rescue of H064's AI claim.
+
+**Rule.** In the identical point-in-time low-capacity universe (NSE EQ,
+non-ETF, INR 0.5–25 crore trailing 20-session median traded value, price at
+least INR 20), buy at the first tradable open after a disclosure whose exact
+NSE subject is one of: `Bagging/Receiving of orders/contracts`, `Monthly
+Business Updates`, `Acquisition`, or `Agreements`. MOUs are excluded because
+they are non-binding; credit ratings are excluded because the subject alone
+does not say upgrade or downgrade. Hold 20 sessions and charge 40 bps.
+
+**Frozen bar.** Run dataset v1 `validation` and `test` separately. In **both**
+partitions, selected mean excess after 40-bps cost must be positive and gross
+TAKE-versus-all-material-disclosures lift must be at least 50 bps. The pooled
+session series must also have Hansen–Hodrick `t >= 2.0`. No subject additions,
+keyword variants, liquidity changes, momentum overlays or alternate horizons
+may rescue a failure.
+
+**Falsifier and stopping rule.** Failure in either partition rejects H065 and
+retires this announcement programme. A positive aggregate carried by only one
+subject or one partition is regime/category concentration, not an edge.
+
+**Result.** It failed every clause. Validation held 3,408 material-disclosure
+cases and 731 selected cases: selected excess was **+13.8 bps gross / −26.2 bps
+after costs**, with **−0.6 bps** lift. Test held 4,030/979: **−96.4 bps gross /
+−136.4 bps after costs**, with **+11.1 bps** lift. Pooled lift over 520 sessions
+was **+4.6 bps, HH t = 0.12**. The apparent train category pattern did not
+replicate: acquisitions read +48.3 bps in validation and −133.0 bps in test;
+orders/contracts +121.0 and −42.9 bps. The programme is retired under its own
+stopping rule without another subject, keyword, liquidity or horizon search.

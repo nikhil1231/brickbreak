@@ -52,6 +52,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -287,6 +288,103 @@ def _as_float(v) -> float:
         return np.nan
 
 
+def _announcement_block(row: pd.Series, anonymise: bool) -> dict[str, Any]:
+    """Disclosure text available before the decision, with identity scrubbed.
+
+    The source rows have already been moved to their first tradable session by
+    ``frame.load_events``. This function does no timing work; it only prepares
+    what the judge sees. Amounts and operational facts survive because they are
+    the substance being judged. Company, symbol, ISIN and calendar dates do not.
+    """
+    raw = row.get("announcements", [])
+    if not isinstance(raw, (list, tuple)):
+        raw = []
+    symbol = str(row.get("symbol", "")).strip()
+    company_names = {
+        str(item.get("company", "")).strip()
+        for item in raw if isinstance(item, dict) and item.get("company")
+    }
+
+    def scrub(value: Any) -> str:
+        text = str(value or "")
+        if not anonymise:
+            return text
+        for identity in sorted(company_names | ({symbol} if symbol else set()),
+                               key=len, reverse=True):
+            if identity:
+                text = re.sub(re.escape(identity), "[company]", text,
+                              flags=re.IGNORECASE)
+        text = re.sub(r"\bINE[A-Z0-9]{9}\b", "[isin]", text,
+                      flags=re.IGNORECASE)
+        text = re.sub(r"\bCIN\s*:?\s*[A-Z0-9-]+", "CIN: [redacted]", text,
+                      flags=re.IGNORECASE)
+        text = re.sub(r"\bDIN\s*:?\s*\d+", "DIN: [redacted]", text,
+                      flags=re.IGNORECASE)
+        text = re.sub(r"\bScrip\s+Code\s*:?\s*[A-Z0-9-]+",
+                      "Scrip Code: [redacted]", text, flags=re.IGNORECASE)
+        text = re.sub(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b",
+                      "[email]", text)
+        text = re.sub(r"\b(?:https?://|www\.)\S+", "[website]", text,
+                      flags=re.IGNORECASE)
+        text = re.sub(r"\S+@\S+", "[email]", text)
+        text = re.sub(
+            r"\b(?:0?[1-9]|[12][0-9]|3[01])[-/.](?:0?[1-9]|1[0-2])"
+            r"[-/.](?:19|20)\d{2}\b", "[date]", text)
+        text = re.sub(
+            r"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|"
+            r"Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|"
+            r"Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+(?:19|20)\d{2}\b",
+            "[date]", text, flags=re.IGNORECASE)
+        text = re.sub(
+            r"\b\d{1,2}(?:st|nd|rd|th)?\s+"
+            r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|"
+            r"Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|"
+            r"Nov(?:ember)?|Dec(?:ember)?),?\s+(?:19|20)\d{2}\b",
+            "[date]", text, flags=re.IGNORECASE)
+        text = re.sub(r"\b(?:19|20)\d{2}\b", "[year]", text)
+
+        # Most exchange PDFs begin with a letterhead and exchange addresses.
+        # Keep the filing from its own subject/salutation, not the metadata
+        # that makes the issuer trivially searchable. Signatures are equally
+        # identifying and add no economic content.
+        first = text[:2500]
+        markers = [m for marker in (r"\n\s*Sub(?:ject)?\s*:", r"\n\s*Dear Sir")
+                   if (m := re.search(marker, first, flags=re.IGNORECASE))]
+        if markers:
+            text = text[min(m.start() for m in markers):]
+        close = re.search(r"\n\s*(?:Thanking you|Yours faithfully)", text,
+                          flags=re.IGNORECASE)
+        if close and close.start() > 200:
+            text = text[:close.start()]
+
+        noisy = re.compile(
+            r"(?:national stock exchange|\bbse limited\b|exchange plaza|"
+            r"pj towers|dalal street|bandra.kurla|registered office|"
+            r"corporate office|CIN:\s*\[redacted\]|\[email\]|\[website\]|"
+            r"\bT\s*\+91|\bF\s*\+91)", re.IGNORECASE)
+        text = "\n".join(line for line in text.splitlines()
+                         if not noisy.search(line))
+        return text
+
+    disclosures = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        disclosures.append({
+            "subject": scrub(item.get("subject", "")),
+            "details": scrub(item.get("details", "")),
+            "attachment_text": scrub(item.get("attachment_text", "")),
+        })
+    return {
+        "n_disclosures": len(disclosures),
+        "disclosures": disclosures,
+        "_caveat": (
+            "published before this session's open; identity and calendar date "
+            "removed, wording otherwise preserved" if anonymise else
+            "published before this session's open"),
+    }
+
+
 def _analogues(row: pd.Series, history: pd.DataFrame, k: int,
                anonymise: bool) -> dict[str, Any]:
     """The k most similar situations that had already happened by date D.
@@ -341,6 +439,9 @@ def build_one(row: pd.Series, session: pd.DataFrame, bars: pd.DataFrame,
               case_id: str) -> Case:
     """One case. `session` is date D's whole cross-section; `history` is prior."""
     out: dict[str, Any] = {}
+
+    if "announcement" in blocks:
+        out["announcement"] = _announcement_block(row, anonymise)
 
     if "price_history" in blocks:
         out["price_history"] = _price_history(
@@ -460,6 +561,7 @@ def _analogue_pool(panel: pd.DataFrame, bars: pd.DataFrame,
 # ---------------------------------------------------------------------------
 
 _HEADINGS = {
+    "announcement": "CORPORATE DISCLOSURE KNOWN BEFORE THIS OPEN",
     "price_history": "PRICE HISTORY (rebased to 100 at the window start)",
     "location": "LOCATION IN THE RANGE",
     "market": "THE MARKET, as of the previous close",
@@ -518,6 +620,17 @@ def render(case: Case) -> str:
                     lines.append(
                         f"{r['t']} | {r['o']} | {r['h']} | {r['l']} | "
                         f"{r['c']} | {r['vol_x_median']}")
+        elif name == "announcement":
+            lines.append(f"number of disclosures: {body.get('n_disclosures', 0)}")
+            for i, item in enumerate(body.get("disclosures", []), 1):
+                lines.append(f"disclosure {i} subject: {item.get('subject', '')}")
+                lines.append(f"disclosure {i} text: {item.get('details', '')}")
+                if item.get("attachment_text"):
+                    lines.append(
+                        f"disclosure {i} attachment text: "
+                        f"{item.get('attachment_text', '')}")
+            if "_caveat" in body:
+                lines.append(f"note: {body['_caveat']}")
         else:
             for k, v in _ordered(name, body):
                 if k in BOOLEAN_COLUMNS and v is not None:
