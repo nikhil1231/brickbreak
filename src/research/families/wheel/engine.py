@@ -126,6 +126,7 @@ class CostModel:
     exchange_option: float = 0.000500       # NSE txn charge on premium
     sebi_fee: float = 0.000001              # ₹10 per crore
     gst: float = 0.18                       # on exchange + sebi + brokerage
+    stamp_option_buy: float = 0.00003       # buyer only, on premium
     brokerage_per_lot_order: float = 0.0    # ₹ flat; only bites a quantised book
 
     # --- the spread, which no archive records ---
@@ -150,6 +151,12 @@ class CostModel:
         variable = self.exchange_option + self.sebi_fee
         return np.asarray(premium_value) * (
             stt + variable + self.gst * variable)
+
+    def option_buy(self, premium_value: pd.Series | np.ndarray) -> np.ndarray:
+        """Rupee cost of buying options, excluding the premium itself."""
+        variable = self.exchange_option + self.sebi_fee
+        return np.asarray(premium_value) * (
+            variable + self.gst * variable + self.stamp_option_buy)
 
     def physical(self, contract_value: np.ndarray | float,
                  side: str) -> np.ndarray | float:
@@ -179,6 +186,13 @@ class WheelConfig:
     # so it can never be called away at a loss. It also means a deeply
     # underwater position stops earning anything, which is the whole trade-off.
     call_floor_at_basis: bool = False
+
+    # Optional same-expiry downside hedge on each short put. A value of 0.05
+    # buys the nearest traded put another five log-points below the short
+    # strike. The book remains fully cash-secured: this measures the spread's
+    # payoff, not the SPAN margin relief that daily bhavcopies cannot reproduce.
+    put_hedge_width: float | None = None
+    min_hedge_contracts: float = 1.0
 
     # How many names the book runs at once. Each takes an equal share of equity.
     slots: int = 10
@@ -348,6 +362,31 @@ def _pick_lagged_strike(selection: pd.DataFrame, execution: pd.DataFrame,
     return available.iloc[(available["strike"] - target).abs().argmin()]
 
 
+def _pick_put_hedge(selection: pd.DataFrame, execution: pd.DataFrame,
+                    short_strike: float, width: float, min_contracts: float,
+                    price: str, lagged: bool) -> pd.Series | None:
+    """Choose a lower-strike put that has a real execution-session print."""
+    source = selection if lagged else execution
+    candidates = source.loc[
+        (source["option_type"] == "PE")
+        & (source["strike"] < short_strike)
+        & (source["contracts"] >= min_contracts)
+        & (source[price] > 0)]
+    if candidates.empty:
+        return None
+    if lagged:
+        traded = execution.loc[
+            (execution["option_type"] == "PE")
+            & (execution["strike"] < short_strike)
+            & (execution["contracts"] > 0)
+            & (execution[price] > 0)]
+        candidates = traded.loc[traded["strike"].isin(candidates["strike"])]
+        if candidates.empty:
+            return None
+    target = short_strike * np.exp(-width)
+    return candidates.iloc[(candidates["strike"] - target).abs().argmin()]
+
+
 def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
         cfg: WheelConfig | None = None) -> dict[str, pd.DataFrame]:
     """Simulate the wheel and return its trade log and equity curve.
@@ -513,6 +552,14 @@ def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
             if leg is None:
                 continue
             strike = float(leg["strike"])
+            hedge = None
+            if cfg.put_hedge_width is not None:
+                hedge = _pick_put_hedge(
+                    selection_chain, sym_chain, strike, cfg.put_hedge_width,
+                    cfg.min_hedge_contracts, cfg.premium_column,
+                    cfg.lag_selection)
+                if hedge is None:
+                    continue
             lot = float(leg["lot_size"])
             if cfg.quantise_lots:
                 lots = np.floor(slot_capital / (strike * lot))
@@ -529,6 +576,10 @@ def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
             legs.append({"symbol": symbol, "kind": "put", "qty": qty,
                          "strike": strike,
                          "premium": float(leg[cfg.premium_column]),
+                         "hedge_strike": (float(hedge["strike"])
+                                          if hedge is not None else np.nan),
+                         "hedge_premium": (float(hedge[cfg.premium_column])
+                                           if hedge is not None else 0.0),
                          "lot_size": lot, "ref": ref})
             free -= 1
 
@@ -538,12 +589,23 @@ def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
             gross = np.array([l["premium"] * l["qty"] for l in written])
             net = gross * (1.0 - cfg.costs.premium_haircut)
             fees = cfg.costs.option_sale(net, pd.Series([entry] * len(net)))
+            hedge_cost = np.array([
+                l.get("hedge_premium", 0.0) * l["qty"]
+                * (1.0 + cfg.costs.premium_haircut)
+                for l in written
+            ])
+            hedge_fees = cfg.costs.option_buy(hedge_cost)
             if cfg.quantise_lots and cfg.costs.brokerage_per_lot_order:
-                fees = fees + cfg.costs.brokerage_per_lot_order * np.array(
+                orders = cfg.costs.brokerage_per_lot_order * np.array(
                     [l["qty"] / l["lot_size"] for l in written])
-            cash += float((net - fees).sum())
-            for leg, n, f in zip(written, net, fees):
-                leg["premium_net"] = float(n - f)
+                fees = fees + orders
+                hedge_fees = hedge_fees + orders * (hedge_cost > 0)
+            cash += float((net - fees - hedge_cost - hedge_fees).sum())
+            for leg, n, f, h, hf in zip(
+                    written, net, fees, hedge_cost, hedge_fees):
+                leg["short_premium_net"] = float(n - f)
+                leg["hedge_cost"] = float(h + hf)
+                leg["premium_net"] = float(n - f - h - hf)
         cycle_premium = float(sum(l.get("premium_net", 0.0) for l in legs))
 
         # ---------- collateral and cash earn the short rate ----------
@@ -573,6 +635,9 @@ def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
             strike = leg.get("strike")
             if strike is not None and np.isfinite(strike):
                 strike = strike / ratio
+            hedge_strike = leg.get("hedge_strike", np.nan)
+            if hedge_strike is not None and np.isfinite(hedge_strike):
+                hedge_strike = hedge_strike / ratio
             qty = leg["qty"] * ratio
             if symbol in positions:
                 positions[symbol]["qty"] = qty
@@ -581,10 +646,14 @@ def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
             record = {"entry": entry, "expiry": leg_settlement,
                       "contract_expiry": contract_expiry, "symbol": symbol,
                       "kind": leg["kind"], "qty": qty, "strike": strike,
+                      "hedge_strike": hedge_strike,
                       "ref": leg["ref"] / ratio, "terminal": terminal,
                       "premium_net": leg.get("premium_net", 0.0),
+                      "short_premium_net": leg.get("short_premium_net", 0.0),
+                      "hedge_cost": leg.get("hedge_cost", 0.0),
                       "adj_ratio": ratio,
-                      "assigned": False, "days": days}
+                      "assigned": False, "hedge_exercised": False,
+                      "days": days}
 
             if leg["kind"] == "put":
                 if terminal < strike:
@@ -595,6 +664,16 @@ def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
                     positions[symbol] = {"qty": qty, "basis": strike,
                                          "last": terminal}
                     record["assigned"] = True
+                    if np.isfinite(hedge_strike) and terminal < hedge_strike:
+                        # Both physical legs settle. The short put delivers the
+                        # shares at the upper strike and the long put immediately
+                        # delivers them away at the lower strike, capping the loss.
+                        hedge_value = hedge_strike * qty
+                        hedge_fee = cfg.costs.physical(hedge_value, "sell")
+                        cycle_settlement_fee += float(hedge_fee)
+                        cash += hedge_value - hedge_fee
+                        positions.pop(symbol, None)
+                        record["hedge_exercised"] = True
             elif leg["kind"] == "call":
                 if terminal > strike:
                     value = strike * qty

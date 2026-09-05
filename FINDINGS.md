@@ -3909,3 +3909,98 @@ include zero throughout. H061, H062's investable claim and H063 are retired.
 Do not optimize another strike/slot cell on this archive. The only live project
 claim remains H060 momentum on future data; the wheel adds no reason to keep an
 active research branch.
+
+---
+
+# Addendum — H066–H069: index wheel, put hedge and quality/tranche gates (2026-09-05)
+
+Four proposed extensions were separated because they answer different
+questions. The Nifty wheel is an index/ETF payoff test; the bull put spread is a
+defined hedge on the stock wheel; Piotroski is a point-in-time data-coverage
+problem before it is a strategy; and staggered tranches are not reproducible
+without their missing triggers and capital rules.
+
+## H066: the Nifty wheel spends too much time out of the equity
+
+The primary sells weekly NIFTY options nearest 0.15 absolute delta, keeps puts
+fully cash-secured, and owns NIFTYBEES only after an in-the-money put settlement.
+The option settles in cash against the index and the ETF is bought or sold at
+that day's close, so the index/ETF basis and the extra trades are retained.
+
+| series | CAGR | vol | Sharpe | daily max DD |
+| --- | ---: | ---: | ---: | ---: |
+| weekly 0.15-delta Nifty wheel | **5.90%** | 11.31% | **0.094** | −32.54% |
+| NIFTYBEES buy-and-hold | 12.11% | 15.89% | 0.471 | −36.34% |
+| Nifty 50 total return | 12.32% | 17.86% | 0.448 | −38.28% |
+| Nifty TR 63% + cash 37% | **10.16%** | 11.31% | **0.448** | −25.63% |
+
+The annualised mean gap to the volatility-matched hurdle is **−4.01pp**, with a
+stationary-block 95% interval of **[−9.85pp, +1.32pp]**. The wheel is in the ETF
+only **33.0%** of sessions: 230 puts produced 22 assignments into the ETF, and
+116 calls produced 22 exits. Its 9.08% annualised option premium did not repay
+the opportunity cost of missing a positively drifting index. Weekly 0.30-delta,
+weekly 2%-OTM, both monthly variants, a five-per-cent premium-haircut diagnostic
+and zero cash yield all remained below NIFTYBEES. H066 is rejected, descriptively
+only because its result existed before registration.
+
+## H067: the bull put spread buys excellent drawdown control too dearly
+
+The executable H063 stock wheel was rerun with a same-expiry lower put at an
+actually traded strike. Both legs use the entry-day last print after lagged
+selection; the short premium is cut ten per cent, the long premium is marked up
+ten per cent, and option purchase and physical-exercise costs are charged.
+
+| arm | CAGR | matched CAGR | Sharpe | matched Sharpe | max DD |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| H063 unhedged | 12.07% | 12.30% | 0.465 | 0.474 | −27.71% |
+| **five-point bull put spread** | **7.28%** | **8.79%** | **0.276** | **0.474** | **−7.22%** |
+| ten-point shape diagnostic | 10.20% | 10.47% | 0.451 | 0.474 | −15.62% |
+| five-point, INR 2 crore whole lots | 6.68% | 7.91% | 0.247 | 0.474 | −4.94% |
+| five-point, INR 10 crore whole lots | 6.76% | 8.66% | 0.213 | 0.474 | −7.37% |
+
+The five-point hedge's aggregate purchase cost was **0.789% of short-put
+notional**, leaving only **0.364%** net spread credit after both legs' execution
+and fees, while only 6.64% of long puts exercised. It did what insurance should do—volatility
+fell from 15.87% to 7.00% and the crash tail was capped—but failed both return
+and Sharpe clauses. The ten-point diagnostic also lost to unhedged and matched
+passive. H067 is rejected under its frozen stop; no other width is searched.
+
+## H068: Piotroski 8–9 cannot be tested from the present archive
+
+The coverage check is intentionally generous: any successfully archived XBRL
+document counts, even before verifying that all nine F-score components and
+their prior-period comparatives are available and unambiguous. The archive has
+only five symbols. Against the H063 pre-outcome liquidity universe this covers
+**327 of 10,385 eligible symbol-entry rows (3.15%)**, with a median of **three**
+archived names per 20-slot cycle. The frozen gates were 80% and ten names.
+
+H068 is therefore **NOT TESTED**, not rejected. Building a reducer over five
+survivor-selected names would create exactly the point-in-time and restatement
+lookahead the gate was meant to prevent. A valid attempt requires a broad
+original-filing backfill, `first_tradable_session` eligibility, prior-version
+comparatives, context-ambiguity checks and an explicit treatment of financial
+companies before any wheel outcome is opened.
+
+## H069, tax and SPAN: explicit boundaries rather than invented precision
+
+The accessible primary description of Ranjit Kumar Mohanty's refinements names
+[staggered buying and a bull put spread](https://www.elearnmarkets.com/face2face/details/how-this-64-year-old-became-a-successful-stock-market-trader),
+but does not publish exact tranche triggers, sizes or adjustments. Those rules
+cannot be inferred honestly from the already-exposed archive. H069 remains not
+tested until they are supplied and frozen.
+
+Every result above is **pre-tax on both strategy and benchmark**. That is the
+neutral comparison the data supports; it is not an after-tax estimate. The
+wheel's much higher turnover means a tax model would not cancel symmetrically,
+so no post-tax ranking is claimed without an investor entity, holding-period and
+loss-offset specification.
+
+Historical SPAN/exposure margin is also absent from the daily chain. H067 stays
+fully cash-secured and therefore establishes the spread's payoff and cash loss,
+not return on broker margin. The separate covered-call run measured a peak
+daily mark-to-market funding drain of **9.86% of starting equity** even though
+the shares covered the call; the fully cash-secured index wheel's corresponding
+external funding need was zero. Neither number is a reconstruction of SPAN.
+A margin-relief or tranche-capacity claim needs dated margin inputs plus a
+liquidation rule, with variation-margin cash tracked separately from initial
+margin.

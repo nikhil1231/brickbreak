@@ -203,6 +203,14 @@ def trade_stats(trades: pd.DataFrame) -> dict:
     calls = trades.loc[trades["kind"] == "call"]
     premium = trades["premium_net"].sum()
     notional = (puts["strike"] * puts["qty"]).sum()
+    hedged = (puts["hedge_strike"].notna()
+              if "hedge_strike" in puts else pd.Series(False, index=puts.index))
+    exercised = (puts["hedge_exercised"].fillna(False)
+                 if "hedge_exercised" in puts
+                 else pd.Series(False, index=puts.index))
+    widths = ((puts.loc[hedged, "strike"] - puts.loc[hedged, "hedge_strike"])
+              / puts.loc[hedged, "strike"] if hedged.any()
+              else pd.Series(dtype=float))
     return {
         "cycles": int(trades["expiry"].nunique()),
         "legs": int(len(trades)),
@@ -213,6 +221,13 @@ def trade_stats(trades: pd.DataFrame) -> dict:
         "stranded_holds": int((trades["kind"] == "hold").sum()),
         "premium_per_put_notional": float(
             puts["premium_net"].sum() / notional) if notional else float("nan"),
+        "hedged_puts": int(hedged.sum()),
+        "hedge_exercise_rate": float(exercised[hedged].mean())
+        if hedged.any() else float("nan"),
+        "median_hedge_width": float(widths.median()) if len(widths) else float("nan"),
+        "hedge_cost_per_put_notional": float(
+            puts["hedge_cost"].sum() / notional)
+        if notional and "hedge_cost" in puts else 0.0,
         "net_premium_collected": float(premium),
         "distinct_symbols": int(trades["symbol"].nunique()),
     }

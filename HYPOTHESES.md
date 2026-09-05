@@ -4227,3 +4227,142 @@ was **+4.6 bps, HH t = 0.12**. The apparent train category pattern did not
 replicate: acquisitions read +48.3 bps in validation and −133.0 bps in test;
 orders/contracts +121.0 and −42.9 bps. The programme is retired under its own
 stopping rule without another subject, keyword, liquidity or horizon search.
+
+
+## H066 — A Nifty index-option wheel improves on passive Nifty at matched risk
+
+Status: **REJECTED; OUTCOME-EXPOSED AND DESCRIPTIVE ONLY (2026-09-05).** Registered 2026-09-05 after the
+first implementation and its outcomes already existed in the working tree.
+Nothing in this entry is confirmatory and no favourable cell can be promoted
+from the 2020-2026 archive.
+
+**Claim.** Repeatedly sell an out-of-the-money NIFTY put while in cash; after an
+in-the-money cash settlement, buy NIFTYBEES at that session's close and sell
+out-of-the-money NIFTY calls until called away, then repeat. The primary is
+weekly, 0.15 absolute delta, fully cash-secured, collateral at the dated RBI
+repo rate, one per cent premium haircut and dated transaction charges. The
+option settles on the index while the owned leg is the ETF, so their basis is
+inside the result rather than assumed away.
+
+**Bar.** Compare CAGR and excess-return Sharpe with NIFTYBEES, Nifty 50 total
+return and a volatility-matched Nifty-total-return-plus-cash blend. The wheel
+must beat the matched blend on both CAGR and excess-return Sharpe. Report the
+stationary-block interval for its annual mean return gap, time in the market,
+assignment rates, cash yield sensitivity and daily drawdown. Tax is pre-tax on
+both sides. SPAN is not inferred from daily files.
+
+**Why it may fail.** A cash-secured put is out of the market after rallies, and
+the wheel returns to cash precisely when a call is breached. That structural
+opportunity cost can exceed the option premium on a positively drifting index.
+Cash settlement also delivers no ETF: the replacement purchase introduces a
+real index/ETF basis and an extra trade.
+
+**Result.** The primary returned **5.90% CAGR** at 11.31% volatility and 0.094
+Sharpe, versus **10.16% CAGR** and 0.448 Sharpe for the 63%-Nifty-total-return /
+37%-cash volatility-matched blend. NIFTYBEES buy-and-hold returned 12.11%.
+The annualised mean return gap to the matched blend was **−4.01pp**, stationary-
+block 95% interval **[−9.85pp, +1.32pp]**. The wheel owned the ETF only 33.0%
+of sessions and its daily drawdown was −32.54%, worse than the matched blend's
+−25.63%. All declared cadence, delta, OTM and cash-yield diagnostics remained
+below NIFTYBEES; none can rescue the failed primary.
+
+
+## H067 — A downside put hedge rescues the executable stock-wheel candidate
+
+Status: **REJECTED (2026-09-05).** Registered before this extension's outcome
+read. This
+is a diagnostic descendant of rejected [[H063]], not a fresh confirmation: the
+entire 2020-2026 option archive is already exposed.
+
+**Claim.** Add a same-expiry long put below every short cash-secured put, making
+the entry a bull put spread. The short put remains the lagged-selection,
+20-slot, 10%-OTM H063 candidate with last-trade fills, at least 250 contracts at
+the selected short strike and a ten per cent haircut to the short premium. The
+primary long leg is the nearest actually traded strike another five log-points
+below the short strike; a ten-point width is a declared shape diagnostic and
+cannot replace the primary after the result is seen. The long leg is charged at
+its observed entry-day last trade plus the same ten per cent adverse execution
+haircut and its purchase taxes/fees.
+
+**Physical settlement rule.** If the terminal close is between the two strikes,
+only the short put assigns and the ordinary wheel continues. If it is below
+both, the short put delivers shares at the upper strike and the long put
+immediately delivers those shares at the lower strike; both physical-settlement
+costs are charged and the slot returns to cash. This caps the gross loss at the
+strike width less net credit without pretending the hedge is cash-settled.
+
+**Bar.** On the same fractional capital as H063, the five-point spread must
+improve both CAGR and Sharpe over the unhedged combined-execution candidate and
+must beat its volatility-matched passive blend on both measures. Whole-lot
+books at INR 2 crore and INR 10 crore are reported but cannot rescue a failed
+fractional primary. The strategy remains fully cash-secured, so this tests the
+hedge payoff only; any SPAN margin relief or leveraged return claim is outside
+the data and outside the result.
+
+**Stopping rule.** If the primary fails either comparison, reject the spread
+extension. Do not optimize another width, short strike, slot count or haircut
+on this archive.
+
+**Result.** The five-point hedge cut volatility from 15.87% to 7.00% and
+drawdown from −27.71% to −7.22%, but CAGR fell from **12.07% to 7.28%** and
+Sharpe from **0.465 to 0.276**. Its volatility-matched passive hurdle returned
+8.79% with 0.474 Sharpe. The long puts cost 0.789% of short-put notional in
+aggregate, leaving only 0.364% net spread credit after both legs'
+execution and fees, and exercised on
+6.64% of hedged puts. The declared ten-point diagnostic also failed (10.20%
+CAGR, 0.451 Sharpe versus 10.47%, 0.474 matched), as did the INR 2 crore and INR
+10 crore whole-lot books. The frozen stop fires; no more widths are searched.
+
+
+## H068 — A point-in-time Piotroski 8–9 filter improves the stock wheel
+
+Status: **NOT TESTED — COVERAGE GATE FAILED (2026-09-05).** This is also a
+diagnostic descendant of [[H063]] on an already-exposed archive.
+
+**Claim.** Restrict new put writes to companies whose most recently available
+Piotroski F-score is 8 or 9 at the prior-session selection timestamp. Scores
+must be computed from the originally disseminated filing version and become
+eligible no earlier than `first_tradable_session`; a later restatement may not
+rewrite an earlier score. Banks and other financial companies require an
+explicitly justified accounting mapping or are excluded rather than silently
+forced through an industrial-company formula.
+
+**Coverage gate.** Before any wheel outcome is read, the fundamental panel must
+cover at least 80% of otherwise eligible symbol-entry rows and leave a median of
+at least ten eligible names per cycle. All nine component facts and their prior
+comparatives must be unambiguous under the XBRL context rules. If the archive
+cannot meet this gate, H068 is **NOT TESTED**, not failed, and no current-
+snapshot screener or latest-revision data may fill the gaps.
+
+**Bar if feasible.** Apply the filter to the identical H063 combined-execution
+engine and compare it with both unfiltered H063 and the volatility-matched Nifty
+blend on CAGR and Sharpe. It must improve both measures over unfiltered and beat
+the matched blend on both. A reduced number of filled slots is reported as
+capacity/coverage, not credited as risk-adjusted skill.
+
+**Coverage result.** The raw XBRL archive contains only five symbols. Even the
+deliberately generous upper bound that credits any successfully archived XBRL
+document—before asking whether all nine unambiguous, comparable F-score facts
+exist—covers just **327 of 10,385** otherwise eligible symbol-entry rows
+(**3.15%**) and leaves a median of **three** archived names in each 20-slot
+cycle. Both frozen minima (80% and ten names) fail. No F-score was computed and
+no wheel outcome was read through this filter; H068 is not evidence against
+Piotroski quality.
+
+
+## H069 — Mohanty-style staggered tranches improve the hedged wheel
+
+Status: **NOT TESTED — RULE AND MARGIN INPUTS NOT IDENTIFIED (2026-09-05).**
+Not registered as a scoring experiment because the public source names
+“staggered buying” and a “bull put spread” but does not specify reproducible
+tranche triggers, tranche sizes or adjustment rules. The claimed capital
+benefit also depends on historical exchange SPAN/exposure margin rather than
+the daily option tape.
+
+**Required preregistration.** Before this can spend another sample, freeze the
+exact trigger for every tranche, maximum concurrent tranche count, adjustment
+and exit rules, and the dated margin engine or archived broker/exchange margin
+files. Then compare the tranche book with H067 on return on actually encumbered
+capital, peak variation-margin cash drain and liquidation events. No trigger
+may be reverse-engineered from this option archive, and full cash securing may
+be used only as a payoff diagnostic—not as evidence for a SPAN-relief claim.

@@ -56,6 +56,11 @@ def main() -> int:
                              indent=2))
             out["curve"].to_parquet(OUT / "wheel_curve.parquet", index=False)
             out["trades"].to_parquet(OUT / "wheel_trades.parquet", index=False)
+            tab.to_csv(OUT / "wheel_metrics.csv", index=False)
+            report.edge_test(out["curve"], bench).to_csv(
+                OUT / "wheel_edge_test.csv", index=False)
+            report.yearly(out["curve"], bench).to_csv(
+                OUT / "wheel_yearly.csv", index=False)
         print(f"  {label:30s} cagr={row['cagr']:7.2%} "
               f"vs BeES={row['vs_bees_cagr']:+7.2%} vol={row['vol']:6.2%} "
               f"sharpe={row['sharpe']:5.2f} dd={row['max_drawdown']:7.2%} "

@@ -61,7 +61,8 @@ def prices(rows):
 
 FREE = CostModel(stt_option_path=(("2000-01-01", 0.0),),
                  exchange_option=0.0, sebi_fee=0.0, gst=0.0,
-                 premium_haircut=0.0, stt_delivery=0.0, exchange_delivery=0.0,
+                 premium_haircut=0.0, stamp_option_buy=0.0,
+                 stt_delivery=0.0, exchange_delivery=0.0,
                  stamp_on_buy=0.0, physical_settlement_fee=0.0)
 BARE = WheelConfig(slots=1, costs=FREE, cash_yield=0.0, starting_capital=100_000.0)
 
@@ -314,6 +315,80 @@ def test_lagged_selection_uses_prior_session_liquidity():
                       ("BBB", EXPIRIES[1], 110.0)]),
               replace(BARE, lag_selection=True))
     assert out["trades"]["symbol"].iloc[0] == "BBB"
+
+
+def test_bull_put_spread_keeps_only_the_net_credit_when_both_legs_expire():
+    chain = build_chain([
+        (EXPIRIES[0], "AAA", EXPIRIES[1], 95.0, "PE", 2.0, 100.0),
+        (EXPIRIES[0], "AAA", EXPIRIES[1], 90.0, "PE", 0.5, 100.0),
+    ])
+    cfg = replace(BARE, put_hedge_width=0.05, min_chain_contracts=100.0)
+    out = run(chain, prices([("AAA", EXPIRIES[1], 110.0)]), cfg)
+    qty = 100_000.0 / 95.0
+    trade = out["trades"].iloc[0]
+    assert trade["hedge_strike"] == 90.0
+    assert not trade["assigned"] and not trade["hedge_exercised"]
+    assert trade["premium_net"] == pytest.approx((2.0 - 0.5) * qty)
+    assert out["curve"]["equity"].iloc[-1] == pytest.approx(
+        100_000.0 + (2.0 - 0.5) * qty)
+
+
+def test_bull_put_spread_caps_a_crash_and_returns_the_slot_to_cash():
+    chain = build_chain([
+        (EXPIRIES[0], "AAA", EXPIRIES[1], 95.0, "PE", 2.0, 100.0),
+        (EXPIRIES[0], "AAA", EXPIRIES[1], 90.0, "PE", 0.5, 100.0),
+    ])
+    cfg = replace(BARE, put_hedge_width=0.05, min_chain_contracts=100.0)
+    out = run(chain, prices([("AAA", EXPIRIES[1], 70.0)]), cfg)
+    qty = 100_000.0 / 95.0
+    trade = out["trades"].iloc[0]
+    assert trade["assigned"] and trade["hedge_exercised"]
+    # Bought at 95, delivered at 90, and retained 2 - 0.5 of premium.
+    assert out["curve"]["equity"].iloc[-1] == pytest.approx(
+        100_000.0 + qty * (90.0 - 95.0 + 2.0 - 0.5))
+    assert out["curve"]["positions"].iloc[-1] == 0
+
+
+def test_bull_put_spread_between_strikes_enters_the_ordinary_wheel():
+    chain = build_chain([
+        (EXPIRIES[0], "AAA", EXPIRIES[1], 95.0, "PE", 2.0, 100.0),
+        (EXPIRIES[0], "AAA", EXPIRIES[1], 90.0, "PE", 0.5, 100.0),
+    ])
+    cfg = replace(BARE, put_hedge_width=0.05, min_chain_contracts=100.0)
+    out = run(chain, prices([("AAA", EXPIRIES[1], 92.0)]), cfg)
+    qty = 100_000.0 / 95.0
+    trade = out["trades"].iloc[0]
+    assert trade["assigned"] and not trade["hedge_exercised"]
+    assert out["curve"]["positions"].iloc[-1] == 1
+    assert out["curve"]["equity"].iloc[-1] == pytest.approx(
+        100_000.0 + qty * (92.0 - 95.0 + 2.0 - 0.5))
+
+
+def test_bull_put_spread_skips_a_short_leg_when_no_hedge_print_exists():
+    chain = build_chain([
+        (EXPIRIES[0], "AAA", EXPIRIES[1], 95.0, "PE", 2.0, 100.0),
+        (EXPIRIES[0], "AAA", EXPIRIES[1], 90.0, "PE", 0.5, 100.0),
+    ])
+    chain.loc[chain["strike"] == 90.0, "contracts"] = 0.0
+    cfg = replace(BARE, put_hedge_width=0.05, min_chain_contracts=100.0)
+    out = run(chain, prices([("AAA", EXPIRIES[1], 110.0)]), cfg)
+    assert out["trades"].empty
+    assert out["curve"]["equity"].iloc[-1] == pytest.approx(100_000.0)
+
+
+def test_bull_put_spread_applies_adverse_execution_to_both_legs():
+    chain = build_chain([
+        (EXPIRIES[0], "AAA", EXPIRIES[1], 95.0, "PE", 2.0, 100.0),
+        (EXPIRIES[0], "AAA", EXPIRIES[1], 90.0, "PE", 0.5, 100.0),
+    ])
+    costs = replace(FREE, premium_haircut=0.10)
+    cfg = replace(BARE, costs=costs, put_hedge_width=0.05,
+                  min_chain_contracts=100.0)
+    out = run(chain, prices([("AAA", EXPIRIES[1], 110.0)]), cfg)
+    qty = 100_000.0 / 95.0
+    # Receive 90% of the short quote and pay 110% of the long quote.
+    assert out["trades"]["premium_net"].iloc[0] == pytest.approx(
+        qty * (2.0 * 0.9 - 0.5 * 1.1))
 
 
 def test_index_archive_parser_uses_the_date_inside_the_file():
