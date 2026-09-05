@@ -15,8 +15,10 @@ import pandas as pd
 import pytest
 
 from src.research.families.wheel import report
+from src.research.families.covered_call import blackscholes as bs
 from src.research.families.wheel.engine import (CostModel, STT_OPTION_SALE,
-                                                WheelConfig, _step, run)
+                                                WheelConfig, _pick_lagged_delta,
+                                                _step, run)
 from src.research_data.sources import nse_index_close
 
 EXPIRIES = [pd.Timestamp("2020-01-30"), pd.Timestamp("2020-02-27"),
@@ -315,6 +317,55 @@ def test_lagged_selection_uses_prior_session_liquidity():
                       ("BBB", EXPIRIES[1], 110.0)]),
               replace(BARE, lag_selection=True))
     assert out["trades"]["symbol"].iloc[0] == "BBB"
+
+
+def test_delta_selector_labels_observed_prices_and_requires_execution_print():
+    strikes = np.array([85.0, 90.0, 95.0, 97.0])
+    premiums = np.array([
+        bs.put_price(100.0, strike, 0.0, 0.0, .25, 30 / 365)
+        for strike in strikes
+    ])
+    selection = pd.DataFrame({
+        "strike": strikes, "option_type": "PE", "contracts": 500.0,
+        "close": premiums,
+    })
+    execution = selection.copy()
+    picked = _pick_lagged_delta(
+        selection, execution, "PE", .30, 250.0, "close", 100.0,
+        0.0, 0.0, 30 / 365)
+    assert picked is not None
+    assert abs(abs(picked["_selected_delta"]) - .30) == pytest.approx(
+        min(abs(abs(bs.delta(
+            100.0, strike, 0.0, 0.0, .25, 30 / 365, "PE")) - .30)
+            for strike in strikes), abs=1e-6)
+    execution.loc[execution["strike"] == picked["strike"], "contracts"] = 0.0
+    assert _pick_lagged_delta(
+        selection, execution, "PE", .30, 250.0, "close", 100.0,
+        0.0, 0.0, 30 / 365) is None
+
+
+def test_entry_eligibility_filters_new_puts_but_not_existing_calls():
+    chain = build_chain([
+        (EXPIRIES[0], "AAA", EXPIRIES[1], 95.0, "PE", 2.0, 100.0),
+        (EXPIRIES[1], "AAA", EXPIRIES[2], 105.0, "CE", 2.0, 100.0),
+    ])
+    settle = prices([
+        ("AAA", EXPIRIES[1], 90.0),
+        ("AAA", EXPIRIES[2], 100.0),
+    ])
+    allowed = {EXPIRIES[0]: {"AAA"}, EXPIRIES[1]: set()}
+    out = run(chain, settle, BARE, eligible_by_entry=allowed)
+    assert out["trades"]["kind"].tolist() == ["put", "call"]
+
+
+def test_entry_eligibility_can_leave_the_book_in_cash():
+    chain = build_chain([
+        (EXPIRIES[0], "AAA", EXPIRIES[1], 95.0, "PE", 2.0, 100.0),
+    ])
+    out = run(chain, prices([("AAA", EXPIRIES[1], 110.0)]), BARE,
+              eligible_by_entry={EXPIRIES[0]: set()})
+    assert out["trades"].empty
+    assert out["curve"]["equity"].iloc[-1] == pytest.approx(100_000.0)
 
 
 def test_bull_put_spread_keeps_only_the_net_credit_when_both_legs_expire():

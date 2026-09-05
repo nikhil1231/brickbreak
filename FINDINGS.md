@@ -3912,13 +3912,13 @@ active research branch.
 
 ---
 
-# Addendum — H066–H069: index wheel, put hedge and quality/tranche gates (2026-09-05)
+# Addendum — H066–H071: index wheel, put hedges and quality/tranche tests (2026-09-05)
 
 Four proposed extensions were separated because they answer different
 questions. The Nifty wheel is an index/ETF payoff test; the bull put spread is a
-defined hedge on the stock wheel; Piotroski is a point-in-time data-coverage
-problem before it is a strategy; and staggered tranches are not reproducible
-without their missing triggers and capital rules.
+defined hedge on the stock wheel; and Piotroski is a point-in-time data-coverage
+problem before it is a strategy. A later user-supplied rule made the staggered
+tranche claim testable as a declared approximation.
 
 ## H066: the Nifty wheel spends too much time out of the equity
 
@@ -3981,13 +3981,90 @@ original-filing backfill, `first_tradable_session` eligibility, prior-version
 comparatives, context-ambiguity checks and an explicit treatment of financial
 companies before any wheel outcome is opened.
 
-## H069, tax and SPAN: explicit boundaries rather than invented precision
+## H069: the 33%-33%-34% tranche rule lowers risk by surrendering return
 
 The accessible primary description of Ranjit Kumar Mohanty's refinements names
 [staggered buying and a bull put spread](https://www.elearnmarkets.com/face2face/details/how-this-64-year-old-became-a-successful-stock-market-trader),
-but does not publish exact tranche triggers, sizes or adjustments. Those rules
-cannot be inferred honestly from the already-exposed archive. H069 remains not
-tested until they are supplied and frozen.
+but does not publish exact tranche triggers. The user's follow-up supplied a
+specific version: buy 33% at entry, another 33% at the midpoint to the call
+strike, and 34% when the strike is reached. It was frozen with daily-close
+fills; a gap across both thresholds buys both tranches at the observed close,
+not at prices the daily tape never offered.
+
+| arm | CAGR | vol | Sharpe | daily max DD |
+| --- | ---: | ---: | ---: | ---: |
+| fully funded seven-stock covered call | **20.67%** | 16.61% | **0.908** | −29.01% |
+| **33%-33%-34% staged call** | **14.43%** | 13.01% | **0.702** | **−22.53%** |
+| staged volatility-matched Nifty + cash | 10.98% | 13.00% | 0.463 | −28.38% |
+| current seven-stock basket, price return | 30.46% | 24.37% | 1.010 | −35.27% |
+
+The staged arm beats its risk-matched Nifty hurdle, but fails the question it
+exists to answer. It trails the fully funded control by **5.94pp annual mean
+return**, stationary-block 95% interval **[−10.05pp, −1.91pp]**, and loses
+0.206 of Sharpe. The drawdown reduction is real and comes from owning less
+stock: mean equity exposure falls from 76.6% to 60.1%.
+
+The financing description is also wrong in an important way. All 372 calls are
+written for the full target position after only the first tranche is held. Peak
+uncovered stock notional reaches **51.29% of current equity**. The daily cash
+book never goes negative under full cash accounting, but that says nothing
+about the SPAN required by a partially naked short call. H069 is rejected under
+its return-and-Sharpe clauses. The basket's 30.46% price CAGR is a warning, not
+a discovery: these seven present-day winners were selected after most of their
+rise, so neither covered-call result is evidence for historical stock selection.
+
+## H070: a rough historical Piotroski reconstruction makes the wheel worse
+
+The proper XBRL gate remains failed. At the user's request a second, explicitly
+approximate panel was built from public Screener annual tables, following the
+[nine directions in Piotroski's original paper](https://www.anderson.ucla.edu/documents/areas/prg/asam/2019/F-Score.pdf).
+The archived pages are present-day and potentially restated. Operating margin
+stands in for gross margin, `Other Assets / Other Liabilities` for current
+ratio, and reported equity capital for issuance. Scores become usable six
+months after fiscal year end, which blocks obvious fiscal-year leakage but not
+restatement lookahead.
+
+The approximation covers all **379/379** liquid seven-basket symbol-entry rows.
+The price of score 8–9 is breadth: a median of only **two** names qualifies per
+cycle.
+
+| arm | CAGR | vol | Sharpe | monthly max DD |
+| --- | ---: | ---: | ---: | ---: |
+| seven-stock wheel, unfiltered | **6.85%** | 7.09% | **0.217** | −13.08% |
+| approximate score 8–9 wheel | **4.76%** | 4.99% | **−0.108** | **−9.38%** |
+| filtered volatility-matched Nifty + cash | 7.88% | 4.98% | 0.474 | −6.35% |
+
+The filter lowers drawdown because it leaves more cash idle, not because the
+remaining positions earn more. H070 is rejected. This says nothing reliable
+about Piotroski itself: it is one restated-data proxy on seven survivor-selected
+names, and the original score was designed to separate distressed high-book-to-
+market firms rather than today's large-cap compounders.
+
+Latest score eligible under the deliberately conservative six-month lag at the
+end of the option sample (2026-08-18): **BEL 8, HAVELLS 8, INDHOTEL 8, HAL 5,
+JUBLFOOD 6, SIEMENS 6, ABB 4**. These are approximate reconstructions, not
+vendor scores.
+
+## H071: the supplied 30/12.5-delta spread also fails
+
+The second Mohanty arm was made closer to the supplied description than H067.
+Actual prior-session last prices were inverted only to label strikes; median
+absolute deltas landed at **0.310 short and 0.123 long**, with a 6.72% median
+strike width. Entry still requires both exact strikes to print the next session,
+and every payoff uses observed premiums and physical settlement.
+
+| arm | CAGR | Sharpe | monthly max DD | matched CAGR |
+| --- | ---: | ---: | ---: | ---: |
+| 0.30-delta short-put wheel | 7.09% | 0.214 | −16.87% | 9.61% |
+| 0.30/0.125 spread wheel | 6.27% | 0.136 | −13.47% | 9.07% |
+| **score 8–9 + spread** | **4.90%** | **−0.057** | **−13.39%** | **8.39%** |
+
+The long put exercises in only 5.47% of unfiltered spread writes. It improves
+the settled drawdown by 3.40pp but reduces return and Sharpe; the approximate
+quality filter reduces both again. None beats its volatility-matched passive
+hurdle. H071 rejects the combined branch without a delta or score rescue scan.
+
+## Tax and SPAN: explicit boundaries rather than invented precision
 
 Every result above is **pre-tax on both strategy and benchmark**. That is the
 neutral comparison the data supports; it is not an after-tax estimate. The

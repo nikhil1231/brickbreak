@@ -82,6 +82,8 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
+from ..covered_call import blackscholes as bs
+
 # RBI repo rate, hand-entered from the published decision dates. It stands in
 # for what collateral earns: Indian brokers pay nothing on idle ledger cash, but
 # T-bills or a liquid fund can be pledged as margin at a small haircut, so repo
@@ -173,6 +175,12 @@ class CostModel:
         variable = self.exchange_delivery + self.sebi_fee
         return value * (self.stt_delivery + variable + self.gst * variable)
 
+    def cash_buy(self, value: np.ndarray | float) -> np.ndarray | float:
+        """Buying delivery shares in cash, including STT and stamp duty."""
+        variable = self.exchange_delivery + self.sebi_fee
+        return value * (self.stt_delivery + self.stamp_on_buy
+                        + variable + self.gst * variable)
+
 
 @dataclass(frozen=True)
 class WheelConfig:
@@ -182,6 +190,12 @@ class WheelConfig:
     # ~5% out. Positive numbers mean "further out of the money" on both legs.
     put_otm: float = 0.05
     call_otm: float = 0.05
+    # Optional price-implied delta labels. These select observed strikes and do
+    # not model P&L. Stock dividend yield defaults to zero because the archive
+    # has no point-in-time per-stock yield; any use is explicitly approximate.
+    put_delta: float | None = None
+    put_hedge_delta: float | None = None
+    delta_dividend_yield: float = 0.0
     # A classic wheel refuses to sell a call below its assignment cost basis,
     # so it can never be called away at a loss. It also means a deeply
     # underwater position stops earning anything, which is the whole trade-off.
@@ -387,8 +401,50 @@ def _pick_put_hedge(selection: pd.DataFrame, execution: pd.DataFrame,
     return candidates.iloc[(candidates["strike"] - target).abs().argmin()]
 
 
+def _pick_lagged_delta(selection: pd.DataFrame, execution: pd.DataFrame,
+                       option_type: str, target_delta: float,
+                       min_contracts: float, price: str, spot: float,
+                       rate: float, dividend_yield: float, years: float,
+                       strike_below: float | None = None) -> pd.Series | None:
+    """Label prior-session traded strikes by price-implied delta, then fill."""
+    candidates = selection.loc[
+        (selection["option_type"] == option_type)
+        & (selection["contracts"] >= min_contracts)
+        & (selection[price] > 0)]
+    if option_type == "PE":
+        candidates = candidates.loc[candidates["strike"] < spot]
+    else:
+        candidates = candidates.loc[candidates["strike"] > spot]
+    if strike_below is not None:
+        candidates = candidates.loc[candidates["strike"] < strike_below]
+    if candidates.empty:
+        return None
+    deltas = bs.chain_delta(
+        candidates["strike"].to_numpy(), candidates[price].to_numpy(),
+        spot, rate, dividend_yield, years, option_type)
+    valid = np.isfinite(deltas)
+    if not valid.any():
+        return None
+    candidates = candidates.loc[valid].copy()
+    candidates["_selected_delta"] = deltas[valid]
+    chosen = candidates.iloc[
+        (candidates["_selected_delta"].abs() - abs(target_delta)).abs().argmin()]
+    traded = execution.loc[
+        (execution["option_type"] == option_type)
+        & (execution["strike"] == chosen["strike"])
+        & (execution["contracts"] > 0)
+        & (execution[price] > 0)]
+    if traded.empty:
+        return None
+    out = traded.iloc[0].copy()
+    out["_selected_delta"] = chosen["_selected_delta"]
+    return out
+
+
 def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
-        cfg: WheelConfig | None = None) -> dict[str, pd.DataFrame]:
+        cfg: WheelConfig | None = None,
+        eligible_by_entry: dict[pd.Timestamp, set[str]] | None = None
+        ) -> dict[str, pd.DataFrame]:
     """Simulate the wheel and return its trade log and equity curve.
 
     `chain`   — `option_chain.load()` output.
@@ -463,6 +519,8 @@ def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
             break
         slot_capital = equity / cfg.slots
         days = (settlement - entry).days
+        selection_rate = (_step(RBI_REPO_PATH, pd.Series([entry]))[0]
+                          if cfg.cash_yield == "repo" else float(cfg.cash_yield))
 
         # --- rank the chain by what a wheel actually needs: a live strike ---
         live = selection_book.loc[
@@ -471,11 +529,14 @@ def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
             premium_turnover=live["contracts"] * live["lot_size"]
             * live[cfg.premium_column])
             .groupby("symbol")["premium_turnover"].sum().sort_values(ascending=False))
+        allowed = (eligible_by_entry.get(pd.Timestamp(entry), set())
+                   if eligible_by_entry is not None else None)
         eligible = [s for s in chain_activity.index
                     if chain_activity[s] > 0
                     and selection_book.loc[
                         selection_book["symbol"] == s, "contracts"].sum()
-                    >= cfg.min_chain_contracts]
+                    >= cfg.min_chain_contracts
+                    and (allowed is None or s in allowed)]
 
         legs: list[dict] = []
 
@@ -540,7 +601,13 @@ def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
                 continue
             ref = float(selection_chain["underlying"].iloc[0]
                         if cfg.lag_selection else sym_chain["underlying"].iloc[0])
-            if cfg.lag_selection:
+            if cfg.put_delta is not None and cfg.lag_selection:
+                leg = _pick_lagged_delta(
+                    selection_chain, sym_chain, "PE", cfg.put_delta,
+                    cfg.min_strike_contracts, cfg.premium_column, ref,
+                    selection_rate, cfg.delta_dividend_yield,
+                    max(days / 365.0, 1e-6))
+            elif cfg.lag_selection:
                 leg = _pick_lagged_strike(
                     selection_chain, sym_chain, "PE",
                     ref * np.exp(-cfg.put_otm), cfg.min_strike_contracts,
@@ -553,7 +620,17 @@ def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
                 continue
             strike = float(leg["strike"])
             hedge = None
-            if cfg.put_hedge_width is not None:
+            if cfg.put_hedge_delta is not None:
+                if not cfg.lag_selection:
+                    raise ValueError("delta hedge selection requires lag_selection")
+                hedge = _pick_lagged_delta(
+                    selection_chain, sym_chain, "PE", cfg.put_hedge_delta,
+                    cfg.min_hedge_contracts, cfg.premium_column, ref,
+                    selection_rate, cfg.delta_dividend_yield,
+                    max(days / 365.0, 1e-6), strike_below=strike)
+                if hedge is None:
+                    continue
+            elif cfg.put_hedge_width is not None:
                 hedge = _pick_put_hedge(
                     selection_chain, sym_chain, strike, cfg.put_hedge_width,
                     cfg.min_hedge_contracts, cfg.premium_column,
@@ -580,6 +657,9 @@ def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
                                           if hedge is not None else np.nan),
                          "hedge_premium": (float(hedge[cfg.premium_column])
                                            if hedge is not None else 0.0),
+                         "short_delta": float(leg.get("_selected_delta", np.nan)),
+                         "hedge_delta": (float(hedge.get("_selected_delta", np.nan))
+                                         if hedge is not None else np.nan),
                          "lot_size": lot, "ref": ref})
             free -= 1
 
@@ -651,6 +731,8 @@ def run(chain: pd.DataFrame | PreparedWheelChain, settle_price: pd.DataFrame,
                       "premium_net": leg.get("premium_net", 0.0),
                       "short_premium_net": leg.get("short_premium_net", 0.0),
                       "hedge_cost": leg.get("hedge_cost", 0.0),
+                      "short_delta": leg.get("short_delta", np.nan),
+                      "hedge_delta": leg.get("hedge_delta", np.nan),
                       "adj_ratio": ratio,
                       "assigned": False, "hedge_exercised": False,
                       "days": days}

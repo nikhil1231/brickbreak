@@ -228,6 +228,12 @@ def trade_stats(trades: pd.DataFrame) -> dict:
         "hedge_cost_per_put_notional": float(
             puts["hedge_cost"].sum() / notional)
         if notional and "hedge_cost" in puts else 0.0,
+        "median_abs_short_delta": float(puts["short_delta"].abs().median())
+        if "short_delta" in puts and puts["short_delta"].notna().any()
+        else float("nan"),
+        "median_abs_hedge_delta": float(puts["hedge_delta"].abs().median())
+        if "hedge_delta" in puts and puts["hedge_delta"].notna().any()
+        else float("nan"),
         "net_premium_collected": float(premium),
         "distinct_symbols": int(trades["symbol"].nunique()),
     }

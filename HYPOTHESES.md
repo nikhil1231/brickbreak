@@ -4352,17 +4352,119 @@ Piotroski quality.
 
 ## H069 — Mohanty-style staggered tranches improve the hedged wheel
 
-Status: **NOT TESTED — RULE AND MARGIN INPUTS NOT IDENTIFIED (2026-09-05).**
-Not registered as a scoring experiment because the public source names
-“staggered buying” and a “bull put spread” but does not specify reproducible
-tranche triggers, tranche sizes or adjustment rules. The claimed capital
-benefit also depends on historical exchange SPAN/exposure margin rather than
-the daily option tape.
+Status: **REJECTED (2026-09-05); EXPLORATORY ON AN EXPOSED ARCHIVE.** Registered
+before this result was read. The earlier not-tested gate is superseded by the user's
+written operationalisation: 33%-33%-34%, with the second purchase midway to
+the call strike and the third at the strike. The public source still does not
+verify those exact numbers, so this tests the supplied rule, not the fidelity
+of its attribution.
 
-**Required preregistration.** Before this can spend another sample, freeze the
-exact trigger for every tranche, maximum concurrent tranche count, adjustment
-and exit rules, and the dated margin engine or archived broker/exchange margin
-files. Then compare the tranche book with H067 on return on actually encumbered
-capital, peak variation-margin cash drain and liquidation events. No trigger
-may be reverse-engineered from this option archive, and full cash securing may
-be used only as a payoff diagnostic—not as evidence for a SPAN-relief claim.
+**Frozen implementation.** Use the supplied seven-stock basket (`BEL`, `HAL`,
+`SIEMENS`, `ABB`, `INDHOTEL`, `HAVELLS`, `JUBLFOOD`) and monthly stock options.
+At a new position buy 33% of target shares at the entry close and write one
+full-target 10%-OTM call using H063's lagged selection, actual entry-session
+last print, 250-contract minimum and ten-per-cent adverse premium haircut. Buy
+the next 33% at the first daily cash close at or above the midpoint between
+entry and strike, and the last 34% at the first close at or above strike. If a
+gap crosses both thresholds, both tranches fill at that observed close; no
+interpolated trigger price is granted. Retain incomplete stock after an OTM
+expiry and write the next call; an ITM expiry delivers the full target after
+any terminal-close tranche fills. Charge all equity and option frictions.
+
+**The uncomfortable mechanic is part of the test.** Until the final tranche is
+bought, part of the short call is naked. Report peak uncovered notional and
+peak cash funding; do not call this a covered call or infer SPAN relief. Run a
+fully funded 100%-at-entry covered-call control on the identical basket,
+contracts and fills.
+
+**Bar and stop.** The staged primary must improve CAGR and Sharpe over the
+fully funded control, reduce maximum drawdown, and beat its own volatility-
+matched Nifty-total-return-plus-cash blend on CAGR and Sharpe. Failure of any
+clause rejects the supplied method. No alternative midpoint, tranche ratio,
+strike or liquidity threshold may rescue it on this archive.
+
+**Result.** The staged book returned **14.43% CAGR** with 0.702 Sharpe and a
+−22.53% daily drawdown. It beat its 10.98% / 0.463 volatility-matched Nifty
+hurdle and reduced the fully funded control's −29.01% drawdown, but the control
+returned **20.67% CAGR with 0.908 Sharpe**. The staged-minus-control annual mean
+return gap was **−5.94pp**, stationary-block 95% interval **[−10.05pp,
+−1.91pp]**. It wrote 372 calls, made 100 initial, 99 midpoint and 96 strike
+purchases, and carried peak uncovered stock notional equal to **51.29% of
+current equity**. The fixed current basket itself compounded at 30.46% before
+dividends, exposing how much of both strategies' result is present-day basket
+selection rather than option skill. The return and Sharpe clauses fail.
+
+
+## H070 — An approximate historical Piotroski 8–9 filter improves the seven-stock wheel
+
+Status: **REJECTED (2026-09-05); APPROXIMATE AND DESCRIPTIVE ONLY.** Registered
+before this result was read. This is the user-authorised, deliberately lower-accuracy
+successor to [[H068]]. It does not repair H068's missing point-in-time filing
+archive and cannot support a historical fundamental-alpha claim.
+
+**Frozen reconstruction.** Download the public Screener annual statement
+tables for the same seven symbols, preferring consolidated statements except
+where standalone has strictly longer common P&L/balance-sheet/cash-flow
+coverage. Build the nine original binary directions with three disclosed
+proxies: operating margin for gross margin; `Other Assets / Other Liabilities`
+for current ratio; and reported equity capital not increasing for no issuance.
+Use total borrowings/assets for leverage. Make each fiscal-year score eligible
+six calendar months after its period end. The pages contain present-day,
+potentially restated history, so the lag prevents obvious fiscal-year leakage
+but not revision lookahead.
+
+**Test.** Run H063 combined execution on the fixed seven-stock universe with
+seven slots, then restrict new puts to the latest reconstructed score of 8 or
+9. Existing assigned shares continue through the ordinary call loop even if a
+later score falls. Report the full component panel, eligible-entry coverage,
+names per cycle and score turnover.
+
+**Bar and stop.** At least 80% of otherwise eligible fixed-basket entries must
+have an available score. The filtered wheel must improve CAGR and Sharpe over
+the unfiltered seven-stock wheel and beat its volatility-matched Nifty blend on
+both. If it fails, do not search scores 6/7, quarterly variants, different lags
+or a hand-picked subset on this archive.
+
+**Result.** The reconstruction covers **379/379** liquid fixed-basket
+symbol-entry rows after its six-month lag, although only a median **two** names
+per cycle score 8–9. The unfiltered seven-stock wheel returned **6.85% CAGR**
+with 0.217 Sharpe; the 8–9 filter fell to **4.76% CAGR** and **−0.108 Sharpe**,
+versus 7.88% and 0.474 for its lower-volatility matched Nifty blend. Monthly
+drawdown improved from −13.08% to −9.38%, but both performance clauses fail.
+This rejects only this restated-data implementation on this present-day basket,
+not Piotroski's original signal or a future true-PIT test.
+
+
+## H071 — The supplied 30-delta / 12.5-delta spread works with the approximate quality filter
+
+Status: **REJECTED (2026-09-05); EXPLORATORY ON AN EXPOSED ARCHIVE.** Registered
+before this result was read. This isolates the bull-put-spread half of the supplied
+Mohanty framework more faithfully than H067's fixed-moneyness diagnostic.
+
+**Frozen implementation.** On the same fixed seven-stock basket and monthly
+calendar, sell the traded put whose reconstructed absolute delta is nearest
+0.30 and buy the lower traded put nearest 0.125 delta. Deltas only label actual
+quotes: invert the prior-session last price under European Black-Scholes, use
+the dated repo rate and zero dividend yield, and require the exact strikes to
+print on the entry session. The dividend omission is an accepted approximation
+and every rupee of P&L still comes from observed premiums and cash settlement.
+Apply the same ten-per-cent adverse fill to both legs, physical exercise and
+fees as H067, and remain fully cash-secured; no SPAN leverage is credited.
+
+**Three declared arms.** Run (1) an unfiltered 0.30-delta short-put wheel, (2)
+the unfiltered 0.30/0.125-delta spread wheel, and (3) that spread restricted to
+H070's approximate score 8–9. Calls remain ten per cent OTM. The combined arm
+must improve CAGR and Sharpe over both controls and beat its volatility-matched
+Nifty blend on both. Report realised deltas, spread width, exercise rate and
+slot utilization. Failure stops the combined Piotroski/Mohanty branch; no delta
+or score search follows.
+
+**Result.** The reconstructed labels hit their targets: median absolute deltas
+were 0.310 short and 0.123 long, with median strike width 6.72%. The unhedged
+0.30-delta wheel returned **7.09% CAGR / 0.214 Sharpe / −16.87% drawdown**; the
+unfiltered spread returned **6.27% / 0.136 / −13.47%**; and adding score 8–9
+returned **4.90% / −0.057 / −13.39%**. Their volatility-matched Nifty hurdles
+returned 9.61%, 9.07% and 8.39% respectively, all with 0.474 Sharpe. Only 5.47%
+of the unfiltered long puts exercised. Both the hedge and quality filter bought
+some drawdown reduction by giving up more return and Sharpe; every frozen
+performance clause fails.
