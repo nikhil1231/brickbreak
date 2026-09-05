@@ -23,11 +23,25 @@ return. That is an approximation — real dividends arrive in lumps on ex-dates,
 not smoothly — but it is unbiased in level over any period long enough to
 contain a full dividend season, and this study's shortest comparison is a year.
 
-THE HOLIDAY TRAP, AGAIN
+THE HOLIDAY TRAP, AGAIN — AND A WORSE ONE UNDERNEATH IT
 As everywhere else on this host, a URL for a non-session can answer 200 with a
 neighbouring session's file. The date is therefore taken from the file's own
 `Index Date` column and the row is filed under that, never under the requested
 day.
+
+That defence is necessary and **not sufficient**. On 2023-10-04 this archive
+served a file whose `Index Date` column read 04-10-2023 while every value in it
+belonged to 2023-04-21 — Nifty 50 at 17624.05 against a true close of 19436.10.
+The in-file date was not merely unhelpful, it was wrong, so no amount of trusting
+it would have caught this. A later re-fetch of the same URL returned the correct
+file, so the archive self-heals and the corruption is transient.
+
+The only defence against a source that lies about its own date is a second
+measurement. `validate()` scores the stored Nifty close against the near-month
+NIFTY index future from the derivatives bhavcopy, which is an entirely separate
+file on a separate URL. A near-month future trades within roughly a percent of
+spot; the corrupt session showed a 10.5% basis, and nothing else in 1,647
+sessions showed more than 0.9%. Run it after any sync.
 """
 from __future__ import annotations
 
@@ -173,6 +187,37 @@ def consolidate(root: Path | None = None, out: Path | None = None) -> Path:
     return target
 
 
+def validate(path: Path | None = None, tolerance: float = 0.02,
+             fo_root: Path | None = None) -> pd.DataFrame:
+    """Score the stored Nifty close against the near-month NIFTY future.
+
+    Returns one row per suspect session — empty is the passing result. The
+    futures file is fetched and stored independently of the index file, so the
+    two agreeing is real evidence; a near-month basis beyond a couple of percent
+    is not a market condition, it is a bad row.
+    """
+    from ...core import config as _config
+
+    root = fo_root or (_config.RAW_DIR / "fo_bhavcopy")
+    frames = []
+    for file in sorted(root.rglob("fo_*.parquet")):
+        day = pd.read_parquet(file, columns=["session", "symbol", "instrument",
+                                             "expiry", "close"])
+        day = day.loc[(day["symbol"] == "NIFTY")
+                      & (day["instrument"] == "index_future")]
+        if not day.empty:
+            frames.append(day.sort_values("expiry").iloc[[0]][["session", "close"]])
+    if not frames:
+        raise IndexCloseError("no NIFTY index futures rows to validate against")
+    futures = pd.concat(frames).rename(columns={"close": "future"})
+
+    stored = pd.read_parquet(path or INDEX_PATH)
+    stored = stored.loc[stored["index_name"] == "Nifty 50"][["session", "close"]]
+    merged = stored.merge(futures, on="session", how="inner")
+    merged["basis"] = merged["future"] / merged["close"] - 1.0
+    return merged.loc[merged["basis"].abs() > tolerance].reset_index(drop=True)
+
+
 def series(name: str = "Nifty 50", path: Path | None = None) -> pd.DataFrame:
     """Price level and an accrued total-return level for one index."""
     frame = pd.read_parquet(path or INDEX_PATH)
@@ -192,4 +237,4 @@ def series(name: str = "Nifty 50", path: Path | None = None) -> pd.DataFrame:
 
 __all__ = ["COLUMNS", "INDEX_DIR", "INDEX_PATH", "IndexCloseError",
            "KEEP_INDICES", "consolidate", "fetch_day", "parse", "series",
-           "sync", "url_for"]
+           "sync", "url_for", "validate"]
