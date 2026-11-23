@@ -51,6 +51,9 @@ class TestWorktree:
     def test_tracked_evidence_files_are_real_not_links(self):
         """Replacing data/ with a symlink made git report every frozen split
         and holdout result as deleted."""
+        tracked = worktree._git("ls-files", "data/metadata/split_v1_frozen.json")
+        if not tracked:
+            pytest.skip("no frozen split spec is tracked in this checkout")
         wt = worktree.create("pytest_tracked")
         try:
             frozen = wt.path / "data" / "metadata" / "split_v1_frozen.json"
