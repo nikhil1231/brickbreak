@@ -4468,3 +4468,35 @@ returned 9.61%, 9.07% and 8.39% respectively, all with 0.474 Sharpe. Only 5.47%
 of the unfiltered long puts exercised. Both the hedge and quality filter bought
 some drawdown reduction by giving up more return and Sharpe; every frozen
 performance clause fails.
+
+## H072 — Leveraged UK buy-to-let (incl. remortgage-and-redeploy) beats the S&P 500 in GBP
+
+Status: **REJECTED for a 2026 start; SUPPORTED only for 1993-2002 starts
+(2026-10-16).** Outside the NSE lab and its machinery by design: no splits,
+no budget, no leakage gate. A rough annual simulation, not a sample-spending
+experiment. Code and full write-up live in `studies/uk_property/` (`REPORT.md`).
+
+**Setup.** £100k, Land Registry regional average prices (London, SE, NE, NW,
+Yorkshire, W Midlands, Scotland, UK), BoE 2yr 75% LTV rate + 1% BTL premium,
+rents anchored to ONS mid-2026 levels and back-cast three ways. Costs include
+SDLT with surcharge, Section 24, voids, management, repairs, ICR-capped loans
+and CGT. Arms: cash, 75% LTV hold, 5-yearly remortgage-and-redeploy, BRRRR
+with 10% net forced equity, Ltd company, self-managed. Benchmark: the same
+dated cash flows (including top-ups) into the S&P 500 TR in GBP.
+
+**Result.** 10-year windows:
+- Starts 1993-2002: leveraged arms beat the S&P (ISA) in **94-98%** of
+  windows, median IRR 17-22% vs 6%.
+- Starts 2003-2016: they beat it in **1-14%**, median 6-9% vs 15%.
+
+Full 1995→2026: 75% LTV hold ended with **0.3-0.7×** the S&P's wealth.
+
+Forward from 2026 (HPI +3%, rent +3%, BTL 5.5%, 20y):
+- Property IRR **1.4-3.5%**, below cash buying.
+- Remortgaging *lowers* the IRR, because the net yield (~3.7%) sits below the
+  all-in cost of debt after Section 24.
+
+Hourly value of landlord effort against a 6% S&P is negative in every arm.
+Only HPI ≥5% with BTL ≤4.5%, or basic-rate tax, brings it near a 6-7% hurdle.
+This is exploratory and descriptive. The historical split is one regime
+change, not a repeated pattern.

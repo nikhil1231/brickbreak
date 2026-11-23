@@ -4081,3 +4081,102 @@ external funding need was zero. Neither number is a reconstruction of SPAN.
 A margin-relief or tranche-capacity claim needs dated margin inputs plus a
 liquidation rule, with variation-margin cash tracked separately from initial
 margin.
+
+---
+
+# Addendum — the wheel's breakeven drift, and which rejections it strengthens (2026-09-06)
+
+No new backtest and no new sample. This re-reads the recorded H066/H069 equity
+curves to answer a question the nine wheel hypotheses did not ask, because each
+was scored against a hurdle rather than characterised as a payoff.
+
+## Why the matched hurdle does not settle the regime question
+
+Every wheel arm was measured against Nifty total return blended with cash to the
+same realised volatility. That controls the **scale** of equity exposure. It does
+not control the **shape**: a concave payoff loses to a linear one of equal
+volatility when drift is high and wins when drift is low. The arms were measured
+across 2020-2026, in which Nifty TR compounded at 12.65% and the seven-stock
+basket at 30.46%. Underperformance in that window is the mechanically expected
+result of selling calls, so "it lost" does not by itself separate a structure
+that is underpaid from one that was mistimed.
+
+Regressing each arm's monthly return gap on its own underlying's monthly return
+with a kink at zero explains **73% to 90%** of the variance. These arms are very
+nearly pure mechanical functions of the underlying; there is almost no residual
+in which an edge could hide. That is the cleanest available statement of what
+the programme found, and it is stronger than any individual rejection.
+
+Mean monthly gap by the month's underlying move, in percentage points:
+
+| underlying month | H066 index wheel | H069 covered call | H069 staged |
+| --- | ---: | ---: | ---: |
+| under −5% | +1.23 | +4.78 | +6.44 |
+| −5 to 0% | +1.57 | +1.78 | +1.76 |
+| 0 to +5% | −0.75 | −0.74 | −1.09 |
+| +5 to +10% | −3.74 | −2.47 | −4.30 |
+| over +10% | −9.58 | −8.07 | −9.91 |
+
+The shape is identical in all three and it is exactly a short call's. The
+structures behaved correctly; the question is whether they were paid for it.
+
+## The breakeven drift, and it splits the verdicts
+
+Shifting the whole empirical distribution of monthly underlying returns while
+holding its dispersion, the drift at which the average monthly gap reaches zero:
+
+| arm | give-up per 1% rise | cushion per 1% fall | breakeven | realised |
+| --- | ---: | ---: | ---: | ---: |
+| H066 Nifty index wheel | −0.803 | +0.042 | **−1.7%/yr** | +14.3%/yr |
+| H069 fully funded covered call | −0.566 | +0.547 | **+13.4%/yr** | +33.2%/yr |
+| H069 staged 33/33/34 | −0.702 | +0.700 | **+7.8%/yr** | +33.2%/yr |
+
+The fitted gaps reproduce the realised gaps to the second decimal (−0.58, −0.76,
+−1.25 %/mo), which is the check that the procedure is sound.
+
+**H066 is strengthened, not qualified.** Its breakeven is *negative*: the index
+would have to fall for the weekly 0.15-delta wheel to match holding NIFTYBEES.
+It surrenders 0.80 of every 1% rise and recovers 0.04 of every 1% fall — a
+structure paid almost nothing for the upside it sells. No plausible Indian
+equity drift rescues it, so a future session should not re-test it in a
+different regime.
+
+**Staging is strengthened too.** It buys a slightly better cushion (+0.700 vs
++0.547) at a much worse give-up (−0.702 vs −0.566), dropping breakeven from
+13.4% to 7.8% a year. It is worse than the fully funded control at any drift
+above 7.8%, which is most equity markets most of the time. That rejection needs
+no regime caveat.
+
+**The fully funded covered call is the one confounded comparison.** Its
+breakeven of 13.4%/yr is almost exactly Nifty's long-run total return. It lost
+because the seven names it was tested on compounded at 33.2%/yr — and those
+seven were selected in 2026, after that rise. **The survivorship problem and the
+regime problem are the same problem here**, and the block bootstrap does not
+remove it. This does not make the covered call good; it means the experiment
+measured the basket rather than the overlay.
+
+## An error caught before it was published
+
+The first pass solved for the drift at which the *fitted curve* crosses zero and
+reported the index wheel breaking even at **+21.5%/yr** — implying it should
+comfortably have won at the realised 14.3%. That is a Jensen error: the gap is
+concave, so the average gap is strictly below the gap at the average, and the
+correct answer is −1.7%/yr. The tell was that the fitted value (+0.41%/mo)
+contradicted the arm's own realised gap (−0.58%/mo). **A model that cannot
+reproduce the quantity it is modelling is not yet a model** — the corrected
+version was required to match to two decimals before it was read.
+
+## What this changes
+
+No verdict is reversed; every arm still failed a bar frozen before its read. Two
+rejections become general rather than window-specific, one becomes uninformative
+about the structure it was meant to test, and the 73-90% explained variance says
+plainly why no further strike, delta, width or slot search on this archive is
+worth running. The programme's standing conclusion holds and now has a mechanism
+attached to it.
+
+**Limits.** A two-segment linear fit on monthly resampled curves characterises
+the arms; it does not reproduce the assignment and cash state machine and prices
+nothing. Shifting the observed distribution holds dispersion, autocorrelation and
+the option surface at their 2020-2026 values — a genuinely lower-drift regime
+would carry different implied volatility, moving the answer by an unknown amount.
