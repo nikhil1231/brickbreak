@@ -32,12 +32,7 @@ data/intraday_acquisition/*/attempts/
 data/intraday_acquisition/*/session_markers/
 data/intraday_acquisition/*/closing_markers/
 data/intraday_acquisition/*/pull_status.json
-data/intraday_acquisition/*/session_markers/
-data/intraday_acquisition/*/closing_markers/
-data/intraday_acquisition/*/attempts/
-data/intraday_acquisition/*/pull_status.json
 logs/
-.pytest_cache/
 data/whatsapp_gc/
 
 # frontend
@@ -48,3 +43,8 @@ frontend/dist/
 # in the frozen bundle are research evidence.
 data/metadata/research_store/**/human_drafts/
 data/metadata/research_store/**/.review.lock
+
+# local tooling and scratch
+.claude/
+tmp/
+output/
