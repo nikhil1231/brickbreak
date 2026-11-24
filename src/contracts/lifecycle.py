@@ -10,9 +10,7 @@ hashes, token and cash cost, outcome-exposure level and reason.
 """
 from __future__ import annotations
 
-import hashlib
-import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Sequence

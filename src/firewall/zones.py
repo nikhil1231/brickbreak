@@ -11,13 +11,11 @@ Zones:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Sequence
 
 import pandas as pd
 
-from ..alpha_eval.guards import LeakageGuardError, assert_no_forward_labels
+from ..alpha_eval.guards import assert_no_forward_labels
 
 logger = logging.getLogger(__name__)
 

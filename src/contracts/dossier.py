@@ -19,7 +19,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Any, Sequence
+from typing import Any
 
 
 class DossierValidationError(ValueError):

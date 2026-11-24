@@ -7,7 +7,6 @@ import pytest
 from src.contracts.data_contract import SourceFieldDef
 from src.data_broker import (
     ApprovalStatus,
-    compute_data_roi_score,
     create_approval_card,
     run_source_micro_probe,
     synthesize_data_contract,

@@ -33,7 +33,7 @@ import json
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable
+from typing import Callable
 
 from .. import prompt as prompt_mod
 from ..case import Case

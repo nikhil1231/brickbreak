@@ -24,12 +24,10 @@ logger = logging.getLogger(__name__)
 
 class DispatchGateRefusalError(RuntimeError):
     """Raised when dispatching exceeds the configured rate limit or policy."""
-    pass
 
 
 class DispatchRateLimitExceededError(DispatchGateRefusalError):
     """Raised when dispatch rate limit for a partition period is exceeded."""
-    pass
 
 
 @dataclass(frozen=True)

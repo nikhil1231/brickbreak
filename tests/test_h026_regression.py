@@ -28,7 +28,6 @@ import pytest
 import numpy as np
 import pandas as pd
 
-from src.research_data import catalogue as cat_mod
 from src.research_data.catalogue import build_default_catalogue
 
 

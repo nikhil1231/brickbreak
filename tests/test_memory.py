@@ -1,11 +1,8 @@
 """Tests for memory controls, recognition probe and H042 paired control."""
 from __future__ import annotations
 
-import pandas as pd
-import pytest
 
 from src.discretionary.case import Case
-from src.discretionary.decision import Decision
 from src.discretionary.memory import (
     MEMORY_ANONYMISED_CLEAN,
     MEMORY_ANONYMISED_QUARANTINED,

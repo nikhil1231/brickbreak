@@ -8,12 +8,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import pytest
 
-from src.persistence import Exploration, QueueProposal, store
+from src.persistence import Exploration, store
 from src.firewall import exposure as exposure_mod
 from src.runner import gate, preregistration, queue
 from src.runner.gate import (
     DispatchRateLimitExceededError,
-    RateLimitPolicy,
     check_dispatch_allowance,
     enforce_dispatch_gate,
 )

@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.alpha_eval.guards import LeakageGuardError, ScoringGuardError
+from src.alpha_eval.guards import LeakageGuardError
 from src.persistence import store
 from src.runner import burden, preflight
 from src.runner.spec import ExperimentSpec

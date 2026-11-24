@@ -14,7 +14,6 @@ from src.contracts import (
     LifecycleTracker,
     MechanismDossier,
     SourceFieldDef,
-    validate_transition,
 )
 from src.contracts.dossier import DossierValidationError
 from src.contracts.data_contract import DataContractValidationError

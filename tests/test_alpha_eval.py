@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from src.alpha_eval import backtest, diagnostics, neutralisation, report
 

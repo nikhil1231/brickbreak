@@ -58,8 +58,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import asdict, dataclass, field
-from typing import Any, Callable, Iterable
+from dataclasses import asdict, dataclass
+from typing import Any, Iterable
 
 import numpy as np
 import pandas as pd

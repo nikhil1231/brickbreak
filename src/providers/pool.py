@@ -11,9 +11,8 @@ import tempfile
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Sequence
+from typing import Any, Sequence
 
 logger = logging.getLogger(__name__)
 

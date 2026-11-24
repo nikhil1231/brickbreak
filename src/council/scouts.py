@@ -11,12 +11,10 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Any, Sequence
+from typing import Sequence
 
-from ..contracts.dossier import DossierDissent, MechanismDossier
-from ..providers.pool import ProviderRole, ProviderType, SubscriptionPool
+from ..contracts.dossier import MechanismDossier
 
 logger = logging.getLogger(__name__)
 

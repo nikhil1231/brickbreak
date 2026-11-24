@@ -19,10 +19,8 @@ from datetime import datetime
 
 from ...discretionary import baselines, decider, generators, replay
 
-from ...discretionary.opportunity import (CONTEXT_BLOCKS, DEFAULT_BASELINES,
-                                          OpportunityDef,
-                                          OpportunityValidationError, validate)
-from ...persistence import store
+from ...discretionary.opportunity import (OpportunityDef, OpportunityValidationError,
+                                          validate)
 
 
 def _fail(msg: str) -> int:

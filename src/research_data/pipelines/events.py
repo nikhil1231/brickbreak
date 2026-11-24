@@ -42,7 +42,6 @@ hypothesis family with a catalogue entry, not to the data layer.
 """
 from __future__ import annotations
 
-from datetime import date
 
 import numpy as np
 import pandas as pd

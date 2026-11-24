@@ -11,7 +11,6 @@ import re
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
 
 from ..core import config
 from .models import (BatchManifest, Evidence, Exploration, Hypothesis, IdeaGraph,

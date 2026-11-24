@@ -22,10 +22,8 @@ import json
 import logging
 import re
 from dataclasses import asdict, dataclass
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Sequence
 
-import numpy as np
-import pandas as pd
 
 from .case import Case
 from .decision import Decision

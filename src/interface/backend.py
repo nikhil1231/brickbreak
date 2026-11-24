@@ -17,7 +17,6 @@ import math
 import socketserver
 import threading
 import urllib.parse
-from pathlib import Path
 from typing import Any
 
 from ..core import config
@@ -26,7 +25,7 @@ from ..persistence.ledger import SampleBudgetLedger
 from ..persistence.models import Edge, Hypothesis, RELATION_TYPES
 from ..discretionary import replay as d_replay
 from ..research_data import catalogue
-from ..runner import agent, compare, job, planner, spec, suggest
+from ..runner import agent, compare, job
 from . import breeze_auth, director_api, screener_api
 
 FRONTEND_DIR = config.PROJECT_ROOT / "frontend"
@@ -581,18 +580,6 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
             })
             return
 
-        if path == "/api/jobs":
-            self._send_json({"jobs": [self._job_row(j)
-                                      for j in job.list_jobs()[:25]]})
-            return
-
-        if path == "/api/suggestions":
-            # Read-only and cheap on purpose. Generating here would spend a
-            # model call every time the Explore tab is opened, and would move
-            # the list under someone choosing between its entries.
-            self._send_json(self._suggestion_payload())
-            return
-
         # --- the discretionary loop, read-only -------------------------
         # Read-only on purpose. A replay spends the sample at its reveal
         # phase, and a button that spends sample does not belong on a page
@@ -735,208 +722,6 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(hypothesis.to_dict(), status=201)
             return
 
-        if path == "/api/suggestions/promote":
-            # Registering is separated from running so the inbox can refill the
-            # slot immediately. Refilling before the promotion lands would let
-            # the generator retire the very suggestion being launched, since
-            # what it retires is whatever is still `open` in that slot.
-            try:
-                sug, hyp = suggest.promote(req_data.get("id") or "")
-            except KeyError as exc:
-                self._send_json({"error": str(exc)}, status=404)
-                return
-            payload = self._suggestion_payload()
-            payload["promoted"] = sug.to_dict()
-            payload["hypothesis_id"] = hyp.id
-            self._send_json(payload)
-            return
-
-        if path in ("/api/suggestions/generate", "/api/suggestions/refresh"):
-            try:
-                provider = agent.validate_provider(
-                    req_data.get("provider", agent.DEFAULT_PROVIDER))
-            except agent.AgentError as exc:
-                self._send_json({"error": str(exc)}, status=400)
-                return
-            model = req_data.get("model") or None
-            try:
-                if path.endswith("refresh"):
-                    sug_id = req_data.get("id") or ""
-                    suggest.refresh(sug_id, provider=provider, model=model)
-                else:
-                    count = max(1, min(int(req_data.get("count",
-                                                        suggest.DEFAULT_COUNT)), 6))
-                    slots = req_data.get("slots") or None
-                    suggest.generate(count, slots=slots, provider=provider,
-                                     model=model)
-            except KeyError as exc:
-                self._send_json({"error": str(exc)}, status=404)
-                return
-            except (ValueError, TypeError) as exc:
-                self._send_json({"error": str(exc)}, status=400)
-                return
-            except Exception as exc:
-                self._send_json(
-                    {"error": f"{type(exc).__name__}: {exc}"}, status=500)
-                return
-            self._send_json(self._suggestion_payload())
-            return
-
-        if path == "/api/explore":
-            try:
-                provider = agent.validate_provider(req_data.get("provider", "claude"))
-            except agent.AgentError as exc:
-                self._send_json({"error": str(exc)}, status=400)
-                return
-            if not agent.available(provider=provider):
-                self._send_json({"error": agent.install_hint(provider)}, status=503)
-                return
-
-            selected_model = req_data.get("model") or None
-
-            # The new-hypothesis UI deliberately asks for only the idea and
-            # provider. Planning owns the rest: precise statement, rationale,
-            # family, lineage, signal definition, horizons, and pass bar.
-            planned = None
-            planned_hypothesis = None
-            tracked = None
-            idea = str(req_data.get("idea") or "").strip()
-            if idea:
-                # Planning takes as long as a short exploration, so the job
-                # record is opened before it starts. Otherwise the interface
-                # shows nothing at all until the slowest step is over.
-                tracked = job.open_job(
-                    spec.ExperimentSpec(hypothesis_id="NEW", question=idea,
-                                        signal_name="(planning)"),
-                    provider=provider, model=selected_model)
-                try:
-                    planned = planner.propose(
-                        idea, provider=provider, model=selected_model)
-                    if planned.source == "offline":
-                        warning = "; ".join(planned.warnings) or "planner unavailable"
-                        raise RuntimeError(warning)
-                    if not planned.rationale.strip():
-                        raise ValueError("planner returned no rationale")
-
-                    edges = []
-                    seen_targets = set()
-                    for edge_data in planned.lineage:
-                        target_id = str(edge_data.get("target_id") or "").strip()
-                        relation = str(edge_data.get("relation") or "").strip()
-                        if not target_id or target_id in seen_targets:
-                            continue
-                        if store.get_hypothesis(target_id) is None:
-                            raise ValueError(
-                                f"planner linked unknown hypothesis {target_id}")
-                        if relation not in RELATION_TYPES:
-                            raise ValueError(
-                                f"planner returned invalid relation {relation!r}")
-                        edges.append(Edge(target_id=target_id, relation=relation))
-                        seen_targets.add(target_id)
-
-                    inferred_parent = str(planned.hypothesis_id or "")
-                    if (inferred_parent not in ("", "NEW")
-                            and inferred_parent not in seen_targets):
-                        if store.get_hypothesis(inferred_parent) is None:
-                            raise ValueError(
-                                f"planner selected unknown hypothesis {inferred_parent}")
-                        edges.append(Edge(target_id=inferred_parent,
-                                          relation="specialises"))
-
-                    title = planned.question.strip() or idea
-                    if len(title) > 160:
-                        title = title[:157].rstrip() + "..."
-                    planned_hypothesis = Hypothesis(
-                        id=store.next_hypothesis_id(),
-                        title=title,
-                        statement=planned.question.strip() or idea,
-                        rationale=planned.rationale.strip(),
-                        family=planned.family or "general",
-                        edges=edges,
-                        tags=["planned_from_explore", f"planner_{planned.source}"],
-                    )
-                    store.save_hypothesis(planned_hypothesis)
-                except Exception as exc:
-                    tracked.state = "failed"
-                    tracked.error = f"Planning failed: {type(exc).__name__}: {exc}"
-                    tracked.enter("planning")
-                    self._send_json(
-                        {"error": f"Planning failed: {type(exc).__name__}: {exc}"},
-                        status=502)
-                    return
-
-            # Playing a suggestion registers it first. `validate_spec`
-            # refuses to run against an id the ledger does not know, and
-            # rightly so — an unregistered hypothesis has no family, so its
-            # prior exposure cannot be checked.
-            sug = None
-            if not planned and req_data.get("suggestion_id"):
-                try:
-                    sug, _hyp = suggest.promote(req_data["suggestion_id"])
-                except KeyError as exc:
-                    self._send_json({"error": str(exc)}, status=404)
-                    return
-
-            if planned and planned_hypothesis:
-                plan_context = planned.question
-                if planned.what_it_measures:
-                    plan_context += f"\n\nWhat it measures: {planned.what_it_measures}"
-                if planned.signal_sketch:
-                    plan_context += f"\nSignal plan: {planned.signal_sketch}"
-                exp_spec = spec.ExperimentSpec(
-                    hypothesis_id=planned_hypothesis.id,
-                    question=plan_context,
-                    signal_name=planned.signal_name,
-                    partition="train",
-                    role="exploratory",
-                    horizons=tuple(planned.horizons),
-                    primary_horizon=planned.primary_horizon,
-                    pass_criterion=dict(planned.pass_criterion),
-                    falsification_condition=planned.falsification_condition,
-                )
-            else:
-                exp_spec = spec.ExperimentSpec(
-                    hypothesis_id=(sug.hypothesis_id if sug else
-                                   req_data.get("hypothesis_id", "H026")),
-                    question=req_data.get("question") or (
-                        sug.question if sug else "Exploration run"),
-                    signal_name=req_data.get("signal_name") or (
-                        sug.signal_name if sug else "custom_signal"),
-                    partition=req_data.get("partition", "train"),
-                    role=req_data.get("role", "exploratory"),
-                    **({"horizons": tuple(sug.horizons),
-                        "primary_horizon": sug.primary_horizon,
-                        "pass_criterion": dict(sug.pass_criterion),
-                        "falsification_condition": sug.falsification_condition}
-                       if sug else {}),
-                )
-            try:
-                # `existing` is passed only when the planner already opened a
-                # record, so the ordinary call keeps its original signature.
-                jb = job.run_job(exp_spec, provider=provider,
-                                 model=selected_model,
-                                 **({"existing": tracked} if tracked else {}))
-            except Exception as exc:
-                self._send_json(
-                    {"error": f"{type(exc).__name__}: {exc}"}, status=500)
-                return
-            if jb.state != "succeeded":
-                status = 409 if jb.state == "blocked" else 500
-                self._send_json({
-                    "error": jb.error or f"job ended in state {jb.state}",
-                    "job_id": jb.id,
-                    "state": jb.state,
-                    "provider": jb.provider,
-                    "model": jb.model,
-                    "agent_session": jb.agent_session,
-                    **({"hypothesis_id": planned_hypothesis.id}
-                       if planned_hypothesis else {}),
-                }, status=status)
-                return
-            result = json.loads(Path(jb.result_path).read_text())
-            self._send_json(result)
-            return
-
         if path == "/api/compare":
             from ..research_data import frame
             signal_names = req_data.get("signals", ["rs_60d_vs_mkt", "sector_breadth"])
@@ -952,62 +737,6 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
             return
 
         self._send_json({"error": "not found"}, status=404)
-
-    @staticmethod
-    def _job_row(jb: job.Job) -> dict:
-        """One exploration, as something a progress list can render.
-
-        The verdict is read back from the stored result rather than kept on
-        the job, so a finished row says what it found and not merely that it
-        finished.
-        """
-        spec_d = jb.spec or {}
-        row = {
-            "job_id": jb.id,
-            "state": jb.state,
-            "phase": jb.phase,
-            "phases": list(job.PHASES),
-            "hypothesis_id": spec_d.get("hypothesis_id", ""),
-            "signal_name": spec_d.get("signal_name", ""),
-            # The row shows the hypothesis it is testing; the spec question is
-            # a paragraph, and paragraphs belong in the detail view.
-            "title": _hypothesis_title(spec_d.get("hypothesis_id", ""))
-                     or spec_d.get("question", ""),
-            "question": spec_d.get("question", ""),
-            "partition": spec_d.get("partition", ""),
-            "provider": jb.provider,
-            "model": jb.model,
-            "created_at": jb.created_at,
-            "finished_at": jb.finished_at,
-            "runtime_s": jb.runtime_s,
-            "timeout_s": jb.timeout_s,
-            "phase_started_at": jb.phase_started_at,
-            "cost_usd": jb.agent_cost_usd,
-            "turns": jb.agent_turns,
-            "error": jb.error,
-            "failure_class": "",
-            "interpretation": "",
-        }
-        if jb.state in ("queued", "running"):
-            row["worker"] = job.worker_progress(jb)
-
-        if jb.result_path and Path(jb.result_path).exists():
-            try:
-                result = json.loads(Path(jb.result_path).read_text())
-                row["failure_class"] = result.get("failure_class", "")
-                row["interpretation"] = result.get("interpretation", "")
-            except (OSError, json.JSONDecodeError):
-                pass
-        return row
-
-    def _suggestion_payload(self) -> dict:
-        open_ = suggest.open_suggestions()
-        return {
-            "suggestions": [s.to_dict() for s in open_],
-            "n_open": len(open_),
-            "n_slots": suggest.DEFAULT_COUNT,
-            "n_proposed_ever": len(store.list_suggestions()),
-        }
 
     def _handle_breeze_callback(
         self, parsed: urllib.parse.ParseResult, body: bytes | None = None,

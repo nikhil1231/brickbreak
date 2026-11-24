@@ -6,7 +6,6 @@ a stated, visible assumption. Nothing is a silent guess.
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from ...core import config
 

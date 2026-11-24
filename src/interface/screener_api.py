@@ -15,7 +15,6 @@ import json
 import threading
 from dataclasses import fields
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import numpy as np

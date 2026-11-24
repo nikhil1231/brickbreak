@@ -1,5 +1,4 @@
 """Scrip-master parsing and cost extrapolation."""
-import pandas as pd
 import pytest
 
 from src.research_data.sources import security_master as sm
@@ -225,7 +224,6 @@ def test_sync_files_a_session_under_its_own_date(tmp_path, monkeypatch):
 def test_sync_requests_weekends_so_special_sessions_are_not_lost(tmp_path, monkeypatch):
     """Budget Saturdays and Muhurat Sundays are real sessions."""
     from datetime import date as _date
-    import pandas as pd
     from src.research_data.sources import nse as nse_archive
 
     monkeypatch.setattr(nse_archive, "BHAV_DIR", tmp_path)

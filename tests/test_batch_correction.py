@@ -12,11 +12,9 @@ from src.persistence import (
     BatchManifest,
     Evidence,
     Exploration,
-    Hypothesis,
     store,
 )
-from src.runner import burden, preregistration
-from src.runner.spec import ExperimentSpec
+from src.runner import burden
 
 
 @pytest.fixture(autouse=True)

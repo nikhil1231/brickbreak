@@ -47,7 +47,6 @@ import pandas as pd
 from ..core import config
 from ..persistence import Evidence, SampleBudgetLedger, build_manifest, store
 from ..research_data import frame, splits
-from ..runner import burden as burden_mod
 from ..runner import gate
 from . import baselines, case as case_mod, decider as decider_mod
 from . import evaluate as evaluate_mod

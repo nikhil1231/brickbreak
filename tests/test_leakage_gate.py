@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import pytest
 
-from src.research_data import catalogue as cat_mod
 from src.research_data.catalogue import (
     Catalogue,
     CatalogueError,

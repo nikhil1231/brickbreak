@@ -6,7 +6,7 @@ and produces frozen candidates without silently averaging dissent into certainty
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any, Sequence
 
 from ..contracts.dossier import DossierDissent, MechanismDossier

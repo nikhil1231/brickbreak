@@ -50,7 +50,6 @@ five years apart. They are flagged `long_gap` and left as separate symbols.
 """
 from __future__ import annotations
 
-from pathlib import Path
 
 import pandas as pd
 import requests

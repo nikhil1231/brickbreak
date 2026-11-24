@@ -9,17 +9,14 @@ live install.
 from __future__ import annotations
 
 import itertools
-import json
-import os
 import stat
-from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from src.persistence import store
 from src.persistence.models import Evidence, Exploration
-from src.runner import agent, burden, forward, interpret, job, planner, worktree
+from src.runner import agent, burden, forward, interpret, job, worktree
 from src.runner.spec import (
     ExperimentSpec,
     SpecValidationError,
@@ -525,50 +522,8 @@ class TestForwardLane:
 
 
 # ---------------------------------------------------------------------------
-# planner and interpretation
+# interpretation
 # ---------------------------------------------------------------------------
-
-class TestPlanner:
-
-    def test_offline_plan_is_usable_and_says_it_is_offline(self):
-        p = planner.offline_plan("do resilient names rebound harder?")
-        assert p.source == "offline"
-        assert p.pass_criterion
-        assert any("not installed" in w for w in p.warnings)
-        validate_pass_criterion(p.pass_criterion)
-
-    def test_a_plan_becomes_a_valid_spec(self):
-        p = planner.offline_plan("an idea")
-        spec = p.to_spec(partition="train", role="exploratory")
-        assert spec.partition == "train"
-        validate_pass_criterion(spec.pass_criterion)
-
-    def test_agent_json_is_parsed_even_when_wrapped_in_prose(self):
-        payload = ('Here is the plan:\n```json\n'
-                   '{"question":"q?","signal_name":"sig","hypothesis_id":"H024",'
-                   '"lineage":[{"target_id":"H024","relation":"specialises"}],'
-                   '"pass_criterion":{"min_mean_ic":0.02}}\n```\nHope that helps.')
-        p = planner.propose(
-            "idea", agent_fn=lambda prompt: agent.AgentResult(
-                ok=True, text=payload, returncode=0, duration_s=1.0))
-        assert p.signal_name == "sig"
-        assert p.hypothesis_id == "H024"
-        assert p.lineage[0]["relation"] == "specialises"
-
-    def test_unlinked_new_hypothesis_is_warned_about(self):
-        payload = '{"question":"q?","hypothesis_id":"NEW","lineage":[],' \
-                  '"pass_criterion":{"min_mean_ic":0.02}}'
-        p = planner.propose(
-            "idea", agent_fn=lambda prompt: agent.AgentResult(
-                ok=True, text=payload, returncode=0, duration_s=1.0))
-        assert any("lineage" in w for w in p.warnings)
-
-    def test_unparseable_output_falls_back(self):
-        p = planner.propose(
-            "idea", agent_fn=lambda prompt: agent.AgentResult(
-                ok=True, text="no json here", returncode=0, duration_s=1.0))
-        assert p.source == "offline"
-
 
 class TestInterpretation:
 

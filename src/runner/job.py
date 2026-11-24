@@ -35,7 +35,7 @@ import numpy as np
 
 from ..core import config
 from . import agent, gate, preflight, worktree
-from .spec import ExperimentSpec, SpecValidationError, validate_spec
+from .spec import ExperimentSpec, validate_spec
 
 JOBS_DIR = config.METADATA_DIR / "research_store" / "jobs"
 

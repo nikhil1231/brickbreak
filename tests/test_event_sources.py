@@ -243,7 +243,6 @@ def test_decode_json_handles_both_envelope_shapes():
 
 def test_a_challenge_page_is_treated_as_a_block_not_as_data():
     """NSE serves its challenge page with status 200 as readily as with 503."""
-    import requests
 
     class _Resp:
         status_code = 200

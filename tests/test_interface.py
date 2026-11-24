@@ -10,7 +10,6 @@ import pytest
 
 from src.interface import backend
 from src.interface.cli import lab as cli
-from src.persistence import store
 
 
 class TestInterfaceCLI:
@@ -187,145 +186,6 @@ class TestInterfaceAPI:
             "service": "opening-window-screener"
         }
 
-    def test_explore_forwards_provider_and_model(self, server, monkeypatch,
-                                                 tmp_path):
-        result_path = tmp_path / "result.json"
-        result_path.write_text(json.dumps({
-            "job_id": "J_API", "provider": "codex", "model": "gpt-test",
-            "failure_class": "NO_SIGNAL", "interpretation": "test",
-        }))
-        captured = {}
-
-        def fake_run_job(exp_spec, provider, model):
-            captured.update(provider=provider, model=model,
-                            signal=exp_spec.signal_name)
-            return SimpleNamespace(
-                state="succeeded", result_path=str(result_path), id="J_API",
-                error="")
-
-        monkeypatch.setattr(backend.agent, "available", lambda provider: True)
-        monkeypatch.setattr(backend.job, "run_job", fake_run_job)
-        payload = json.dumps({
-            "hypothesis_id": "H026", "question": "q",
-            "signal_name": "from_codex", "partition": "train",
-            "provider": "codex", "model": "gpt-test",
-        }).encode()
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{server.server_address[1]}/api/explore",
-            data=payload, headers={"Content-Type": "application/json"},
-            method="POST")
-        response = urllib.request.urlopen(request)
-        assert response.status == 200
-        assert captured == {"provider": "codex", "model": "gpt-test",
-                            "signal": "from_codex"}
-
-    def test_new_idea_is_planned_registered_and_launched(self, server,
-                                                          monkeypatch, tmp_path):
-        result_path = tmp_path / "planned-result.json"
-        result_path.write_text(json.dumps({
-            "job_id": "J_PLANNED", "hypothesis_id": "H039",
-            "signal_name": "planned_signal", "provider": "codex",
-            "model": "gpt-test", "failure_class": "NO_SIGNAL",
-            "interpretation": "test",
-        }))
-        saved = []
-        captured = {}
-        proposed = backend.planner.Plan(
-            idea="a new idea",
-            question="Does the planned signal predict returns?",
-            rationale="It may capture delayed repricing.",
-            what_it_measures="Delayed repricing",
-            hypothesis_id="NEW",
-            lineage=[{"target_id": "H026", "relation": "adjacent-to"}],
-            family="discovery",
-            signal_name="planned_signal",
-            signal_sketch="Rank the lagged feature cross-sectionally.",
-            pass_criterion={"min_mean_ic": 0.015, "min_spread_bps": 30.0,
-                            "min_monotonicity": 0.6},
-            source="codex",
-        )
-
-        def fake_propose(idea, provider, model):
-            captured.update(idea=idea, provider=provider, model=model)
-            return proposed
-
-        def fake_run_job(exp_spec, provider, model, existing=None):
-            captured.update(hypothesis_id=exp_spec.hypothesis_id,
-                            signal=exp_spec.signal_name,
-                            question=exp_spec.question,
-                            handed_over=existing)
-            return SimpleNamespace(
-                state="succeeded", result_path=str(result_path), id="J_PLANNED",
-                error="")
-
-        # Planning opens the job record before it starts, so the interface can
-        # show planning as planning. Keep that record out of the real store.
-        opened = []
-
-        def fake_open_job(exp_spec, provider, model, phase="planning"):
-            jb = SimpleNamespace(id="J_PLANNED", spec=exp_spec.to_dict(),
-                                 state="running", phase=phase, error="",
-                                 enter=lambda p: None)
-            opened.append(jb)
-            return jb
-
-        monkeypatch.setattr(backend.agent, "available", lambda provider: True)
-        monkeypatch.setattr(backend.planner, "propose", fake_propose)
-        monkeypatch.setattr(backend.store, "next_hypothesis_id", lambda: "H039")
-        monkeypatch.setattr(
-            backend.store, "get_hypothesis",
-            lambda hyp_id: SimpleNamespace(id=hyp_id) if hyp_id == "H026" else None)
-        monkeypatch.setattr(backend.store, "save_hypothesis", saved.append)
-        monkeypatch.setattr(backend.job, "run_job", fake_run_job)
-        monkeypatch.setattr(backend.job, "open_job", fake_open_job)
-
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{server.server_address[1]}/api/explore",
-            data=json.dumps({
-                "idea": "a new idea", "provider": "codex", "model": "gpt-test",
-            }).encode(),
-            headers={"Content-Type": "application/json"}, method="POST")
-        response = urllib.request.urlopen(request)
-
-        assert response.status == 200
-        assert json.loads(response.read())["hypothesis_id"] == "H039"
-        assert saved[0].id == "H039"
-        assert saved[0].rationale == "It may capture delayed repricing."
-        assert saved[0].edges[0].target_id == "H026"
-        assert captured["hypothesis_id"] == "H039"
-        # One exploration is one job: the record opened for planning is the
-        # record the run continues into, not a second one.
-        assert opened and captured["handed_over"] is opened[0]
-        assert opened[0].phase == "planning"
-        assert captured["signal"] == "planned_signal"
-        assert "Signal plan:" in captured["question"]
-
-    def test_explore_failure_returns_job_diagnostics(self, server, monkeypatch):
-        monkeypatch.setattr(backend.agent, "available", lambda provider: True)
-        monkeypatch.setattr(
-            backend.job,
-            "run_job",
-            lambda *args, **kwargs: SimpleNamespace(
-                state="failed", id="J_DIAGNOSTIC", provider="codex",
-                model="gpt-test", agent_session="thread-123",
-                error="rate limit reached; rate_limit"),
-        )
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{server.server_address[1]}/api/explore",
-            data=json.dumps({"provider": "codex"}).encode(),
-            headers={"Content-Type": "application/json"}, method="POST")
-        with pytest.raises(urllib.error.HTTPError) as exc_info:
-            urllib.request.urlopen(request)
-        payload = json.loads(exc_info.value.read().decode("utf-8"))
-        assert payload == {
-            "error": "rate limit reached; rate_limit",
-            "job_id": "J_DIAGNOSTIC",
-            "state": "failed",
-            "provider": "codex",
-            "model": "gpt-test",
-            "agent_session": "thread-123",
-        }
-
     def test_api_ledger(self, server):
         url = f"http://127.0.0.1:{server.server_address[1]}/api/ledger"
         req = urllib.request.urlopen(url)
@@ -348,7 +208,6 @@ def test_the_backend_never_emits_bare_nan():
     exists now.
     """
     import json
-    import math
 
     from src.interface.backend import _json_safe
 

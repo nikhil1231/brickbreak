@@ -164,7 +164,6 @@ def test_pre_2018_xbrl_filings_are_no_longer_served():
     """
     import requests
 
-    from src.research_data.sources import xbrl as xbrl_mod
 
     client = nse_api.Client(area="results", throttle=1.0)
     df = filings.fetch_symbol(client, "RELIANCE", period="Quarterly",

@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import sys
 from datetime import datetime
-from pathlib import Path
 
 from ...core import config
 from ...research_data import repository
@@ -194,7 +193,6 @@ def cmd_sync_nse(args) -> int:
                              recheck_empty=args.recheck_empty)
     print("  ", stats)
     p = nse_archive.consolidate()
-    import pandas as pd
     df = repository.daily_bars(adjusted=False)
     print(f"consolidated -> {p.relative_to(config.PROJECT_ROOT)}  "
           f"rows={len(df):,} symbols={df['symbol'].nunique():,} dates={df['date'].nunique():,}")
@@ -210,7 +208,6 @@ def cmd_sync_corp_actions(args) -> int:
     end = _date.fromisoformat(args.end) if args.end else _date.today()
     stats = corporate_actions.build(start=start, end=end, force_fetch=args.force)
 
-    import pandas as pd
     from ...research_data.pipelines import renames
 
     if renames.MAP_PATH.exists():

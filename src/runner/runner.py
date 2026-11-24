@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Callable
 import pandas as pd
 
@@ -26,13 +25,11 @@ from ..persistence import (
     Edge,
     Evidence,
     Exploration,
-    Hypothesis,
     SampleBudgetLedger,
     Signal,
     build_manifest,
     save_exploration,
     save_hypothesis,
-    save_manifest,
     save_signal,
     store,
 )

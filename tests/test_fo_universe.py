@@ -1,7 +1,6 @@
 """The derivatives archive's two eras, and the universe built from them."""
 from __future__ import annotations
 
-from datetime import date
 
 import numpy as np
 import pandas as pd

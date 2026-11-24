@@ -1,6 +1,5 @@
 """Normalization and validation must be trustworthy before we judge the API."""
 import pandas as pd
-import pytest
 
 from src.research_data.pipelines.storage import NORMALIZED_COLUMNS, normalize
 from src.research_data.pipelines.validation import check

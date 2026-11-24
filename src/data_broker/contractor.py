@@ -6,7 +6,7 @@ registers the new point-in-time features into the research_data catalogue.
 from __future__ import annotations
 
 import logging
-from typing import Any, Sequence
+from typing import Sequence
 
 from ..contracts.data_contract import DataContract, SourceFieldDef
 from .approval import ApprovalCard, ApprovalStatus

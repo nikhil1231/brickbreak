@@ -9,12 +9,7 @@ a progress bar that stops at the first thing that goes wrong.
 from __future__ import annotations
 
 import json
-import threading
-import time
-import urllib.request
-from types import SimpleNamespace
 
-import pytest
 
 from src.runner import agent, job
 from src.runner.spec import ExperimentSpec
@@ -171,91 +166,3 @@ class TestWorkerProgress:
         assert job.get_job("J").phase_started_at
 
 
-class TestJobsAPI:
-    @pytest.fixture
-    def server(self, tmp_path, monkeypatch):
-        from src.interface import backend
-        monkeypatch.setattr(job, "JOBS_DIR", tmp_path)
-        srv, _ = backend.serve_backend(port=0, block=False)
-        yield srv, backend
-        srv.shutdown()
-
-    def _get(self, srv, path):
-        with urllib.request.urlopen(
-                f"http://127.0.0.1:{srv.server_address[1]}{path}") as res:
-            return json.loads(res.read().decode())
-
-    def test_a_running_job_reports_its_phase(self, server, tmp_path):
-        srv, _ = server
-        jb = job.Job(id="JOB_A", spec={"hypothesis_id": "H024",
-                                       "signal_name": "s", "question": "q",
-                                       "partition": "train"},
-                     state="running", phase="writing the signal")
-        jb.save()
-
-        row = self._get(srv, "/api/jobs")["jobs"][0]
-        assert row["state"] == "running"
-        assert row["phase"] == "writing the signal"
-        # A running row carries the evidence that it is not hung.
-        assert "worker" in row and row["worker"]["signal_written"] is False
-        assert row["phases"] == list(job.PHASES)
-        assert row["hypothesis_id"] == "H024"
-
-    def test_a_finished_job_carries_its_verdict(self, server, tmp_path):
-        srv, _ = server
-        result = tmp_path / "JOB_B_result.json"
-        result.write_text(json.dumps({"failure_class": "NO_SIGNAL",
-                                      "interpretation": "nothing here"}))
-        job.Job(id="JOB_B", spec={"signal_name": "s"}, state="succeeded",
-                phase="done", result_path=str(result), runtime_s=12.5).save()
-
-        row = self._get(srv, "/api/jobs")["jobs"][0]
-        assert row["failure_class"] == "NO_SIGNAL"
-        assert row["interpretation"] == "nothing here"
-        assert row["runtime_s"] == 12.5
-
-    def test_a_missing_result_file_does_not_break_the_listing(self, server):
-        srv, _ = server
-        job.Job(id="JOB_C", spec={}, state="succeeded",
-                result_path="/nowhere/gone.json").save()
-        row = self._get(srv, "/api/jobs")["jobs"][0]
-        assert row["failure_class"] == ""
-
-    def test_an_exploration_in_flight_does_not_block_the_status_poll(self, server,
-                                                                    monkeypatch):
-        """The whole point of the progress list.
-
-        On the single-threaded server this replaced, a request that held open
-        for the length of an exploration held every other request with it, so
-        the list could only refresh once there was nothing left to watch.
-        """
-        srv, backend = server
-        monkeypatch.setattr(backend.agent, "available", lambda provider: True)
-
-        def slow_run_job(exp_spec, provider, model, existing=None):
-            time.sleep(2.0)
-            return SimpleNamespace(state="failed", id="JOB_SLOW", error="done",
-                                   provider=provider, model=model,
-                                   agent_session="")
-
-        monkeypatch.setattr(backend.job, "run_job", slow_run_job)
-
-        def launch():
-            request = urllib.request.Request(
-                f"http://127.0.0.1:{srv.server_address[1]}/api/explore",
-                data=json.dumps({"hypothesis_id": "H024", "provider": "claude",
-                                 "question": "q", "signal_name": "s"}).encode(),
-                headers={"Content-Type": "application/json"}, method="POST")
-            try:
-                urllib.request.urlopen(request)
-            except urllib.error.HTTPError:
-                pass                      # the fake job fails; that is fine
-
-        thread = threading.Thread(target=launch, daemon=True)
-        thread.start()
-        time.sleep(0.3)
-
-        t0 = time.time()
-        self._get(srv, "/api/jobs")
-        assert time.time() - t0 < 1.0, "the status poll waited on the exploration"
-        thread.join(timeout=5)

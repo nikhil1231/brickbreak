@@ -116,28 +116,6 @@ def main(argv=None) -> int:
                     help="overwrite an existing frozen split — almost never right")
     sp.set_defaults(fn=data.cmd_split)
 
-    pl = sub.add_parser("plan", help="turn an idea into an experiment plan")
-    pl.add_argument("idea")
-    pl.add_argument("--with-columns", action="store_true",
-                    help="show the planner the available columns (slower)")
-    pl.add_argument("--json", action="store_true")
-    pl.add_argument("--provider", choices=("claude", "codex", "antigravity"), default="claude")
-    pl.add_argument("--model", default=None)
-    pl.set_defaults(fn=iface_cli.cmd_plan)
-
-    sg = sub.add_parser("suggest",
-                        help="the research inbox: what to test next")
-    sg.add_argument("--new", action="store_true",
-                    help="ask for fresh proposals (spends a model call)")
-    sg.add_argument("-n", type=int, default=3,
-                    help="how many to propose with --new (default 3)")
-    sg.add_argument("--refresh", default=None, metavar="Sxxx",
-                    help="replace one open suggestion with a new one")
-    sg.add_argument("--json", action="store_true")
-    sg.add_argument("--provider", choices=("claude", "codex", "antigravity"), default="claude")
-    sg.add_argument("--model", default=None)
-    sg.set_defaults(fn=iface_cli.cmd_suggest)
-
     jb_ = sub.add_parser("job", help="run an LLM-backed research job")
     jb_.add_argument("--hypothesis", required=True)
     jb_.add_argument("--question", required=True)

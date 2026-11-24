@@ -36,9 +36,8 @@ cover ~750 symbols; everything else is UNCLASSIFIED and handled per
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 
-import numpy as np
 import pandas as pd
 
 from ....research_data.pipelines.sector import UNCLASSIFIED

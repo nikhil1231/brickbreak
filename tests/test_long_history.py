@@ -6,13 +6,10 @@ from the same catalogue.
 """
 from __future__ import annotations
 
-import pandas as pd
 import pytest
 
-from src.alpha_eval import evaluate_signal
-from src.persistence import Hypothesis, LedgerEntry, SampleBudgetLedger, store
-from src.research_data import catalogue, frame, splits
-from src.runner import run_exploration
+from src.persistence import Hypothesis, SampleBudgetLedger, store
+from src.research_data import catalogue, splits
 from src.runner.spec import ExperimentSpec
 
 

@@ -46,8 +46,7 @@ from ..alpha_eval.backtest import COST_PCT_ROUND_TRIP
 from ..alpha_eval import diagnostics
 from ..runner import burden as burden_mod
 from .decision import AI_DECIDER, Decision
-from .opportunity import (MIN_MEANINGFUL, OpportunityDef,
-                          validate_sample_adequacy)
+from .opportunity import (OpportunityDef, validate_sample_adequacy)
 
 logger = logging.getLogger(__name__)
 
