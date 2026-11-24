@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import threading
 from dataclasses import fields
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 import numpy as np
@@ -202,13 +202,3 @@ class Handler(BaseHTTPRequestHandler):
                  "json": "application/json", "png": "image/png",
                  "ico": "image/x-icon"}.get(p.suffix.lstrip("."), "application/octet-stream")
         return self._send(p.read_bytes(), f"{ctype}; charset=utf-8")
-
-
-def serve_standalone(port: int = 8765) -> None:
-    """Run only the screener API and UI for focused legacy workflows."""
-    print("warming metrics panel ...", flush=True)
-    df = _load()
-    print(f"  {len(df):,} rows, {df['symbol'].nunique():,} symbols", flush=True)
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"standalone screener -> http://127.0.0.1:{port}", flush=True)
-    srv.serve_forever()

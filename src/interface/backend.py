@@ -408,13 +408,6 @@ HTML_DASHBOARD = """<!DOCTYPE html>
 """
 
 
-def _hypothesis_title(hypothesis_id: str) -> str:
-    if not hypothesis_id:
-        return ""
-    hyp = store.get_hypothesis(hypothesis_id)
-    return hyp.title if hyp else ""
-
-
 class BackendHandler(http.server.BaseHTTPRequestHandler):
     """HTTP request handler serving the application UI and REST APIs."""
 

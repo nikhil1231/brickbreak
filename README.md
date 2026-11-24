@@ -106,13 +106,14 @@ the seal. Inspect with `cases RPL_<id>` and `decisions RPL_<id> --full`.
 | `src/discretionary/` | cases, deciders, baselines, replay |
 | `src/runner/`, `src/council/`, `src/contracts/`, `src/firewall/` | signal path and its gates |
 | `src/alpha_eval/` | diagnostics, backtest, inference |
-| `src/research/families/` | concrete research lines (a leaf; never imported by the lab) |
+| `src/research/families/` | the opening-window screener (a leaf; never imported by the lab) |
 | `frontend/` | web UI |
 | `HYPOTHESES.md`, `FINDINGS.md` | the research ledger and chronological evidence |
 | `PLAN.md`, `AGENTS.md` | operating plan; conventions and every data trap found so far |
 
 Most results to date are negative, and they are kept: a rejected hypothesis is a
-result. Start with `HYPOTHESES.md`.
+result. Start with `HYPOTHESES.md`. The code behind rejected studies was removed;
+check out git tag `pre-compression` to reproduce one.
 
 ## License
 

@@ -40,7 +40,7 @@ until it passes the leakage gate and the standard report.
 | `FINDINGS.md` | evidence, chronological |
 | `HYPOTHESES.md` | the research ledger, stable IDs, nothing deleted |
 | `src/discretionary/` | the discretionary loop — cases, decisions, baselines, replay |
-| `src/research/families/` | hypothesis families (opening-window, resilience). A **leaf**, never imported by the lab |
+| `src/research/families/` | the opening-window screener. Every other (rejected) family was removed; see below. A **leaf**, never imported by the lab |
 | `src/` | current code |
 | `data/` | on-disk parquet store — **bytes only**, opened through the data module |
 | `tests/` | keep green |
@@ -88,7 +88,7 @@ structural and signal preflights; `compile QUALIFICATION --reviewer NAME`
 creates the immutable experiment contract and multiplicity batch; and only
 `execute CONTRACT --confirm-outcome-access` crosses the outcome firewall. A
 contract is one-shot: rerunning it is refused. `forward`, `burden`, `exposure`
-and `serve` inspect results. The older `suggest`, `plan`, `job`, `queue`,
+and `serve` inspect results. The older `job`, `queue`,
 `preregister` and `explore` commands remain compatibility plumbing while their
 UI callers migrate; do not begin new research through them. Claude and Codex
 are the supported subscription lanes. Install and log in to at least one:
@@ -112,11 +112,8 @@ date range. `python -m src.cli split --show` describes it.
 
 **Current state, until the rest of the refactor lands:**
 `research_data.pipelines.daily_panel.load()` defaults to the lagged
-`screen_metrics_asof.parquet`, `research.opening_window.explore.fence()` raises
-on holdout rows, and `research.opening_window.family.holdout()` /
-`research.resilience.semi_stale()` re-hash frozen specs
-before reading. Treat those as the module's ancestors — extend them, do not add
-parallel access paths beside them.
+`screen_metrics_asof.parquet`. Extend `research_data`, do not add parallel
+access paths beside it.
 
 ### Splits and the sample budget
 
@@ -575,16 +572,19 @@ inherits every lookahead rule above. These are the additional ones.
 
 ## Families are a leaf, not the architecture
 
-`src/research/families/` holds the opening-window and resilience research lines.
-Nothing in `src/discretionary`, `src/alpha_eval`, `src/research_data`,
-`src/persistence`, `src/runner` or `src/core` may import from it — the
-dependency runs one way and `tests/test_architecture.py` enforces it, including
-for dynamic imports. `src/interface` is exempt: the CLI and the screener API are
-exactly where a family gets bound to a command.
+`src/research/families/` holds only the opening-window screener, which the
+screener API and one discretionary generator bind to. Nothing in
+`src/discretionary`, `src/alpha_eval`, `src/research_data`, `src/persistence`,
+`src/runner` or `src/core` may import from it — the dependency runs one way and
+`tests/test_architecture.py` enforces it, including for dynamic imports.
+`src/interface` is exempt.
 
-Their commands live behind `python -m src.cli family opening-window <cmd>`.
-Nothing there is deprecated — a family's measurements must stay reproducible —
-but nothing new should be built in that shape.
+**Removed code.** The opening-window research pipeline (H001-H033), resilience,
+wheel, covered-call, bulk-deals, setup-grind, level and price-action studies,
+their one-off scripts, the setup-review UI and the `suggest`/`plan` plumbing were
+deleted once their hypotheses were rejected. Their measurements are in
+`HYPOTHESES.md` and `FINDINGS.md`; to reproduce one, check out the git tag
+`pre-compression`.
 
 ## Opening-window specifics (still true, now one family among many)
 
@@ -647,13 +647,6 @@ but nothing new should be built in that shape.
   dispatched it, so anything still `running` when the server starts belongs to
   a dead process: `job.reap_orphans()` marks those `interrupted` with the
   phase they died in, and never deletes them.
-- **A suggestion is not a hypothesis until someone presses play.** Minting an
-  H0xx for every idea a model has overnight would fill the ledger with entries
-  no experiment ever ran against, so proposals live in `runner.suggest` and
-  only `promote()` registers one — with its family and lineage edges, which is
-  what the budget ledger reasons over. Nothing is deleted there either: a
-  refreshed-away suggestion is kept as `replaced`, because the list of things
-  already proposed is what stops the next generation proposing them again.
 - **An unregistered hypothesis is blocked, not defaulted.** Resolving an
   unknown id to a "general" family granted it confirmatory access to spent
   quarters, because nothing is recorded against a family that does not exist.
