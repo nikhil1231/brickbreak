@@ -400,3 +400,15 @@ def cmd_build_events(args) -> int:
     stats = events.build()
     print(json.dumps(stats, indent=2, default=str))
     return 0
+
+
+def cmd_context(args) -> int:
+    """Market regime, breakout location and relative strength (as-of)."""
+    from ...research_data.pipelines import context
+    ctx, mkt = context.build(context.ContextConfig())
+    reg = mkt["mkt_regime"].value_counts()
+    print("\nsessions by market regime:")
+    for k, v in reg.items():
+        if v:
+            print(f"  {str(k):16s} {v:5,}")
+    return 0

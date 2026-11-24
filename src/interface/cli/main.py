@@ -9,130 +9,7 @@ import argparse
 import sys
 
 from ...core import config
-from . import council, data, discretionary, lab as iface_cli, opening_window
-
-
-def _add_family_commands(sub: argparse._SubParsersAction) -> None:
-    """The opening-window family's own commands, behind their own namespace.
-
-    These were thirteen top-level commands until 2026-08-22, which made one
-    hypothesis family look like the shape of the project. They are unchanged;
-    they are just no longer the front door. Reach them with
-
-        python -m src.cli family opening-window <command>
-
-    Nothing here is deprecated — a family's measurements have to stay
-    reproducible — but nothing new should be built in this shape either.
-    """
-    fp = sub.add_parser(
-        "family", help="hypothesis-family research lines (opening-window)")
-    fsub = fp.add_subparsers(dest="family_name", required=True)
-    fam = fsub.add_parser(
-        "opening-window",
-        help="the volatility-contraction breakout family (H001-H033)"
-    ).add_subparsers(dest="family_cmd", required=True)
-
-    sv = fam.add_parser("serve-screener", help="run the standalone legacy screener service")
-    sv.add_argument("--port", type=int, default=8765)
-    sv.set_defaults(fn=opening_window.cmd_serve)
-
-    sc = fam.add_parser("screen", help="headless screen summary")
-    sc.add_argument("--unlagged", action="store_true",
-                    help="screen on the entry day's own close (the H015 lookahead; "
-                         "for comparison only)")
-    sc.add_argument("--set", action="append", metavar="KEY=VALUE",
-                    help="override a ScreenConfig field, repeatable")
-    sc.set_defaults(fn=opening_window.cmd_screen)
-
-    cp = fam.add_parser("candidate-panel",
-                        help="join opening features to daily screener candidates")
-    cp.set_defaults(fn=opening_window.cmd_candidate_panel)
-
-    ch = fam.add_parser("characterize",
-                        help="distributions of gap / opening volume / first-minute shape")
-    ch.set_defaults(fn=opening_window.cmd_characterize)
-
-    lb = fam.add_parser("label",
-                        help="forward returns for each candidate morning")
-    lb.add_argument("--entry", default="close_5m",
-                    choices=["close_5m", "open_px", "open_raw"],
-                    help="price the label is measured from (default: end of the "
-                         "opening window, the first actionable price)")
-    lb.set_defaults(fn=opening_window.cmd_label)
-
-    ew_ = fam.add_parser("entry-window",
-                         help="opening window at a grid of candidate entry times")
-    ew_.add_argument("--stop-buffer", type=float, default=0.10,
-                     help="%% below the running low for the stop (default 0.10)")
-    ew_.set_defaults(fn=opening_window.cmd_entry_window)
-
-    bh = fam.add_parser("behaviour",
-                        help="second-level behavioural features for the opening window")
-    bh.add_argument("--all-dates", action="store_true",
-                    help="include holdout dates (do not use for exploration)")
-    bh.set_defaults(fn=opening_window.cmd_behaviour)
-
-    ex = fam.add_parser("explore",
-                        help="exploratory search over the opening-behaviour family")
-    ex.add_argument("--t", type=int, default=300, help="entry time in seconds (default 300)")
-    ex.add_argument("--horizon", default="excess_ret_5d_pct")
-    ex.set_defaults(fn=opening_window.cmd_explore)
-
-    dv = fam.add_parser("discover",
-                        help="reverse discovery: outcome archetypes, matched controls, "
-                             "discriminant search (EXPLORATORY)")
-    dv.add_argument("--t", type=int, default=180,
-                    help="entry time in seconds inside the opening window (default 180)")
-    dv.add_argument("--n-perm", type=int, default=200,
-                    help="permutations for the max-|t| null (default 200)")
-    dv.add_argument("--k", type=int, default=4, help="winner clusters (default 4)")
-    dv.add_argument("--freeze", action="store_true",
-                    help="write the shortlist to discovery_frozen.json for the holdout")
-    dv.set_defaults(fn=opening_window.cmd_discover)
-
-    sh = fam.add_parser("shotgun",
-                        help="the H024 ranking rule and its checks (EXPLORATORY)")
-    sh.add_argument("--t", type=int, default=180)
-    sh.add_argument("--top-n", type=int, default=5, help="picks per session")
-    sh.add_argument("--hold", type=int, default=30, help="sessions held")
-    sh.add_argument("--cost", type=float, default=0.40,
-                    help="round-trip cost in %% (default 0.40)")
-    sh.add_argument("--n-perm", type=int, default=400)
-    sh.add_argument("--freeze", action="store_true")
-    sh.set_defaults(fn=opening_window.cmd_shotgun)
-
-    fm = fam.add_parser("search",
-                        help="search, stress-test and freeze the rule family (EXPLORATORY)")
-    fm.add_argument("--n-perm", type=int, default=200)
-    fm.add_argument("--no-freeze", action="store_true",
-                    help="report without writing family_frozen.json")
-    fm.set_defaults(fn=opening_window.cmd_family)
-
-    ho = fam.add_parser("holdout",
-                        help="open the 2020-2023 holdout against the frozen family (ONCE)")
-    ho.set_defaults(fn=opening_window.cmd_holdout)
-
-    wl = fam.add_parser("work-list",
-                        help="build the pull work list (as-of-open screen minus manifest)")
-    wl.add_argument("--date-min", default=None)
-    wl.add_argument("--date-max", default=None)
-    wl.add_argument("--manifest", default=None,
-                    help="manifest parquet to dedup against (default: local)")
-    wl.add_argument("--unlagged", action="store_true",
-                    help="screen on the entry day's own close (the H015 lookahead)")
-    wl.set_defaults(fn=opening_window.cmd_work_list)
-
-    pf = fam.add_parser("payoff",
-                        help="simulate the stop/target/trail rule and bracket it (H017)")
-    pf.add_argument("--t", type=int, default=300)
-    pf.add_argument("--stop-buffer", type=float, default=2.0,
-                    help="%% below the running low for the stop (default 2.0)")
-    pf.add_argument("--target", type=float, default=15.0)
-    pf.add_argument("--max-sessions", type=int, default=60)
-    pf.set_defaults(fn=opening_window.cmd_payoff)
-
-    orp = fam.add_parser("opening-report", help="quality report for fetched opening data")
-    orp.set_defaults(fn=opening_window.cmd_opening_report)
+from . import council, data, discretionary, lab as iface_cli
 
 
 def main(argv=None) -> int:
@@ -226,9 +103,7 @@ def main(argv=None) -> int:
 
     cx = sub.add_parser("context",
                         help="build market regime + breakout location + relative strength")
-    cx.set_defaults(fn=opening_window.cmd_context)
-
-    _add_family_commands(sub)
+    cx.set_defaults(fn=data.cmd_context)
 
     sp = sub.add_parser("split", help="build/freeze/describe a dataset split")
     sp.add_argument("--version", default="v1")

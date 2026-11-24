@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.research.families.opening_window import explore
 from src.alpha_eval import backtest as B
 from src.alpha_eval import diagnostics as D
 from src.alpha_eval import report as R
@@ -150,18 +149,6 @@ class TestOverlapCorrection:
         assert D.horizon_from_column("fwd_ret_20d_pct") == 20
         assert D.horizon_from_column("excess_ret_5d_pct") == 5
         assert D.horizon_from_column("no_horizon_here") == 1
-
-    def test_lags_zero_reproduces_the_h016_implementation(self):
-        """`explore.cluster_stats` is what H016 was measured with; the port
-        must not have drifted."""
-        rng = np.random.default_rng(0)
-        d = pd.DataFrame({"y": rng.normal(size=3000),
-                          "date": np.repeat(np.arange(150), 20)})
-        d["y"] += np.repeat(rng.normal(size=150), 20) * 2
-        new = D.cluster_stats(d["y"], d["date"])
-        old = explore.cluster_stats(d["y"], d["date"])
-        assert new["mean"] == old["mean"]
-        assert new["t"] == old["t"]
 
     def test_clustered_se_widens_with_lags(self):
         rng = np.random.default_rng(5)

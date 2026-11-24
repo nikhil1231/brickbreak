@@ -18,7 +18,6 @@ import pandas as pd
 import pytest
 
 from src.alpha_eval import trade_sim
-from src.research.families.opening_window import payoff
 
 
 def _flat_bars(symbols=("AAA",), n=30, start=100.0, step=0.0):
@@ -31,22 +30,6 @@ def _flat_bars(symbols=("AAA",), n=30, start=100.0, step=0.0):
                          "low": px * 0.98, "close": px})
             px *= (1.0 + step)
     return pd.DataFrame(rows), dates
-
-
-def test_family_wrapper_reproduces_the_extracted_simulator():
-    """The family's numbers must not move because the code moved."""
-    bars, dates = _flat_bars(("AAA", "BBB"), n=40, step=0.004)
-    trades = pd.DataFrame([
-        {"symbol": "AAA", "date": dates[3], "entry_px_adj": 100.8,
-         "stop_px_adj": 97.0, "running_low_t": 99.5, "running_high_t": 101.0},
-        {"symbol": "BBB", "date": dates[5], "entry_px_adj": 101.6,
-         "stop_px_adj": 95.0, "running_low_t": 100.0, "running_high_t": 102.5},
-    ])
-    direct = trade_sim.simulate(trades, bars, optimistic=False,
-                                entry_timing="intraday_window", verbose=False)
-    viaf = payoff.simulate(trades, bars, optimistic=False, verbose=False)
-    for col in ("payoff_ret_pct", "sessions_held", "exit_reason", "target_filled"):
-        pd.testing.assert_series_equal(direct[col], viaf[col])
 
 
 def test_entry_at_the_open_can_meet_the_entry_day_low():
