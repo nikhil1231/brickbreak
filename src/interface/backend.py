@@ -27,7 +27,7 @@ from ..persistence.models import Edge, Hypothesis, RELATION_TYPES
 from ..discretionary import replay as d_replay
 from ..research_data import catalogue
 from ..runner import agent, compare, job, planner, spec, suggest
-from . import breeze_auth, director_api, screener_api, setup_review
+from . import breeze_auth, director_api, screener_api
 
 FRONTEND_DIR = config.PROJECT_ROOT / "frontend"
 DIST_DIR = FRONTEND_DIR / "dist"
@@ -520,38 +520,6 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(agent.provider_catalog())
             return
 
-        if path == "/api/setup-reviews":
-            try:
-                self._send_json(setup_review.list_queues(), cache_control="no-store")
-            except setup_review.SetupReviewError as exc:
-                self._send_json({"error": str(exc)}, status=exc.status,
-                                cache_control="no-store")
-            return
-
-        if path.startswith("/api/setup-reviews/"):
-            parts = [urllib.parse.unquote(part) for part in path.split("/") if part]
-            review_id = parts[2] if len(parts) > 2 else ""
-            annotator = query.get("annotator", ["owner"])[0]
-            try:
-                if len(parts) == 3:
-                    self._send_json(setup_review.queue(review_id, annotator),
-                                    cache_control="no-store")
-                    return
-                if len(parts) == 5 and parts[3] == "cases":
-                    self._send_json(setup_review.case(
-                        review_id, parts[4], annotator), cache_control="no-store")
-                    return
-                if len(parts) == 5 and parts[3] == "charts" and parts[4].endswith(".png"):
-                    case_id = parts[4][:-4]
-                    self._send_bytes(setup_review.chart(review_id, case_id), "image/png")
-                    return
-            except setup_review.SetupReviewError as exc:
-                self._send_json({"error": str(exc)}, status=exc.status,
-                                cache_control="no-store")
-                return
-            self._send_json({"error": "not found"}, status=404)
-            return
-
         if path == "/api/director":
             try:
                 self._send_json(director_api.state())
@@ -721,26 +689,6 @@ class BackendHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json(director_api.dispatch_post(path, req_data))
             except director_api.DirectorAPIError as exc:
                 self._send_json({"error": str(exc)}, status=exc.status)
-            return
-
-        if path.startswith("/api/setup-reviews/"):
-            parts = [urllib.parse.unquote(part) for part in path.split("/") if part]
-            review_id = parts[2] if len(parts) > 2 else ""
-            action = parts[3] if len(parts) > 3 else ""
-            try:
-                if len(parts) == 4 and action == "draft":
-                    self._send_json(setup_review.save_draft(review_id, req_data),
-                                    cache_control="no-store")
-                    return
-                if len(parts) == 4 and action == "finalize":
-                    self._send_json(setup_review.finalize(review_id, req_data),
-                                    cache_control="no-store")
-                    return
-            except setup_review.SetupReviewError as exc:
-                self._send_json({"error": str(exc)}, status=exc.status,
-                                cache_control="no-store")
-                return
-            self._send_json({"error": "not found"}, status=404)
             return
 
         if path == "/api/hypotheses":

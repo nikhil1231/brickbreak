@@ -10,9 +10,8 @@ import { SignalCompare } from './components/alpha/SignalCompare';
 import { BudgetLedgerView } from './components/alpha/BudgetLedgerView';
 import { CatalogueView } from './components/alpha/CatalogueView';
 import { SettingsView } from './components/settings/SettingsView';
-import { SetupReviewView } from './components/setups/SetupReviewView';
 
-const TABS: TabType[] = ['explore', 'setups', 'replays', 'hypotheses', 'graph', 'compare', 'ledger', 'catalogue', 'screener', 'settings'];
+const TABS: TabType[] = ['explore', 'replays', 'hypotheses', 'graph', 'compare', 'ledger', 'catalogue', 'screener', 'settings'];
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>(() => {
@@ -42,7 +41,6 @@ export const App: React.FC = () => {
       <AppShell.Main>
         <Box style={{ minHeight: 'calc(100vh - 56px)' }}>
           {activeTab === 'explore' && <ExploreConsole />}
-          {activeTab === 'setups' && <SetupReviewView />}
           {activeTab === 'replays' && <ReplaysView />}
           {activeTab === 'hypotheses' && <HypothesesLedger />}
           {activeTab === 'graph' && <IdeaGraphView />}
