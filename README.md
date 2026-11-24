@@ -113,3 +113,7 @@ the seal. Inspect with `cases RPL_<id>` and `decisions RPL_<id> --full`.
 
 Most results to date are negative, and they are kept: a rejected hypothesis is a
 result. Start with `HYPOTHESES.md`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
